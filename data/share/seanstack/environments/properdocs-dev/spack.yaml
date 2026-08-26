@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+spack:
+  specs:
+    - properdocs@develop
+
+  # A source checkout is deliberately not committed here. After activating this
+  # environment, bind one with:
+  #   spack develop --path /path/to/properdocs properdocs@develop
+  concretizer:
+    unify: true

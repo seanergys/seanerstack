@@ -1,0 +1,8 @@
+nav:
+  - Home: index.md
+  - Tutorials: tutorials
+  - How-to guides: how-to
+  - Explanation: explanation
+  - Reference: reference
+
+flatten_single_child_sections: true

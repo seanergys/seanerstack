@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: Apache-2.0
+[build-system]
+requires = ["uv_build>=0.10,<0.11"]
+build-backend = "uv_build"
+
+[project]
+name = "seanstack"
+version = "0.1.0"
+description = "Curated Spack recipes and environments for SEANERGYS, with synchronization, bootstrap, and validation tooling."
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+dependencies = [
+  "packaging>=24",
+  "PyYAML>=6",
+]
+
+[project.scripts]
+seanstack = "seanstack.cli:main"
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+]
+docs = [
+  "properdocs>=1.6.7",
+  "mkdocs-materialx",
+  "mkdocs-awesome-nav",
+  "mkdocs-gen-files",
+  "pymdown-extensions",
+]
+
+# Install the curated Spack repository and environments outside site-packages.
+# The contents of data/ are installed relative to the Python environment prefix,
+# yielding <prefix>/share/seanstack/...
+[tool.uv.build-backend]
+data = { data = "data" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: Apache-2.0
+.venv/
+__pycache__/
+.pytest_cache/
+site/
+*.pyc

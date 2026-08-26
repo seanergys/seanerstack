@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: Apache-2.0
+image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+
+stages:
+  - test
+  - docs
+  - publish
+
+test:
+  stage: test
+  script:
+    - uv sync --group dev
+    - uv run pytest
+    - uv run seanstack validate
+
+docs:
+  stage: docs
+  script:
+    - uv sync --group docs
+    - uv run properdocs build --strict
+  artifacts:
+    paths:
+      - site/
+
+publish:
+  stage: publish
+  environment:
+    name: pypi
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: manual
+      allow_failure: true
+    - when: never
+  script:
+    - |
+      VERSION="$(python - <<'PY'
+      from datetime import datetime
+      import os
+
+      created = datetime.fromisoformat(
+          os.environ["CI_PIPELINE_CREATED_AT"].replace("Z", "+00:00")
+      )
+      print(
+          f"{created.year}.{created.month}.{created.day}."
+          f"{os.environ['CI_PIPELINE_IID']}"
+      )
+      PY
+      )"
+      echo "Publishing seanstack ${VERSION}"
+      uv version "${VERSION}" --frozen
+    - uv build --no-sources
+    - uv publish

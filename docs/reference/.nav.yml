@@ -1,0 +1,5 @@
+nav:
+  - index.md
+  - Command line: cli
+  - Packages: packages
+  - Environments: environments

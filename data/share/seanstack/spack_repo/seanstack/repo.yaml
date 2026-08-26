@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
+repo:
+  namespace: seanstack
+  api: v2.0
