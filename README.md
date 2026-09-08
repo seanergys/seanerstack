@@ -34,8 +34,9 @@ seanstack paths env --package properdocs
 For example:
 
 ```console
-spack repo add "$(seanstack paths repo)"
+export SEANSTACK_STATE_DIR=/path/to/seanstack-state
 seanstack toolchain bootstrap gcc@15
+eval "$(seanstack activate)"
 spack env activate "$(seanstack paths env --package properdocs)"
 ```
 
@@ -108,10 +109,10 @@ seanstack \
 For interactive use, omit `--secrets-password-file`; Seanstack prompts for the
 SeanVault password. CI may use `--secrets-password-stdin` instead.
 
-Configure S3-backed Spack binary build caches from `config.toml` with:
+Configure S3-backed Spack binary build caches from `config.toml` in the selected isolated state with:
 
 ```console
-seanstack buildcache configure
+seanstack --state-dir /path/to/seanstack-state buildcache configure
 ```
 
 Seanstack stores only environment-variable references in Spack's mirror
@@ -119,3 +120,40 @@ configuration. It never writes the S3 access key or secret key into Spack
 configuration. The actual variables must be present in any later native
 `spack` process that accesses a private cache; this is intentionally left as a
 process/session concern rather than storing decrypted credentials on disk.
+
+## Isolated Spack session
+
+SeanStack keeps Spack configuration and mutable state inside one explicitly selected
+state directory. It does not use `~/.spack`, `/etc/spack`, another Spack store, or
+another Spack cache for SeanStack-managed operations.
+
+Activate a shell with:
+
+```console
+$ eval "$(seanstack --state-dir /path/to/seanstack-state activate)"
+$ spack find
+$ spack install <spec>
+```
+
+After activation, plain `spack` is the native Spack CLI executed with SeanStack's
+private configuration. The session sets `SEANSTACK_STATE_DIR`, disables normal
+local Spack configuration, redirects Spack user data, and places a transparent
+launcher first on `PATH`. The private tree contains the install store, build
+stages, source and miscellaneous caches, managed environments, and configuration.
+
+If the private build cache needs credentials, activate with the existing SeanVault
+options, for example:
+
+```console
+$ eval "$(seanstack --state-dir /path/to/seanstack-state --secrets-file secrets.toml activate)"
+```
+
+Leave the session with:
+
+```console
+$ eval "$(seanstack deactivate)"
+```
+
+`toolchain bootstrap`, Spack-backed validation, and build-cache commands use the
+same isolated state. Outside an activated shell, pass `--state-dir DIR` or set
+`SEANSTACK_STATE_DIR`. There is intentionally no public Spack `--scope` option.

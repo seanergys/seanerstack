@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 
 from .auth import spack_resource_environment
@@ -14,11 +13,8 @@ def buildcaches(config: Config) -> tuple[Resource, ...]:
     return tuple(resource for resource in config.resources.values() if resource.kind == "spack-buildcache")
 
 
-def _mirror_args(resource: Resource, scope: str) -> list[str]:
-    args = [
-        "spack", "mirror", "add", "--scope", scope,
-        "--type", "binary",
-    ]
+def _mirror_args(resource: Resource, command: list[str]) -> list[str]:
+    args = [*command, "mirror", "add", "--type", "binary"]
     if resource.autopush:
         args.append("--autopush")
     args.append("--signed" if resource.signed else "--unsigned")
@@ -34,26 +30,26 @@ def _mirror_args(resource: Resource, scope: str) -> list[str]:
     return args
 
 
-def configure_buildcaches(config: Config, *, scope: str = "user") -> None:
-    if shutil.which("spack") is None:
-        raise RuntimeError("spack executable not found in PATH")
+def configure_buildcaches(config: Config, *, command: list[str] | None = None, env=None) -> None:
+    command = command or ["spack"]
     for resource in buildcaches(config):
         subprocess.run(
-            ["spack", "mirror", "remove", "--scope", scope, resource.name],
+            [*command, "mirror", "remove", resource.name],
             check=False,
             text=True,
-            capture_output=True,
+            capture_output=True, env=env,
         )
-        subprocess.run(_mirror_args(resource, scope), check=True, text=True, capture_output=True)
+        subprocess.run(_mirror_args(resource, command), check=True, text=True, capture_output=True, env=env)
 
 
-def check_buildcaches(config: Config, secrets: SecretStore) -> list[tuple[str, bool, str]]:
+def check_buildcaches(config: Config, secrets: SecretStore, *, command: list[str] | None = None, base_env=None) -> list[tuple[str, bool, str]]:
+    command = command or ["spack"]
     results: list[tuple[str, bool, str]] = []
     for resource in buildcaches(config):
-        env = os.environ.copy()
+        env = dict(os.environ if base_env is None else base_env)
         env.update(spack_resource_environment(resource, secrets))
         process = subprocess.run(
-            ["spack", "buildcache", "list", "--allarch"],
+            [*command, "buildcache", "list", "--allarch"],
             check=False,
             text=True,
             capture_output=True,

@@ -1,8 +1,17 @@
 # Work on a package
 
-Use this procedure for normal development on a SEANERGYS package checkout. It assumes the Spack installation has already been prepared for SEANERGYS.
+Use this procedure for normal development on a SEANERGYS package checkout. It assumes the Seanstack state directory and project compiler have already been prepared.
 
 The example uses `properdocs`.
+
+## Activate the isolated Spack session
+
+Select the prepared state directory and activate Seanstack:
+
+```console
+export SEANSTACK_STATE_DIR=/path/to/seanstack-state
+eval "$(seanstack activate)"
+```
 
 ## Activate the package environment
 
@@ -25,11 +34,17 @@ spack concretize -f
 spack install
 ```
 
-After activation, these are normal Spack operations. Seanstack's role is to provide and maintain the recipe and environment used by Spack, not to wrap the installation commands.
+These are normal Spack operations. The activated Seanstack session supplies the isolation boundary; it does not replace the Spack CLI.
 
 When dependencies or recipes change, rerun:
 
 ```console
 spack concretize -f
 spack install
+```
+
+When the shell no longer needs Seanstack's Spack state, deactivate it:
+
+```console
+eval "$(seanstack deactivate)"
 ```
