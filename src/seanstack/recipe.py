@@ -31,6 +31,11 @@ class Recipe:
         value = self.attributes.get("git")
         return value if isinstance(value, str) else None
 
+    @property
+    def seanstack_resource(self) -> str | None:
+        value = self.attributes.get("seanstack_resource")
+        return value if isinstance(value, str) else None
+
 
 def _literal(node: ast.AST) -> Any:
     try:

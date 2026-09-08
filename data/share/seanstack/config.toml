@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+# External resources are named here. Recipes and build-cache configuration refer
+# to the resource name; credential values live only in the SeanVault file.
+#
+# Example private Git resource:
+# [resources.seanergys-gitlab]
+# kind = "git"
+# url = "https://gitlab.seanergys.fz-juelich.de/"
+# credentials = "seanergys-gitlab"
+#
+# Example S3-backed Spack binary build cache:
+# [resources.jsc-buildcache]
+# kind = "spack-buildcache"
+# url = "s3://seanstack-buildcache"
+# endpoint_url = "https://objectstore.example.org"
+# credentials = "jsc-objectstore"
+# autopush = true
+# signed = false

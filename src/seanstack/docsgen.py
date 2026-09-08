@@ -25,9 +25,15 @@ def _subparsers(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentP
     return {}
 
 
+def _cli_pages(command: str, parser: argparse.ArgumentParser):
+    yield command, parser
+    for name, child in _subparsers(parser).items():
+        yield from _cli_pages(f"{command} {name}", child)
+
+
 def generate_cli() -> None:
     parser = build_parser()
-    pages = [("seanstack", parser), *((f"seanstack {name}", child) for name, child in _subparsers(parser).items())]
+    pages = list(_cli_pages("seanstack", parser))
     links: list[str] = []
     for command, command_parser in pages:
         slug = command.replace(" ", "-")
@@ -57,7 +63,7 @@ def generate_packages() -> None:
         recipe = parse_recipe(path)
         links.append(f"- [{name}]({name}.md)")
         attrs = []
-        for key in ("homepage", "git", "url", "pypi"):
+        for key in ("homepage", "git", "url", "pypi", "seanstack_resource"):
             if key in recipe.attributes:
                 attrs.append(f"- **{key}:** `{recipe.attributes[key]}`")
         content = f"""# {name}

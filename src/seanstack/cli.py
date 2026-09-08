@@ -2,13 +2,41 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 import subprocess
 import sys
 
 from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_SCOPE, bootstrap
+from .buildcache import check_buildcaches, configure_buildcaches
+from .config import Config, load_config
 from .paths import environments_path, repository_path, share_path
+from .secrets import SecretStore
 from .sync import package_paths, sync_many
 from .validate import validate
+
+
+def _add_secret_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--config-file",
+        type=Path,
+        help="Seanstack config.toml (default: installed share/seanstack/config.toml)",
+    )
+    parser.add_argument(
+        "--secrets-file",
+        type=Path,
+        help="SeanVault file containing credentials referenced by config.toml",
+    )
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument(
+        "--secrets-password-file",
+        type=Path,
+        help="read the SeanVault password from FILE instead of prompting",
+    )
+    source.add_argument(
+        "--secrets-password-stdin",
+        action="store_true",
+        help="read the SeanVault password from stdin instead of prompting",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -16,22 +44,27 @@ def build_parser() -> argparse.ArgumentParser:
         prog="seanstack",
         description="Maintain and use the curated SEANERGYS Spack stack.",
     )
+    _add_secret_options(parser)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    sync_parser = subparsers.add_parser(
-        "sync",
-        help="Synchronize Spack recipe versions with upstream Git refs.",
+    package_parser = subparsers.add_parser("package", help="Maintain curated Spack packages.")
+    package_sub = package_parser.add_subparsers(dest="package_command", required=True)
+    update_parser = package_sub.add_parser(
+        "update",
+        help="Update Spack recipe versions from upstream Git refs.",
         description=(
             "Read each native package.py recipe, infer its release-tag convention "
             "from existing version(..., tag=...) directives, and add missing upstream releases."
         ),
     )
-    sync_parser.add_argument("package", nargs="?", help="package to synchronize")
-    sync_parser.add_argument("--all", action="store_true", help="synchronize every Seanstack package")
-    sync_parser.add_argument("--check", action="store_true", help="report drift without changing files; return non-zero on drift")
-    sync_parser.add_argument("--dry-run", action="store_true", help="show what would change without changing files")
+    update_parser.add_argument("package", nargs="?", help="package to update")
+    update_parser.add_argument("--all", action="store_true", help="update every Seanstack package")
+    update_parser.add_argument("--check", action="store_true", help="report drift without changing files; return non-zero on drift")
+    update_parser.add_argument("--dry-run", action="store_true", help="show what would change without changing files")
 
-    bootstrap_parser = subparsers.add_parser(
+    toolchain_parser = subparsers.add_parser("toolchain", help="Prepare the SEANERGYS build toolchain.")
+    toolchain_sub = toolchain_parser.add_subparsers(dest="toolchain_command", required=True)
+    bootstrap_parser = toolchain_sub.add_parser(
         "bootstrap",
         help="Bootstrap a Spack-installed production compiler.",
         description=(
@@ -53,8 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate_parser = subparsers.add_parser(
         "validate",
-        help="Validate recipes, environments, synchronization, and optionally compiler setup.",
-        description="Validate native Spack artifacts. Online, compiler, and concretization checks are opt-in.",
+        help="Validate recipes, environments, resources, and optional online/Spack state.",
     )
     validate_parser.add_argument("--online", action="store_true", help="also compare recipe versions with upstream Git refs")
     validate_parser.add_argument("--spack", action="store_true", dest="with_spack", help="also concretize copies of all environments with Spack")
@@ -67,18 +99,36 @@ def build_parser() -> argparse.ArgumentParser:
     )
     validate_parser.add_argument("--scope", default=DEFAULT_SCOPE, help=f"Spack scope used for compiler validation (default: {DEFAULT_SCOPE})")
 
-    subparsers.add_parser("sharepath", help="Print the installed Seanstack share directory.")
-    subparsers.add_parser("repopath", help="Print the native Seanstack Spack repository path.")
-
-    envpath_parser = subparsers.add_parser("envpath", help="Print the path of a shipped Spack environment.")
-    selector = envpath_parser.add_mutually_exclusive_group(required=True)
+    paths_parser = subparsers.add_parser("paths", help="Print installed Seanstack paths.")
+    paths_sub = paths_parser.add_subparsers(dest="paths_command", required=True)
+    paths_sub.add_parser("share", help="Print the installed Seanstack share directory.")
+    paths_sub.add_parser("repo", help="Print the native Seanstack Spack repository path.")
+    env_parser = paths_sub.add_parser("env", help="Print the path of a shipped Spack environment.")
+    selector = env_parser.add_mutually_exclusive_group(required=True)
     selector.add_argument("--package", help="select the unique environment whose root specs contain PACKAGE")
     selector.add_argument("--environment", help="select an environment by directory name")
+
+    cache_parser = subparsers.add_parser("buildcache", help="Configure and verify Spack binary build caches.")
+    cache_sub = cache_parser.add_subparsers(dest="buildcache_command", required=True)
+    cache_configure = cache_sub.add_parser("configure", help="Install configured build-cache mirrors into Spack.")
+    cache_configure.add_argument("--scope", default=DEFAULT_SCOPE, help=f"Spack configuration scope to modify (default: {DEFAULT_SCOPE})")
+    cache_sub.add_parser("check", help="Check access to configured build caches using SeanVault credentials.")
 
     return parser
 
 
-def _run_sync(args: argparse.Namespace) -> int:
+def _runtime(args: argparse.Namespace) -> tuple[Config, SecretStore]:
+    config = load_config(args.config_file)
+    secrets = SecretStore(
+        args.secrets_file,
+        password_file=args.secrets_password_file,
+        password_stdin=args.secrets_password_stdin,
+    )
+    return config, secrets
+
+
+def _run_package_update(args: argparse.Namespace) -> int:
+    config, secrets = _runtime(args)
     paths = package_paths()
     if args.all:
         packages = list(paths)
@@ -87,7 +137,13 @@ def _run_sync(args: argparse.Namespace) -> int:
     else:
         raise ValueError("provide PACKAGE or --all")
 
-    results = sync_many(packages, check=args.check, dry_run=args.dry_run)
+    results = sync_many(
+        packages,
+        check=args.check,
+        dry_run=args.dry_run,
+        config=config,
+        secrets=secrets,
+    )
     drift = False
     for result in results:
         if not result.changed:
@@ -158,15 +214,13 @@ def _run_envpath(args: argparse.Namespace) -> int:
         raise ValueError(f"no Seanstack environment contains root package {args.package!r}")
     if len(matches) > 1:
         names = ", ".join(path.name for path in matches)
-        raise ValueError(
-            f"multiple Seanstack environments contain {args.package!r}: {names}; "
-            "use --environment"
-        )
+        raise ValueError(f"multiple Seanstack environments contain {args.package!r}: {names}; use --environment")
     print(matches[0])
     return 0
 
 
 def _run_validate(args: argparse.Namespace) -> int:
+    config, secrets = _runtime(args)
     languages = tuple(args.language) if args.language else DEFAULT_LANGUAGES
     findings = validate(
         online=args.online,
@@ -174,6 +228,8 @@ def _run_validate(args: argparse.Namespace) -> int:
         compiler=args.compiler,
         languages=languages,
         scope=args.scope,
+        config=config,
+        secrets=secrets,
     )
     failed = False
     for finding in findings:
@@ -183,24 +239,43 @@ def _run_validate(args: argparse.Namespace) -> int:
     return 1 if failed else 0
 
 
+def _run_buildcache(args: argparse.Namespace) -> int:
+    config, secrets = _runtime(args)
+    if args.buildcache_command == "configure":
+        configure_buildcaches(config, scope=args.scope)
+        return 0
+    if args.buildcache_command == "check":
+        failed = False
+        for name, ok, message in check_buildcaches(config, secrets):
+            print(f"[{'OK' if ok else 'ERROR'}] buildcache:{name}: {message or 'accessible'}")
+            failed |= not ok
+        return 1 if failed else 0
+    raise ValueError(f"unknown buildcache command: {args.buildcache_command}")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
-        if args.command == "sync":
-            code = _run_sync(args)
-        elif args.command == "bootstrap":
+        if args.command == "package" and args.package_command == "update":
+            code = _run_package_update(args)
+        elif args.command == "toolchain" and args.toolchain_command == "bootstrap":
             code = _run_bootstrap(args)
         elif args.command == "validate":
             code = _run_validate(args)
-        elif args.command == "sharepath":
-            print(share_path())
-            code = 0
-        elif args.command == "repopath":
-            print(repository_path())
-            code = 0
-        elif args.command == "envpath":
-            code = _run_envpath(args)
+        elif args.command == "paths":
+            if args.paths_command == "share":
+                print(share_path())
+                code = 0
+            elif args.paths_command == "repo":
+                print(repository_path())
+                code = 0
+            elif args.paths_command == "env":
+                code = _run_envpath(args)
+            else:
+                raise ValueError(f"unknown paths command: {args.paths_command}")
+        elif args.command == "buildcache":
+            code = _run_buildcache(args)
         else:
             parser.error(f"unknown command: {args.command}")
             return

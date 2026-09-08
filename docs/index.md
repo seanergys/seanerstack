@@ -31,7 +31,7 @@ Seanstack provides:
 After initial setup, a development session uses Spack directly:
 
 ```console
-spack env activate "$(seanstack envpath --package <package>)"
+spack env activate "$(seanstack paths env --package <package>)"
 spack develop --path /path/to/checkout <package>@develop
 spack concretize -f
 spack install

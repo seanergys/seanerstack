@@ -2,7 +2,7 @@
 
 Seanstack's package recipes are authoritative for the SEANERGYS stack, while upstream Git repositories are authoritative for their tags and tracked branches.
 
-`seanstack sync` keeps those two sources aligned without introducing another package metadata file.
+`seanstack package update` keeps those two sources aligned without introducing another package metadata file.
 
 For each recipe, Seanstack reads:
 
