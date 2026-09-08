@@ -4,6 +4,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import subprocess
+
+from .auth import GitAuth, git_environment
+from .config import Config
+from .secrets import SecretStore
 from typing import Iterable
 
 from packaging.version import InvalidVersion, Version
@@ -62,13 +66,15 @@ def package_paths(repository: Path | None = None) -> dict[str, Path]:
     return result
 
 
-def read_remote_refs(remote: str) -> RemoteRefs:
-    process = subprocess.run(
-        ["git", "ls-remote", "--heads", "--tags", remote],
-        check=True,
-        text=True,
-        capture_output=True,
-    )
+def read_remote_refs(remote: str, *, auth: GitAuth | None = None) -> RemoteRefs:
+    with git_environment(auth) as env:
+        process = subprocess.run(
+            ["git", "ls-remote", "--heads", "--tags", remote],
+            check=True,
+            text=True,
+            capture_output=True,
+            env=env,
+        )
     tags: dict[str, str] = {}
     dereferenced: dict[str, str] = {}
     heads: dict[str, str] = {}
@@ -169,6 +175,8 @@ def sync_package(
     repository: Path | None = None,
     check: bool = False,
     dry_run: bool = False,
+    config: Config | None = None,
+    secrets: SecretStore | None = None,
 ) -> SyncResult:
     paths = package_paths(repository)
     if package not in paths:
@@ -179,7 +187,21 @@ def sync_package(
     if not recipe.git:
         raise ValueError(f"{package}: recipe has no git URL")
 
-    refs = read_remote_refs(recipe.git)
+    auth = None
+    if recipe.seanstack_resource:
+        if config is None:
+            raise ValueError(f"{package}: recipe requires resource {recipe.seanstack_resource!r} but no Seanstack config was supplied")
+        resource = config.resource(recipe.seanstack_resource)
+        if resource.kind != "git":
+            raise ValueError(f"{package}: resource {resource.name!r} is {resource.kind!r}, expected 'git'")
+        if not recipe.git.startswith(resource.url):
+            raise ValueError(f"{package}: Git URL {recipe.git!r} does not belong to resource {resource.name!r} ({resource.url!r})")
+        if resource.credentials:
+            if secrets is None:
+                raise ValueError(f"{package}: resource {resource.name!r} requires credentials")
+            from .auth import git_auth
+            auth = git_auth(resource, secrets)
+    refs = read_remote_refs(recipe.git, auth=auth) if auth is not None else read_remote_refs(recipe.git)
     convention = infer_tag_convention(recipe)
     existing = _release_versions(recipe)
 
@@ -210,8 +232,17 @@ def sync_many(
     repository: Path | None = None,
     check: bool = False,
     dry_run: bool = False,
+    config: Config | None = None,
+    secrets: SecretStore | None = None,
 ) -> list[SyncResult]:
     return [
-        sync_package(package, repository=repository, check=check, dry_run=dry_run)
+        sync_package(
+            package,
+            repository=repository,
+            check=check,
+            dry_run=dry_run,
+            config=config,
+            secrets=secrets,
+        )
         for package in packages
     ]

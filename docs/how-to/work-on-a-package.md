@@ -9,7 +9,7 @@ The example uses `properdocs`.
 From the package checkout, activate the environment shipped by Seanstack:
 
 ```console
-spack env activate "$(seanstack envpath --package properdocs)"
+spack env activate "$(seanstack paths env --package properdocs)"
 ```
 
 ## Bind the checkout

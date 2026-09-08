@@ -48,7 +48,7 @@ From this point onward, Spack is the interface used for normal dependency and en
 Make the curated SEANERGYS recipes available to Spack:
 
 ```console
-spack repo add "$(seanstack repopath)"
+spack repo add "$(seanstack paths repo)"
 ```
 
 This is a one-time operation for this Spack installation.
@@ -58,7 +58,7 @@ This is a one-time operation for this Spack installation.
 Prepare Spack to use the project compiler:
 
 ```console
-seanstack bootstrap gcc@15
+seanstack toolchain bootstrap gcc@15
 ```
 
 Seanstack uses the compiler package supplied by Spack; it does not ship a GCC recipe of its own. The initially available system compiler is used to build GCC when necessary, after which Spack uses the Spack-installed GCC for SEANERGYS builds.
@@ -88,7 +88,7 @@ cd "$HOME/src/properdocs"
 Activate the development environment associated with the package:
 
 ```console
-spack env activate "$(seanstack envpath --package properdocs)"
+spack env activate "$(seanstack paths env --package properdocs)"
 ```
 
 The environment is an ordinary Spack environment supplied by Seanstack. Seanstack does not proxy subsequent Spack operations.
@@ -120,7 +120,7 @@ The workstation setup, repository registration, and compiler bootstrap are not r
 
 ```console
 cd "$HOME/src/properdocs"
-spack env activate "$(seanstack envpath --package properdocs)"
+spack env activate "$(seanstack paths env --package properdocs)"
 ```
 
 Then use normal Spack commands as needed.

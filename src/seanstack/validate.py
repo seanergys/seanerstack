@@ -11,6 +11,8 @@ import tempfile
 import yaml
 
 from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_SCOPE
+from .config import Config
+from .secrets import SecretStore
 from .paths import environments_path, repository_path
 from .sync import package_paths, sync_many
 
@@ -107,7 +109,7 @@ def _validate_compiler(compiler: str, languages: tuple[str, ...], scope: str) ->
                 Finding(
                     "error",
                     f"compiler:{language}",
-                    f"does not require {compiler} in Spack scope {scope}; run `seanstack bootstrap {compiler}`",
+                    f"does not require {compiler} in Spack scope {scope}; run `seanstack toolchain bootstrap {compiler}`",
                 )
             )
     return findings
@@ -135,6 +137,27 @@ def _validate_with_spack(environments: Path) -> list[Finding]:
     return findings
 
 
+def _validate_resources(repository: Path, config: Config) -> list[Finding]:
+    findings: list[Finding] = []
+    for name, path in package_paths(repository).items():
+        from .recipe import parse_recipe
+        recipe = parse_recipe(path)
+        if not recipe.seanstack_resource:
+            continue
+        try:
+            resource = config.resource(recipe.seanstack_resource)
+        except ValueError as error:
+            findings.append(Finding("error", f"resource:{name}", str(error)))
+            continue
+        if resource.kind != "git":
+            findings.append(Finding("error", f"resource:{name}", f"{resource.name} is {resource.kind}, expected git"))
+        elif recipe.git and not recipe.git.startswith(resource.url):
+            findings.append(Finding("error", f"resource:{name}", f"Git URL is outside resource {resource.name}"))
+        else:
+            findings.append(Finding("ok", f"resource:{name}", f"uses {resource.name}"))
+    return findings
+
+
 def validate(
     *,
     online: bool = False,
@@ -144,13 +167,23 @@ def validate(
     scope: str = DEFAULT_SCOPE,
     repository: Path | None = None,
     environments: Path | None = None,
+    config: Config | None = None,
+    secrets: SecretStore | None = None,
 ) -> list[Finding]:
     repository = repository or repository_path()
     environments = environments or environments_path()
     findings = _validate_packages(repository) + _validate_environments(environments)
+    if config is not None:
+        findings.extend(_validate_resources(repository, config))
 
     if online:
-        results = sync_many(package_paths(repository), repository=repository, check=True)
+        results = sync_many(
+            package_paths(repository),
+            repository=repository,
+            check=True,
+            config=config,
+            secrets=secrets,
+        )
         for result in results:
             if result.changed:
                 missing = ", ".join(result.missing_versions + result.missing_branches)

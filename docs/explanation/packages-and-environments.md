@@ -15,7 +15,7 @@ Seanstack also ships the Spack environments adopted by the project. An environme
 For development, users locate the environment associated with a package and activate it using Spack:
 
 ```console
-spack env activate "$(seanstack envpath --package properdocs)"
+spack env activate "$(seanstack paths env --package properdocs)"
 ```
 
 A local development checkout is then attached with `spack develop`. Checkout paths remain local because they differ between machines.
