@@ -4,13 +4,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import ast
-import shutil
 import subprocess
 import tempfile
 
 import yaml
 
-from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_SCOPE
+from .bootstrap import DEFAULT_LANGUAGES
 from .config import Config
 from .secrets import SecretStore
 from .paths import environments_path, repository_path
@@ -84,14 +83,11 @@ def _requirements(value) -> list[str]:
     return []
 
 
-def _validate_compiler(compiler: str, languages: tuple[str, ...], scope: str) -> list[Finding]:
-    if shutil.which("spack") is None:
-        return [Finding("error", "compiler", "spack executable not found in PATH")]
-
+def _validate_compiler(compiler: str, languages: tuple[str, ...], command: list[str], env) -> list[Finding]:
     process = subprocess.run(
-        ["spack", "config", "--scope", scope, "get", "packages"],
+        [*command, "config", "get", "packages"],
         text=True,
-        capture_output=True,
+        capture_output=True, env=env,
     )
     if process.returncode != 0:
         message = process.stderr.strip() or process.stdout.strip() or "could not read Spack packages configuration"
@@ -103,31 +99,28 @@ def _validate_compiler(compiler: str, languages: tuple[str, ...], scope: str) ->
     for language in languages:
         require = _requirements(packages.get(language, {}).get("require") if isinstance(packages.get(language), dict) else None)
         if compiler in require:
-            findings.append(Finding("ok", f"compiler:{language}", f"requires {compiler} in Spack scope {scope}"))
+            findings.append(Finding("ok", f"compiler:{language}", f"requires {compiler} in the isolated SeanStack configuration"))
         else:
             findings.append(
                 Finding(
                     "error",
                     f"compiler:{language}",
-                    f"does not require {compiler} in Spack scope {scope}; run `seanstack toolchain bootstrap {compiler}`",
+                    f"does not require {compiler} in the isolated SeanStack configuration; run `seanstack toolchain bootstrap {compiler}`",
                 )
             )
     return findings
 
 
-def _validate_with_spack(environments: Path) -> list[Finding]:
-    if shutil.which("spack") is None:
-        return [Finding("error", "spack", "spack executable not found in PATH")]
-
+def _validate_with_spack(environments: Path, command: list[str], env) -> list[Finding]:
     findings: list[Finding] = []
     for directory in sorted(path for path in environments.iterdir() if path.is_dir() and (path / "spack.yaml").is_file()):
         with tempfile.TemporaryDirectory(prefix="seanstack-validate-") as temp:
             temp_env = Path(temp) / directory.name
             shutil.copytree(directory, temp_env)
             process = subprocess.run(
-                ["spack", "-e", str(temp_env), "concretize", "-f"],
+                [*command, "-e", str(temp_env), "concretize", "-f"],
                 text=True,
-                capture_output=True,
+                capture_output=True, env=env,
             )
             if process.returncode == 0:
                 findings.append(Finding("ok", f"spack:{directory.name}", "environment concretizes"))
@@ -164,7 +157,8 @@ def validate(
     with_spack: bool = False,
     compiler: str | None = None,
     languages: tuple[str, ...] = DEFAULT_LANGUAGES,
-    scope: str = DEFAULT_SCOPE,
+    spack_command: list[str] | None = None,
+    spack_env=None,
     repository: Path | None = None,
     environments: Path | None = None,
     config: Config | None = None,
@@ -192,8 +186,12 @@ def validate(
                 findings.append(Finding("ok", f"sync:{result.package}", "recipe is synchronized with upstream"))
 
     if compiler:
-        findings.extend(_validate_compiler(compiler, languages, scope))
+        if spack_command is None:
+            raise ValueError("compiler validation requires isolated Spack runtime")
+        findings.extend(_validate_compiler(compiler, languages, spack_command, spack_env))
 
     if with_spack:
-        findings.extend(_validate_with_spack(environments))
+        if spack_command is None:
+            raise ValueError("Spack validation requires isolated Spack runtime")
+        findings.extend(_validate_with_spack(environments, spack_command, spack_env))
     return findings

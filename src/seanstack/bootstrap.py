@@ -3,31 +3,28 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
-import shutil
 import subprocess
 
 
 DEFAULT_LANGUAGES = ("c", "cxx", "fortran")
 DEFAULT_PROBE = "zlib"
-DEFAULT_SCOPE = "user"
 
 
 @dataclass(frozen=True)
 class BootstrapResult:
     compiler: str
     installed: bool
-    scope: str
     languages: tuple[str, ...]
     probe: str
     probe_ok: bool
 
 
-def _run(args: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, check=check, text=True, capture_output=True)
+def _run(args: list[str], *, check: bool = True, env=None) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(args, check=check, text=True, capture_output=True, env=env)
 
 
-def _compiler_installed(compiler: str) -> bool:
-    result = _run(["spack", "location", "-i", compiler], check=False)
+def _compiler_installed(command: list[str], compiler: str, env) -> bool:
+    result = _run([*command, "location", "-i", compiler], check=False, env=env)
     return result.returncode == 0
 
 
@@ -38,15 +35,15 @@ def _compiler_name(compiler: str) -> str:
     return match.group(1)
 
 
-def _set_language_requirement(scope: str, language: str, compiler: str) -> None:
+def _set_language_requirement(command: list[str], language: str, compiler: str, env) -> None:
     # Remove an earlier Seanstack-style single requirement before adding the new
     # one. A missing path is harmless and is intentionally ignored.
     _run(
-        ["spack", "config", "--scope", scope, "remove", f"packages:{language}:require"],
-        check=False,
+        [*command, "config", "remove", f"packages:{language}:require"],
+        check=False, env=env,
     )
     _run(
-        ["spack", "config", "--scope", scope, "add", f"packages:{language}:require:{compiler}"]
+        [*command, "config", "add", f"packages:{language}:require:{compiler}"], env=env
     )
 
 
@@ -55,26 +52,26 @@ def bootstrap(
     *,
     languages: tuple[str, ...] = DEFAULT_LANGUAGES,
     probe: str = DEFAULT_PROBE,
-    scope: str = DEFAULT_SCOPE,
+    command: list[str] | None = None,
+    env=None,
     force: bool = False,
     dry_run: bool = False,
 ) -> BootstrapResult:
-    if shutil.which("spack") is None:
-        raise RuntimeError("spack executable not found in PATH")
+    command = command or ["spack"]
     if not languages:
         raise ValueError("at least one compiler language is required")
 
-    already_installed = _compiler_installed(compiler)
+    already_installed = _compiler_installed(command, compiler, env)
     if (force or not already_installed) and not dry_run:
-        _run(["spack", "install", compiler])
+        _run([*command, "install", compiler], env=env)
 
     if not dry_run:
         for language in languages:
-            _set_language_requirement(scope, language, compiler)
+            _set_language_requirement(command, language, compiler, env)
 
     probe_ok = False
     if not dry_run:
-        probe_result = _run(["spack", "spec", probe], check=False)
+        probe_result = _run([*command, "spec", probe], check=False, env=env)
         if probe_result.returncode != 0:
             message = probe_result.stderr.strip() or probe_result.stdout.strip()
             raise RuntimeError(f"Spack could not concretize compiler probe {probe!r}:\n{message}")
@@ -84,7 +81,6 @@ def bootstrap(
     return BootstrapResult(
         compiler=compiler,
         installed=already_installed or not dry_run,
-        scope=scope,
         languages=languages,
         probe=probe,
         probe_ok=probe_ok,

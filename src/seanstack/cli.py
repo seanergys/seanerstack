@@ -6,11 +6,15 @@ from pathlib import Path
 import subprocess
 import sys
 
-from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_SCOPE, bootstrap
+from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_PROBE, bootstrap
 from .buildcache import check_buildcaches, configure_buildcaches
 from .config import Config, load_config
 from .paths import environments_path, repository_path, share_path
 from .secrets import SecretStore
+from .isolation import (
+    activation_script, deactivation_script, layout, prepare_isolation,
+    resolve_real_spack, resolve_state_dir, spack_command, spack_env,
+)
 from .sync import package_paths, sync_many
 from .validate import validate
 
@@ -45,6 +49,8 @@ def build_parser() -> argparse.ArgumentParser:
         description="Maintain and use the curated SEANERGYS Spack stack.",
     )
     _add_secret_options(parser)
+    parser.add_argument("--state-dir", type=Path, help="private SeanStack state directory (or SEANSTACK_STATE_DIR)")
+    parser.add_argument("--spack-executable", type=Path, help="real Spack executable to use for the isolated session")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     package_parser = subparsers.add_parser("package", help="Maintain curated Spack packages.")
@@ -80,7 +86,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="language provider to configure; repeat as needed (default: c, cxx, fortran)",
     )
     bootstrap_parser.add_argument("--probe", default=DEFAULT_PROBE, help=f"spec used to probe concretization (default: {DEFAULT_PROBE})")
-    bootstrap_parser.add_argument("--scope", default=DEFAULT_SCOPE, help=f"native Spack configuration scope to modify (default: {DEFAULT_SCOPE})")
     bootstrap_parser.add_argument("--force", action="store_true", help="ask Spack to install the compiler even when it is already installed")
     bootstrap_parser.add_argument("--dry-run", action="store_true", help="show the intended operation without changing Spack configuration")
 
@@ -97,7 +102,6 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("c", "cxx", "fortran"),
         help="language requirement to validate; repeat as needed (default: c, cxx, fortran)",
     )
-    validate_parser.add_argument("--scope", default=DEFAULT_SCOPE, help=f"Spack scope used for compiler validation (default: {DEFAULT_SCOPE})")
 
     paths_parser = subparsers.add_parser("paths", help="Print installed Seanstack paths.")
     paths_sub = paths_parser.add_subparsers(dest="paths_command", required=True)
@@ -110,9 +114,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     cache_parser = subparsers.add_parser("buildcache", help="Configure and verify Spack binary build caches.")
     cache_sub = cache_parser.add_subparsers(dest="buildcache_command", required=True)
-    cache_configure = cache_sub.add_parser("configure", help="Install configured build-cache mirrors into Spack.")
-    cache_configure.add_argument("--scope", default=DEFAULT_SCOPE, help=f"Spack configuration scope to modify (default: {DEFAULT_SCOPE})")
+    cache_sub.add_parser("configure", help="Install configured build-cache mirrors into the isolated Spack configuration.")
     cache_sub.add_parser("check", help="Check access to configured build caches using SeanVault credentials.")
+
+    subparsers.add_parser("activate", help="Emit shell code that activates an isolated SeanStack Spack session.")
+    subparsers.add_parser("deactivate", help="Emit shell code that restores the shell state saved by activation.")
 
     return parser
 
@@ -157,23 +163,32 @@ def _run_package_update(args: argparse.Namespace) -> int:
     return 1 if args.check and drift else 0
 
 
+
+def _spack_runtime(args: argparse.Namespace):
+    state_dir = resolve_state_dir(args.state_dir)
+    real_spack = resolve_real_spack(args.spack_executable)
+    x = prepare_isolation(state_dir, real_spack)
+    env = dict(__import__("os").environ)
+    env.update(spack_env(x))
+    return x, real_spack, spack_command(x, real_spack), env
+
 def _run_bootstrap(args: argparse.Namespace) -> int:
     languages = tuple(args.language) if args.language else DEFAULT_LANGUAGES
+    _, _, command, env = _spack_runtime(args)
     result = bootstrap(
         args.compiler,
         languages=languages,
         probe=args.probe,
-        scope=args.scope,
+        command=command,
+        env=env,
         force=args.force,
         dry_run=args.dry_run,
     )
     if args.dry_run:
         print(f"would bootstrap {result.compiler}")
         print(f"would require it for: {', '.join(result.languages)}")
-        print(f"Spack scope: {result.scope}")
         return 0
     print(f"compiler: {result.compiler}")
-    print(f"Spack scope: {result.scope}")
     print(f"languages: {', '.join(result.languages)}")
     print(f"compiler probe ({result.probe}): {'ok' if result.probe_ok else 'warning: compiler name not visible in probe output'}")
     return 0 if result.probe_ok else 1
@@ -222,12 +237,16 @@ def _run_envpath(args: argparse.Namespace) -> int:
 def _run_validate(args: argparse.Namespace) -> int:
     config, secrets = _runtime(args)
     languages = tuple(args.language) if args.language else DEFAULT_LANGUAGES
+    command = env = None
+    if args.with_spack or args.compiler:
+        _, _, command, env = _spack_runtime(args)
     findings = validate(
         online=args.online,
         with_spack=args.with_spack,
         compiler=args.compiler,
         languages=languages,
-        scope=args.scope,
+        spack_command=command,
+        spack_env=env,
         config=config,
         secrets=secrets,
     )
@@ -242,11 +261,13 @@ def _run_validate(args: argparse.Namespace) -> int:
 def _run_buildcache(args: argparse.Namespace) -> int:
     config, secrets = _runtime(args)
     if args.buildcache_command == "configure":
-        configure_buildcaches(config, scope=args.scope)
+        _, _, command, env = _spack_runtime(args)
+        configure_buildcaches(config, command=command, env=env)
         return 0
     if args.buildcache_command == "check":
+        _, _, command, env = _spack_runtime(args)
         failed = False
-        for name, ok, message in check_buildcaches(config, secrets):
+        for name, ok, message in check_buildcaches(config, secrets, command=command, base_env=env):
             print(f"[{'OK' if ok else 'ERROR'}] buildcache:{name}: {message or 'accessible'}")
             failed |= not ok
         return 1 if failed else 0
@@ -276,6 +297,15 @@ def main(argv: list[str] | None = None) -> None:
                 raise ValueError(f"unknown paths command: {args.paths_command}")
         elif args.command == "buildcache":
             code = _run_buildcache(args)
+        elif args.command == "activate":
+            config, secrets = _runtime(args)
+            state_dir = resolve_state_dir(args.state_dir)
+            real_spack = resolve_real_spack(args.spack_executable)
+            print(activation_script(state_dir=state_dir, real_spack=real_spack, config=config, secrets=secrets), end="")
+            code = 0
+        elif args.command == "deactivate":
+            print(deactivation_script(), end="")
+            code = 0
         else:
             parser.error(f"unknown command: {args.command}")
             return
