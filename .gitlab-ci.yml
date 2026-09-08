@@ -26,6 +26,18 @@ docs:
     paths:
       - site/
 
+pages:
+  stage: publish
+  needs:
+    - job: docs
+      artifacts: true
+  script:
+    - mv site public
+  pages:
+    publish: public
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+
 publish:
   stage: publish
   environment:
