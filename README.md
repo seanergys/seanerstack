@@ -34,8 +34,9 @@ seanstack paths env --package properdocs
 For example:
 
 ```console
-spack repo add "$(seanstack paths repo)"
+export SEANSTACK_STATE_DIR=/path/to/seanstack-state
 seanstack toolchain bootstrap gcc@15
+eval "$(seanstack activate)"
 spack env activate "$(seanstack paths env --package properdocs)"
 ```
 
@@ -108,10 +109,10 @@ seanstack \
 For interactive use, omit `--secrets-password-file`; Seanstack prompts for the
 SeanVault password. CI may use `--secrets-password-stdin` instead.
 
-Configure S3-backed Spack binary build caches from `config.toml` with:
+Configure S3-backed Spack binary build caches from `config.toml` in the selected isolated state with:
 
 ```console
-seanstack buildcache configure
+seanstack --state-dir /path/to/seanstack-state buildcache configure
 ```
 
 Seanstack stores only environment-variable references in Spack's mirror

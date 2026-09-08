@@ -1,6 +1,6 @@
 # Set up a SEANERGYS system from scratch
 
-This tutorial establishes the supported SEANERGYS software setup on a new Linux system. It starts with the base operating system and ends with a package checkout whose dependencies are installed through Spack.
+This tutorial establishes the supported SEANERGYS software setup on a new Linux system. It ends with an isolated Seanstack Spack session and a package checkout whose dependencies are installed through Spack.
 
 The procedure assumes Bash, Git, and a working system compiler are already provided by the operating system. The system compiler is used only to bootstrap the compiler that SEANERGYS uses through Spack.
 
@@ -28,44 +28,40 @@ Seanstack installs its curated Spack repository and environments under its insta
 
 ## 3. Install Spack
 
-Install Spack in the standard SEANERGYS location:
+Obtain the Spack executable used by Seanstack. The Spack checkout itself may live anywhere convenient; Seanstack isolates Spack's mutable configuration and state rather than requiring the executable to be installed inside the state directory.
+
+For example:
 
 ```console
-git clone --depth=1 https://github.com/spack/spack.git "$HOME/.local/share/spack"
+git clone --depth=1 https://github.com/spack/spack.git /path/to/spack
+export PATH="/path/to/spack/bin:$PATH"
 ```
 
-Configure Bash to make this Spack installation available in future shells:
+Do not register Seanstack in the normal user Spack configuration. Seanstack supplies its repository through the isolated configuration it creates.
+
+## 4. Choose the Seanstack state directory
+
+Select the directory that will contain the complete mutable Spack state for this Seanstack setup:
 
 ```console
-printf '\nsource "$HOME/.local/share/spack/share/spack/setup-env.sh"\n' >> "$HOME/.bashrc"
-source "$HOME/.local/share/spack/share/spack/setup-env.sh"
+export SEANSTACK_STATE_DIR=/path/to/seanstack-state
 ```
 
-From this point onward, Spack is the interface used for normal dependency and environment operations.
-
-## 4. Register the Seanstack package repository
-
-Make the curated SEANERGYS recipes available to Spack:
-
-```console
-spack repo add "$(seanstack paths repo)"
-```
-
-This is a one-time operation for this Spack installation.
+Seanstack deliberately does not default this state to `$HOME`. The directory will contain the private Spack configuration, install store, stages, caches, and managed environments.
 
 ## 5. Bootstrap the SEANERGYS compiler
 
-Prepare Spack to use the project compiler:
+Prepare the isolated Spack setup to use the project compiler:
 
 ```console
 seanstack toolchain bootstrap gcc@15
 ```
 
-Seanstack uses the compiler package supplied by Spack; it does not ship a GCC recipe of its own. The initially available system compiler is used to build GCC when necessary, after which Spack uses the Spack-installed GCC for SEANERGYS builds.
+Seanstack uses the compiler package supplied by Spack; it does not ship a GCC recipe of its own. The initially available system compiler is used to build GCC when necessary, after which the isolated Seanstack configuration requires the Spack-installed GCC for SEANERGYS builds.
 
 ## 6. Verify the setup
 
-Run the standard validation:
+Run the standard validation against the same private state:
 
 ```console
 seanstack validate --compiler gcc@15 --spack
@@ -73,17 +69,27 @@ seanstack validate --compiler gcc@15 --spack
 
 Fix validation failures before proceeding.
 
-## 7. Obtain the package checkout
+## 7. Activate the isolated Spack session
+
+Activate Seanstack before using Spack directly:
+
+```console
+eval "$(seanstack activate)"
+```
+
+From this point, plain `spack` uses the Seanstack configuration and state selected by `SEANSTACK_STATE_DIR`. Existing `~/.spack` or system Spack configuration is not part of this session.
+
+## 8. Obtain the package checkout
 
 For this tutorial:
 
 ```console
-mkdir -p "$HOME/src"
-git clone https://github.com/ProperDocs/properdocs.git "$HOME/src/properdocs"
-cd "$HOME/src/properdocs"
+mkdir -p /path/to/src
+git clone https://github.com/ProperDocs/properdocs.git /path/to/src/properdocs
+cd /path/to/src/properdocs
 ```
 
-## 8. Activate the environment shipped by Seanstack
+## 9. Activate the environment shipped by Seanstack
 
 Activate the development environment associated with the package:
 
@@ -91,9 +97,9 @@ Activate the development environment associated with the package:
 spack env activate "$(seanstack paths env --package properdocs)"
 ```
 
-The environment is an ordinary Spack environment supplied by Seanstack. Seanstack does not proxy subsequent Spack operations.
+The environment is an ordinary Spack environment supplied by Seanstack. The active Seanstack session ensures that its concretization and installations use only the selected private Spack state.
 
-## 9. Bind the local checkout
+## 10. Bind the local checkout
 
 Tell Spack that `properdocs@develop` is provided by the checkout you just cloned:
 
@@ -103,7 +109,7 @@ spack develop --path "$PWD" properdocs@develop
 
 The checkout path is machine-local state, so it is deliberately not stored in Seanstack.
 
-## 10. Concretize and install
+## 11. Concretize and install
 
 Use Spack normally:
 
@@ -116,11 +122,17 @@ The system is now ready for work on the package.
 
 ## Subsequent work sessions
 
-The workstation setup, repository registration, and compiler bootstrap are not repeated for every session. Start by entering the checkout and activating its environment:
+Set the same state directory and reactivate Seanstack before invoking Spack:
 
 ```console
-cd "$HOME/src/properdocs"
+export SEANSTACK_STATE_DIR=/path/to/seanstack-state
+eval "$(seanstack activate)"
+cd /path/to/src/properdocs
 spack env activate "$(seanstack paths env --package properdocs)"
 ```
 
-Then use normal Spack commands as needed.
+Then use normal Spack commands as needed. When finished with the Seanstack session:
+
+```console
+eval "$(seanstack deactivate)"
+```
