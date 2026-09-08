@@ -1,6 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
+variables:
+  UV_INDEX_SEANERGYS_USERNAME: "gitlab-ci-token"
+  UV_INDEX_SEANERGYS_PASSWORD: "$CI_JOB_TOKEN"
+
 stages:
   - test
   - docs
