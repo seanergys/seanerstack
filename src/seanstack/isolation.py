@@ -15,6 +15,16 @@ from .auth import spack_resource_environment
 from .secrets import SecretStore
 
 
+# Spack declares this in its own defaults; the private scope has to repeat it
+# because it replaces those defaults rather than merging with them.
+BUILTIN_REPO_GIT = "https://github.com/spack/spack-packages.git"
+
+# Spack tests for the presence of this variable, not its value, so an inherited
+# one has to be removed rather than overridden. It switches the user scope off,
+# and that scope is where the private configuration lives.
+UNSET_ON_ACTIVATION = ("SPACK_DISABLE_LOCAL_CONFIG",)
+
+
 @dataclass(frozen=True)
 class SpackLayout:
     state: Path
@@ -96,8 +106,24 @@ def prepare_isolation(state_dir: Path, real_spack: Path) -> SpackLayout:
     _write_if_missing(x.config / "packages.yaml", "packages:: {}\n")
     _write_if_missing(x.config / "mirrors.yaml", "mirrors:: {}\n")
     _write_if_missing(x.config / "upstreams.yaml", "upstreams:: {}\n")
-    _write_if_missing(x.config / "concretizer.yaml", "concretizer::\n  reuse: false\n")
-    _write_if_missing(x.config / "repos.yaml", f"repos::\n- {repository_path()}\n")
+    # Merged, not replaced. Spack's concretizer defaults carry structured keys
+    # it reads unconditionally, such as `externals:completion`; replacing the
+    # section wholesale leaves them unset and concretization fails with
+    # "Unknown value for concretizer:externals:completion: None". Unlike
+    # packages, mirrors, and repos, this section is not a boundary against
+    # outside configuration, so merging costs nothing.
+    _write_if_missing(x.config / "concretizer.yaml", "concretizer:\n  reuse: false\n")
+    # The private scope replaces lower-precedence configuration, so it has to
+    # carry `builtin` itself. Spack's defaults declare it as a git remote, and
+    # without it no package loads at all: Seanstack recipes, and every recipe
+    # they depend on, import from spack_repo.builtin. Seanstack comes first so
+    # its own recipes take precedence.
+    _write_if_missing(
+        x.config / "repos.yaml",
+        "repos::\n"
+        f"  seanstack: {repository_path()}\n"
+        f"  builtin:\n    git: {BUILTIN_REPO_GIT}\n",
+    )
 
     shim = x.bin / "spack"
     _write(
@@ -114,8 +140,14 @@ def prepare_isolation(state_dir: Path, real_spack: Path) -> SpackLayout:
 
 
 def spack_env(x: SpackLayout) -> dict[str, str]:
+    # SPACK_DISABLE_LOCAL_CONFIG is deliberately not set. It switches the user
+    # scope off entirely, which also disables SPACK_USER_CONFIG_PATH, leaving
+    # no writable scope at all: `spack config add` and `spack compiler find`
+    # then fall through to the site scope inside the Spack checkout, where the
+    # `::` keys below override them and they have no effect. Pointing the user
+    # scope at the private directory achieves the isolation on its own, and
+    # SPACK_SYSTEM_CONFIG_PATH already takes care of the system scope.
     return {
-        "SPACK_DISABLE_LOCAL_CONFIG": "true",
         "SPACK_USER_CONFIG_PATH": str(x.config),
         "SPACK_SYSTEM_CONFIG_PATH": str(x.state / "spack" / "system-config-disabled"),
         "SPACK_USER_CACHE_PATH": str(x.cache),
@@ -157,7 +189,7 @@ def activation_script(
                 changes.update(spack_resource_environment(resource, secrets))
 
     lines = []
-    for name in changes:
+    for name in (*changes, *UNSET_ON_ACTIVATION):
         marker = f"SEANSTACK_SAVED_{name}_SET"
         saved = f"SEANSTACK_SAVED_{name}"
         if name in env:
@@ -165,6 +197,7 @@ def activation_script(
         else:
             lines.extend((_export(marker, "0"), f"unset {saved}"))
     lines.extend(_export(name, value) for name, value in changes.items())
+    lines.extend(f"unset {name}" for name in UNSET_ON_ACTIVATION)
     return "\n".join(lines) + "\n"
 
 
