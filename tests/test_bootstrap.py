@@ -1,31 +1,108 @@
 # SPDX-License-Identifier: Apache-2.0
 import subprocess
 
+import pytest
+
 import seanstack.bootstrap as bootstrap_module
 
 
-def test_bootstrap_uses_isolated_spack_command():
-    calls: list[list[str]] = []
+COMMAND = ["/opt/spack/bin/spack", "-C", "/state/spack/config"]
+ENV = {"SPACK_DISABLE_LOCAL_CONFIG": "true"}
+PREFIX = "/state/spack/opt/linux-rocky9/gcc-15.3.0-abcdef"
 
-    def fake_run(args, *, check=True, env=None):
+
+def _fake_spack(monkeypatch, *, installed=False, probe_stdout="gcc@15", probe_timeout=False):
+    """Stand in for the isolated spack command, recording every call made to it."""
+    calls: list[list[str]] = []
+    exists = {"value": installed}
+
+    def fake_run(args, *, check=True, env=None, timeout=None):
         calls.append(args)
         if args[-3:-1] == ["location", "-i"]:
-            return subprocess.CompletedProcess(args, 1, "", "")
+            if not exists["value"]:
+                return subprocess.CompletedProcess(args, 1, "", "")
+            return subprocess.CompletedProcess(args, 0, PREFIX + "\n", "")
         if "spec" in args:
-            return subprocess.CompletedProcess(args, 0, "gcc@15", "")
+            if probe_timeout:
+                raise subprocess.TimeoutExpired(args, timeout or 0)
+            return subprocess.CompletedProcess(args, 0, probe_stdout, "")
         return subprocess.CompletedProcess(args, 0, "", "")
 
-    original = bootstrap_module._run
-    bootstrap_module._run = fake_run
-    try:
-        command = ["/opt/spack/bin/spack", "-C", "/state/spack/config"]
-        result = bootstrap_module.bootstrap(
-            "gcc@15", languages=("c", "cxx"), probe="zlib", command=command, env={"SPACK_DISABLE_LOCAL_CONFIG": "true"}
-        )
-    finally:
-        bootstrap_module._run = original
+    def fake_run_streaming(args, *, env=None):
+        calls.append(args)
+        # The compiler exists once it has been installed.
+        exists["value"] = True
+
+    monkeypatch.setattr(bootstrap_module, "_run", fake_run)
+    monkeypatch.setattr(bootstrap_module, "_run_streaming", fake_run_streaming)
+    return calls
+
+
+def test_bootstrap_uses_isolated_spack_command(monkeypatch):
+    calls = _fake_spack(monkeypatch)
+
+    result = bootstrap_module.bootstrap(
+        "gcc@15", languages=("c", "cxx"), probe="zlib", command=COMMAND, env=ENV
+    )
 
     assert result.compiler == "gcc@15"
-    assert [*command, "install", "gcc@15"] in calls
-    assert [*command, "config", "add", "packages:c:require:gcc@15"] in calls
-    assert [*command, "config", "add", "packages:cxx:require:gcc@15"] in calls
+    assert [*COMMAND, "install", "gcc@15"] in calls
+    assert [*COMMAND, "config", "add", "packages:c:require:gcc@15"] in calls
+    assert [*COMMAND, "config", "add", "packages:cxx:require:gcc@15"] in calls
+
+
+def test_bootstrap_registers_the_compiler_as_an_external(monkeypatch):
+    calls = _fake_spack(monkeypatch)
+
+    result = bootstrap_module.bootstrap(
+        "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV
+    )
+
+    assert result.registered is True
+    assert [*COMMAND, "compiler", "find", PREFIX] in calls
+
+
+def test_bootstrap_registers_before_requiring(monkeypatch):
+    # A requirement written before the compiler is an external cannot be
+    # satisfied: it forbids reusing the compiler's own build tree.
+    calls = _fake_spack(monkeypatch)
+
+    bootstrap_module.bootstrap(
+        "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV
+    )
+
+    find = calls.index([*COMMAND, "compiler", "find", PREFIX])
+    require = calls.index([*COMMAND, "config", "add", "packages:c:require:gcc@15"])
+    assert find < require
+
+
+def test_bootstrap_registers_an_already_installed_compiler(monkeypatch):
+    calls = _fake_spack(monkeypatch, installed=True)
+
+    bootstrap_module.bootstrap(
+        "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV
+    )
+
+    assert [*COMMAND, "install", "gcc@15"] not in calls
+    assert [*COMMAND, "compiler", "find", PREFIX] in calls
+
+
+def test_bootstrap_reports_a_probe_that_never_finishes(monkeypatch):
+    _fake_spack(monkeypatch, probe_timeout=True)
+
+    with pytest.raises(RuntimeError, match="did not concretize compiler probe"):
+        bootstrap_module.bootstrap(
+            "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV, probe_timeout=1
+        )
+
+
+def test_bootstrap_dry_run_changes_nothing(monkeypatch):
+    calls = _fake_spack(monkeypatch)
+
+    result = bootstrap_module.bootstrap(
+        "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV, dry_run=True
+    )
+
+    assert result.registered is False
+    assert not any(call[-3:-1] == ["compiler", "find"] for call in calls)
+    assert not any("require" in part for call in calls for part in call)
