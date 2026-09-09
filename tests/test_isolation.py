@@ -2,7 +2,14 @@
 from pathlib import Path
 
 from seanstack.config import Config, Resource
-from seanstack.isolation import activation_script, deactivation_script, layout, prepare_isolation, spack_env
+from seanstack.isolation import (
+    BUILTIN_REPO_GIT,
+    activation_script,
+    deactivation_script,
+    layout,
+    prepare_isolation,
+    spack_env,
+)
 
 
 def test_isolation_paths_never_default_to_home(tmp_path: Path):
@@ -12,7 +19,6 @@ def test_isolation_paths_never_default_to_home(tmp_path: Path):
     x = prepare_isolation(state, real_spack)
 
     env = spack_env(x)
-    assert env["SPACK_DISABLE_LOCAL_CONFIG"] == "true"
     assert env["SPACK_USER_CONFIG_PATH"] == str(state / "spack" / "config")
     assert env["SPACK_SYSTEM_CONFIG_PATH"].startswith(str(state))
     assert env["SPACK_USER_CACHE_PATH"] == str(state / "spack" / "cache")
@@ -34,7 +40,11 @@ def test_private_scope_replaces_external_configuration(tmp_path: Path):
     assert (x.config / "packages.yaml").read_text() == "packages:: {}\n"
     assert (x.config / "mirrors.yaml").read_text() == "mirrors:: {}\n"
     assert (x.config / "upstreams.yaml").read_text() == "upstreams:: {}\n"
-    assert "reuse: false" in (x.config / "concretizer.yaml").read_text()
+    # concretizer is merged rather than replaced, so Spack keeps its own
+    # structured defaults underneath.
+    concretizer = (x.config / "concretizer.yaml").read_text()
+    assert concretizer.startswith("concretizer:\n")
+    assert "reuse: false" in concretizer
 
 
 def test_activation_makes_isolated_spack_default_and_deactivation_restores(tmp_path: Path):
@@ -56,7 +66,6 @@ def test_activation_makes_isolated_spack_default_and_deactivation_restores(tmp_p
     )
     x = layout(state)
     assert f"export PATH={x.bin}:/usr/bin:/bin" in script
-    assert "export SPACK_DISABLE_LOCAL_CONFIG=true" in script
     assert f"export SPACK_USER_CONFIG_PATH={x.config}" in script
     assert f"export SEANSTACK_REAL_SPACK={real_spack}" in script
 
@@ -89,3 +98,54 @@ def test_prepare_isolation_preserves_managed_spack_configuration(tmp_path: Path)
 
     assert "gcc@15" in (x.config / "packages.yaml").read_text(encoding="utf-8")
     assert "s3://builds" in (x.config / "mirrors.yaml").read_text(encoding="utf-8")
+
+
+def test_user_scope_stays_writable(tmp_path: Path):
+    # SPACK_DISABLE_LOCAL_CONFIG switches the user scope off, and that scope is
+    # the only writable one in the isolated setup: `-C` scopes are read-only.
+    # Leaving it set sends `spack config add` to the site scope instead, where
+    # the private `::` keys override it and it has no effect.
+    state = tmp_path / "state"
+    real_spack = tmp_path / "real-spack"
+    real_spack.write_text("#!/bin/sh\n", encoding="utf-8")
+    x = prepare_isolation(state, real_spack)
+
+    assert "SPACK_DISABLE_LOCAL_CONFIG" not in spack_env(x)
+
+
+def test_activation_clears_an_inherited_disable_local_config(tmp_path: Path):
+    # Spack tests for the presence of the variable, not its value, so one
+    # inherited from the caller has to be removed, not overridden.
+    state = tmp_path / "state"
+    real_spack = tmp_path / "spack-src" / "bin" / "spack"
+    real_spack.parent.mkdir(parents=True)
+    real_spack.write_text("#!/bin/sh\n", encoding="utf-8")
+    cfg = Config(path=tmp_path / "config.toml", resources={})
+
+    script = activation_script(
+        state_dir=state,
+        real_spack=real_spack,
+        config=cfg,
+        environ={"PATH": "/usr/bin", "SPACK_DISABLE_LOCAL_CONFIG": "true"},
+    )
+
+    assert "unset SPACK_DISABLE_LOCAL_CONFIG" in script
+    # Saved, so deactivation can put it back.
+    assert "export SEANSTACK_SAVED_SPACK_DISABLE_LOCAL_CONFIG=true" in script
+    assert "export SEANSTACK_SAVED_SPACK_DISABLE_LOCAL_CONFIG_SET=1" in script
+
+
+def test_private_scope_carries_the_builtin_repository(tmp_path: Path):
+    # `repos::` replaces Spack's defaults, which is where builtin is declared.
+    # Without it no package loads: every recipe imports from spack_repo.builtin.
+    state = tmp_path / "state"
+    real_spack = tmp_path / "real-spack"
+    real_spack.write_text("#!/bin/sh\n", encoding="utf-8")
+    x = prepare_isolation(state, real_spack)
+
+    repos = (x.config / "repos.yaml").read_text(encoding="utf-8")
+    assert repos.startswith("repos::")
+    assert BUILTIN_REPO_GIT in repos
+    assert "seanstack:" in repos
+    # Seanstack is listed first so its own recipes take precedence.
+    assert repos.index("seanstack:") < repos.index("builtin:")
