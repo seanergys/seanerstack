@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+spack:
+  specs:
+    - flux-core
+
+  # A source checkout is deliberately not committed here. After activating this
+  # environment, bind one with:
+  #   spack develop --path /path/to/flux-core flux-core@<dev_version>
+  concretizer:
+    unify: true
