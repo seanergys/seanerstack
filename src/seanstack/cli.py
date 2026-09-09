@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_PROBE, bootstrap
+from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_PROBE_TIMEOUT, bootstrap
 from .buildcache import check_buildcaches, configure_buildcaches
 from .config import Config, load_config
 from .paths import environments_path, repository_path, share_path
@@ -86,6 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="language provider to configure; repeat as needed (default: c, cxx, fortran)",
     )
     bootstrap_parser.add_argument("--probe", default=DEFAULT_PROBE, help=f"spec used to probe concretization (default: {DEFAULT_PROBE})")
+    bootstrap_parser.add_argument("--probe-timeout", type=float, default=DEFAULT_PROBE_TIMEOUT, help=f"seconds to allow the probe before giving up (default: {DEFAULT_PROBE_TIMEOUT:g}); 0 waits indefinitely")
     bootstrap_parser.add_argument("--force", action="store_true", help="ask Spack to install the compiler even when it is already installed")
     bootstrap_parser.add_argument("--dry-run", action="store_true", help="show the intended operation without changing Spack configuration")
 
@@ -183,12 +184,14 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
         env=env,
         force=args.force,
         dry_run=args.dry_run,
+        probe_timeout=args.probe_timeout or None,
     )
     if args.dry_run:
         print(f"would bootstrap {result.compiler}")
         print(f"would require it for: {', '.join(result.languages)}")
         return 0
     print(f"compiler: {result.compiler}")
+    print(f"registered as external: {'yes' if result.registered else 'no'}")
     print(f"languages: {', '.join(result.languages)}")
     print(f"compiler probe ({result.probe}): {'ok' if result.probe_ok else 'warning: compiler name not visible in probe output'}")
     return 0 if result.probe_ok else 1

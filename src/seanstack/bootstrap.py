@@ -8,24 +8,50 @@ import subprocess
 
 DEFAULT_LANGUAGES = ("c", "cxx", "fortran")
 DEFAULT_PROBE = "zlib"
+DEFAULT_PROBE_TIMEOUT = 300
 
 
 @dataclass(frozen=True)
 class BootstrapResult:
     compiler: str
     installed: bool
+    registered: bool
     languages: tuple[str, ...]
     probe: str
     probe_ok: bool
 
 
-def _run(args: list[str], *, check: bool = True, env=None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, check=check, text=True, capture_output=True, env=env)
+def _run(
+    args: list[str], *, check: bool = True, env=None, timeout: float | None = None
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        args, check=check, text=True, capture_output=True, env=env, timeout=timeout
+    )
 
 
-def _compiler_installed(command: list[str], compiler: str, env) -> bool:
+def _run_streaming(args: list[str], *, env=None) -> None:
+    # Building a compiler takes upwards of an hour; capturing the output would
+    # make a long build indistinguishable from a hang.
+    subprocess.run(args, check=True, text=True, env=env)
+
+
+def _compiler_prefix(command: list[str], compiler: str, env) -> str | None:
     result = _run([*command, "location", "-i", compiler], check=False, env=env)
-    return result.returncode == 0
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def _register_compiler(command: list[str], prefix: str, env) -> None:
+    """Register an installed compiler as an external package.
+
+    Must run before the language requirements are written. Those apply to
+    every node needing `c`/`cxx`/`fortran`, including the ones in the
+    compiler's own build tree, which the system compiler built, so they forbid
+    reusing the compiler just installed and leave no solution. An external node
+    has no build dependencies and so contradicts nothing.
+    """
+    _run([*command, "compiler", "find", prefix], env=env)
 
 
 def _compiler_name(compiler: str) -> str:
@@ -56,22 +82,44 @@ def bootstrap(
     env=None,
     force: bool = False,
     dry_run: bool = False,
+    probe_timeout: float | None = DEFAULT_PROBE_TIMEOUT,
 ) -> BootstrapResult:
     command = command or ["spack"]
     if not languages:
         raise ValueError("at least one compiler language is required")
 
-    already_installed = _compiler_installed(command, compiler, env)
+    prefix = _compiler_prefix(command, compiler, env)
+    already_installed = prefix is not None
     if (force or not already_installed) and not dry_run:
-        _run([*command, "install", compiler], env=env)
+        _run_streaming([*command, "install", compiler], env=env)
+        prefix = _compiler_prefix(command, compiler, env)
 
+    registered = False
     if not dry_run:
+        if prefix is None:
+            raise RuntimeError(
+                f"Spack reports no installation prefix for {compiler!r}; "
+                "cannot register it as a compiler"
+            )
+        _register_compiler(command, prefix, env)
+        registered = True
         for language in languages:
             _set_language_requirement(command, language, compiler, env)
 
     probe_ok = False
     if not dry_run:
-        probe_result = _run([*command, "spec", probe], check=False, env=env)
+        try:
+            probe_result = _run(
+                [*command, "spec", probe], check=False, env=env, timeout=probe_timeout
+            )
+        except subprocess.TimeoutExpired as error:
+            raise RuntimeError(
+                f"Spack did not concretize compiler probe {probe!r} within "
+                f"{probe_timeout:g} seconds. This usually means the {compiler} "
+                "requirement cannot be satisfied: check that `spack compiler list` "
+                "reports it and that `spack config get packages` lists it under "
+                "`gcc: externals`."
+            ) from error
         if probe_result.returncode != 0:
             message = probe_result.stderr.strip() or probe_result.stdout.strip()
             raise RuntimeError(f"Spack could not concretize compiler probe {probe!r}:\n{message}")
@@ -81,6 +129,7 @@ def bootstrap(
     return BootstrapResult(
         compiler=compiler,
         installed=already_installed or not dry_run,
+        registered=registered,
         languages=languages,
         probe=probe,
         probe_ok=probe_ok,
