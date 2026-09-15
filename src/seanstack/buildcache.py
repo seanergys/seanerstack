@@ -14,7 +14,7 @@ def buildcaches(config: Config) -> tuple[Resource, ...]:
 
 
 def _mirror_args(resource: Resource, command: list[str]) -> list[str]:
-    args = [*command, "mirror", "add", "--type", "binary"]
+    args = [*command, "mirror", "add", "--scope", "user", "--type", "binary"]
     if resource.autopush:
         args.append("--autopush")
     args.append("--signed" if resource.signed else "--unsigned")
@@ -33,13 +33,18 @@ def _mirror_args(resource: Resource, command: list[str]) -> list[str]:
 def configure_buildcaches(config: Config, *, command: list[str] | None = None, env=None) -> None:
     command = command or ["spack"]
     for resource in buildcaches(config):
+        # `-C` also loads the private configuration as an immutable scope, and an
+        # unscoped remove picks that one and fails. Name the writable scope.
         subprocess.run(
-            [*command, "mirror", "remove", resource.name],
+            [*command, "mirror", "remove", "--scope", "user", resource.name],
             check=False,
             text=True,
             capture_output=True, env=env,
         )
-        subprocess.run(_mirror_args(resource, command), check=True, text=True, capture_output=True, env=env)
+        process = subprocess.run(_mirror_args(resource, command), check=False, text=True, capture_output=True, env=env)
+        if process.returncode != 0:
+            message = process.stderr.strip() or process.stdout.strip()
+            raise RuntimeError(f"could not configure build cache {resource.name!r}: {message}")
 
 
 def check_buildcaches(config: Config, secrets: SecretStore, *, command: list[str] | None = None, base_env=None) -> list[tuple[str, bool, str]]:

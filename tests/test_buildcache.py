@@ -2,8 +2,17 @@
 from pathlib import Path
 import subprocess
 
+import pytest
+
 import seanstack.buildcache as buildcache
 from seanstack.config import Config, Resource
+
+
+def _s3_config(tmp_path: Path) -> Config:
+    return Config(
+        path=tmp_path / "config.toml",
+        resources={"cache": Resource(name="cache", kind="spack-buildcache", url="s3://builds")},
+    )
 
 
 def test_buildcache_configures_binary_s3_mirror_with_variable_credentials(monkeypatch, tmp_path: Path):
@@ -40,3 +49,28 @@ def test_buildcache_configures_binary_s3_mirror_with_variable_credentials(monkey
     assert "SEANSTACK_RESOURCE_CACHE_ACCESS_KEY_ID" in add
     assert "SEANSTACK_RESOURCE_CACHE_SECRET_ACCESS_KEY" in add
     assert "s3://builds" in add
+
+
+def test_buildcache_configure_replaces_the_mirror_in_the_writable_scope(monkeypatch, tmp_path: Path):
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(buildcache.subprocess, "run", fake_run)
+    buildcache.configure_buildcaches(_s3_config(tmp_path), command=["spack"])
+
+    assert calls[0] == ["spack", "mirror", "remove", "--scope", "user", "cache"]
+    assert calls[1][:5] == ["spack", "mirror", "add", "--scope", "user"]
+
+
+def test_buildcache_configure_reports_what_spack_said(monkeypatch, tmp_path: Path):
+    def fake_run(args, **kwargs):
+        failed = "add" in args
+        return subprocess.CompletedProcess(args, 1 if failed else 0, "", "Error: something Spack said" if failed else "")
+
+    monkeypatch.setattr(buildcache.subprocess, "run", fake_run)
+
+    with pytest.raises(RuntimeError, match="something Spack said"):
+        buildcache.configure_buildcaches(_s3_config(tmp_path), command=["spack"])
