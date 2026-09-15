@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import re
 import subprocess
 
@@ -36,7 +37,18 @@ def _run_streaming(args: list[str], *, env=None) -> None:
 
 
 def _compiler_prefix(command: list[str], compiler: str, env) -> str | None:
-    result = _run([*command, "location", "-i", compiler], check=False, env=env)
+    # Once a build has used the compiler, the database also holds an external
+    # record for the same prefix, so `location -i COMPILER` is ambiguous. Only a
+    # real installation counts.
+    result = _run([*command, "find", "--json", compiler], check=False, env=env)
+    if result.returncode != 0:
+        return None
+    hashes = [spec["hash"] for spec in json.loads(result.stdout or "[]") if not spec.get("external")]
+    if not hashes:
+        return None
+    if len(hashes) > 1:
+        raise RuntimeError(f"{compiler!r} matches {len(hashes)} installations; use a more specific spec")
+    result = _run([*command, "location", "-i", f"/{hashes[0]}"], check=False, env=env)
     if result.returncode != 0:
         return None
     return result.stdout.strip() or None
