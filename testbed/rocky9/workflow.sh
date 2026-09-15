@@ -29,6 +29,19 @@
 #                          Set SEANSTACK_GC=1 to also collect the dependencies
 #                          that are left orphaned. Seconds to minutes.
 #
+# SEANSTACK_CACHE adds the project build cache (seanstack-buildcache) to
+# install and full:
+#
+#   none  (default)  Build from source as usual.
+#   push             Push everything installed, including gcc@15 in full mode.
+#   only             Install from the cache only. Anything missing there fails
+#                    the run instead of building, so a green run proves the
+#                    cache serves the whole stack.
+#
+# A binary is used only for an identical spec, recipes included. Set
+# SEANSTACK_BUILTIN_COMMIT on an `only` run to the builtin repository commit
+# the `push` run printed.
+#
 # NOTE ON THE COMPILER
 # --------------------
 # SEANERGYS builds with gcc@15; `install` mode deliberately does not. It is a
@@ -43,15 +56,34 @@ MODE="${SEANSTACK_MODE:-concretize}"
 JOBS="${SEANSTACK_JOBS:-$(nproc)}"
 GC="${SEANSTACK_GC:-0}"
 SOLVE_TIMEOUT="${SEANSTACK_SOLVE_TIMEOUT:-600}"
+CACHE="${SEANSTACK_CACHE:-none}"
+BUILTIN_COMMIT="${SEANSTACK_BUILTIN_COMMIT:-}"
+CACHE_NAME=seanstack-buildcache
 
 case "$MODE" in
     concretize|install|full|uninstall) ;;
     *) echo "SEANSTACK_MODE must be concretize, install, full or uninstall (got '$MODE')" >&2; exit 2 ;;
 esac
 
+case "$CACHE" in
+    none|push|only) ;;
+    *) echo "SEANSTACK_CACHE must be none, push or only (got '$CACHE')" >&2; exit 2 ;;
+esac
+
+if [[ "$CACHE" != none && "$MODE" != install && "$MODE" != full ]]; then
+    echo "SEANSTACK_CACHE=$CACHE needs mode install or full (got '$MODE')" >&2
+    exit 2
+fi
+
 step() { printf '\n\033[1m=== %s\033[0m\n' "$*"; }
 
-step "mode: $MODE, build jobs: $JOBS"
+builtin_commit() {
+    local path
+    path="$(spack repo list --json | python3 -c 'import json, sys; print(next(r["path"] for r in json.load(sys.stdin) if r["name"] == "builtin"))')"
+    git -C "$path" rev-parse HEAD
+}
+
+step "mode: $MODE, build cache: $CACHE, build jobs: $JOBS"
 
 step "install seanstack from the mounted source checkout"
 uv tool install --force --quiet --from /src seanstack
@@ -79,6 +111,29 @@ spack compiler list
 step "concretizer timeout: ${SOLVE_TIMEOUT}s"
 spack config add "concretizer:timeout:$SOLVE_TIMEOUT"
 spack config add "concretizer:error_on_timeout:true"
+
+# A fresh state clones the latest builtin repository, whose recipes may differ
+# from the ones the cached binaries were built with.
+if [[ -n "$BUILTIN_COMMIT" ]]; then
+    step "pin builtin package repository to $BUILTIN_COMMIT"
+    spack repo update --scope user --commit "$BUILTIN_COMMIT" builtin
+    # Spack rewrites repos.yaml without the `::` that keeps other scopes out.
+    sed -i 's/^repos:$/repos::/' "$SEANSTACK_STATE_DIR/spack/config/repos.yaml"
+fi
+
+if [[ "$CACHE" != none ]]; then
+    step "build cache: configure $CACHE_NAME"
+    # The mirror stores only variable names; the GitLab token is the registry password.
+    export SEANSTACK_RESOURCE_SEANSTACK_BUILDCACHE_USERNAME="${UV_INDEX_SEANERGYS_USERNAME:?the build cache needs UV_INDEX_SEANERGYS_USERNAME}"
+    export SEANSTACK_RESOURCE_SEANSTACK_BUILDCACHE_PASSWORD="${UV_INDEX_SEANERGYS_PASSWORD:?the build cache needs UV_INDEX_SEANERGYS_PASSWORD}"
+    seanstack buildcache configure
+    spack mirror list
+fi
+
+if [[ "$CACHE" == only ]]; then
+    step "build cache: check"
+    seanstack buildcache check
+fi
 
 if [[ "$MODE" == uninstall ]]; then
     # Deliberately without activating the environment: `spack uninstall` grows a
@@ -118,12 +173,26 @@ seanstack paths repo
 # concretize against it. Each mode therefore states its own compiler intent
 # instead of inheriting whatever the previous run happened to leave.
 if [[ "$MODE" == full ]]; then
-    step "seanstack toolchain bootstrap gcc@15   (builds GCC 15 from source)"
+    # Bootstrap would build GCC from source; take it from the cache first.
+    if [[ "$CACHE" == only ]] && ! spack find gcc@15 >/dev/null 2>&1; then
+        step "spack install --use-buildcache only gcc@15"
+        spack install --use-buildcache only gcc@15
+    fi
+
+    step "seanstack toolchain bootstrap gcc@15   (builds GCC 15 unless installed)"
     seanstack toolchain bootstrap gcc@15
     # The bootstrap registers the compiler as an external before requiring it.
     # Without that registration the requirement cannot be satisfied at all, so
     # show what Spack now considers available.
     spack compiler list
+
+    if [[ "$CACHE" == push ]]; then
+        # By hash: once used, the compiler also has an external record that
+        # makes `gcc@15` ambiguous, and externals cannot be pushed anyway.
+        gcc_hash="$(spack find --json gcc@15 | python3 -c 'import json, sys; print(next(s["hash"] for s in json.load(sys.stdin) if not s.get("external")))')"
+        step "spack buildcache push $CACHE_NAME gcc@15   (/$gcc_hash)"
+        spack buildcache push --update-index "$CACHE_NAME" "/$gcc_hash"
+    fi
 else
     step "compiler: Rocky 9 system gcc   (dropping any gcc@15 requirement)"
     for language in c cxx fortran; do
@@ -145,8 +214,18 @@ if [[ "$MODE" == concretize ]]; then
 fi
 
 if [[ "$MODE" != concretize ]]; then
-    step "spack install"
-    spack install -j "$JOBS"
+    if [[ "$CACHE" == only ]]; then
+        step "spack install --use-buildcache only"
+        spack install --use-buildcache only -j "$JOBS"
+    else
+        step "spack install"
+        spack install -j "$JOBS"
+    fi
+
+    if [[ "$CACHE" == push ]]; then
+        step "spack buildcache push $CACHE_NAME"
+        spack buildcache push --update-index "$CACHE_NAME"
+    fi
 
     # `spack install` succeeding does not mean the result runs: flux-core is a
     # resource manager, so start an instance and put a job through it.
@@ -164,4 +243,12 @@ else
     seanstack validate --spack
 fi
 
-step "done (mode: $MODE)"
+step "builtin package repository commit"
+commit="$(builtin_commit)"
+echo "$commit"
+if [[ "$CACHE" == push ]]; then
+    echo "install from the cache in a fresh state with:"
+    echo "  SEANSTACK_BUILTIN_COMMIT=$commit SEANSTACK_VOLUMES=consumer ./run.sh $MODE --from-cache"
+fi
+
+step "done (mode: $MODE, build cache: $CACHE)"

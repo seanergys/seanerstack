@@ -64,6 +64,12 @@ def git_environment(auth: GitAuth | None) -> Iterator[Mapping[str, str]]:
 def spack_resource_environment(resource: Resource, secrets: SecretStore) -> dict[str, str]:
     if resource.credentials is None:
         return {}
+    user_variable, secret_variable = resource.credential_variables
+    if resource.oci:
+        # A GitLab container registry takes the same user name and token as Git.
+        auth = git_auth(resource, secrets)
+        assert auth is not None
+        return {user_variable: auth.username, secret_variable: auth.password}
     values = secrets.credentials(resource.credentials)
     access_key = values.get("access_key_id", values.get("access_key"))
     secret_key = values.get("secret_access_key", values.get("secret_key"))
@@ -72,10 +78,7 @@ def spack_resource_environment(resource: Resource, secrets: SecretStore) -> dict
         raise ValueError(
             f"credentials {resource.credentials!r} for {resource.name!r} require access_key_id and secret_access_key"
         )
-    env = {
-        f"{resource.env_prefix}_ACCESS_KEY_ID": access_key,
-        f"{resource.env_prefix}_SECRET_ACCESS_KEY": secret_key,
-    }
+    env = {user_variable: access_key, secret_variable: secret_key}
     if isinstance(token, str):
         env[f"{resource.env_prefix}_SESSION_TOKEN"] = token
     return env

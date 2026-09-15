@@ -185,7 +185,12 @@ def activation_script(
     })
     if secrets is not None and secrets.path is not None:
         for resource in config.resources.values():
-            if resource.kind == "spack-buildcache" and resource.credentials:
+            # A vault need not hold credentials for every shipped build cache.
+            if (
+                resource.kind == "spack-buildcache"
+                and resource.credentials
+                and secrets.has_credentials(resource.credentials)
+            ):
                 changes.update(spack_resource_environment(resource, secrets))
 
     lines = []

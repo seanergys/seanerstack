@@ -94,6 +94,10 @@ token = { __seanvault__ = "secret", value = "$SEAN_VAULT;..." }
 [credentials.objectstore]
 access_key_id = "..."
 secret_access_key = { __seanvault__ = "secret", value = "$SEAN_VAULT;..." }
+
+[credentials.seanergys-registry]
+username = "oauth2"
+token = { __seanvault__ = "secret", value = "$SEAN_VAULT;..." }
 ```
 
 Use it without putting either the vault password or service credential on the
@@ -109,14 +113,20 @@ seanstack \
 For interactive use, omit `--secrets-password-file`; Seanstack prompts for the
 SeanVault password. CI may use `--secrets-password-stdin` instead.
 
-Configure S3-backed Spack binary build caches from `config.toml` in the selected isolated state with:
+Configure the Spack binary build caches from `config.toml` in the selected isolated state with:
 
 ```console
 seanstack --state-dir /path/to/seanstack-state buildcache configure
 ```
 
+A build cache with an `oci://` URL lives in a container registry and takes
+`username` plus `password` or `token`; Spack cannot sign OCI caches, so such a
+resource must set `signed = false`. Any other URL is S3 and takes the access key
+pair. The project cache, `seanstack-buildcache`, is the seanstack GitLab
+container registry.
+
 Seanstack stores only environment-variable references in Spack's mirror
-configuration. It never writes the S3 access key or secret key into Spack
+configuration. It never writes S3 keys or registry tokens into Spack
 configuration. The actual variables must be present in any later native
 `spack` process that accesses a private cache; this is intentionally left as a
 process/session concern rather than storing decrypted credentials on disk.

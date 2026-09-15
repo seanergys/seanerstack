@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import json
 import subprocess
 
 import pytest
@@ -9,17 +10,26 @@ import seanstack.bootstrap as bootstrap_module
 COMMAND = ["/opt/spack/bin/spack", "-C", "/state/spack/config"]
 ENV = {"SPACK_DISABLE_LOCAL_CONFIG": "true"}
 PREFIX = "/state/spack/opt/linux-rocky9/gcc-15.3.0-abcdef"
+HASH = "abcdef"
 
 
-def _fake_spack(monkeypatch, *, installed=False, probe_stdout="gcc@15", probe_timeout=False):
+def _fake_spack(monkeypatch, *, installed=False, external=False, probe_stdout="gcc@15", probe_timeout=False):
     """Stand in for the isolated spack command, recording every call made to it."""
     calls: list[list[str]] = []
     exists = {"value": installed}
 
     def fake_run(args, *, check=True, env=None, timeout=None):
         calls.append(args)
+        if args[-3:-1] == ["find", "--json"]:
+            # A build that used the compiler leaves an external record for its prefix.
+            records = [{"hash": "ext0001", "external": {"path": PREFIX}}] if external else []
+            if exists["value"]:
+                records.append({"hash": HASH})
+            if not records:
+                return subprocess.CompletedProcess(args, 1, "", "")
+            return subprocess.CompletedProcess(args, 0, json.dumps(records), "")
         if args[-3:-1] == ["location", "-i"]:
-            if not exists["value"]:
+            if args[-1] != f"/{HASH}" or not exists["value"]:
                 return subprocess.CompletedProcess(args, 1, "", "")
             return subprocess.CompletedProcess(args, 0, PREFIX + "\n", "")
         if "spec" in args:
@@ -84,6 +94,28 @@ def test_bootstrap_registers_an_already_installed_compiler(monkeypatch):
     )
 
     assert [*COMMAND, "install", "gcc@15"] not in calls
+    assert [*COMMAND, "compiler", "find", PREFIX] in calls
+
+
+def test_bootstrap_ignores_the_external_record_of_an_installed_compiler(monkeypatch):
+    calls = _fake_spack(monkeypatch, installed=True, external=True)
+
+    bootstrap_module.bootstrap(
+        "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV
+    )
+
+    assert [*COMMAND, "install", "gcc@15"] not in calls
+    assert [*COMMAND, "compiler", "find", PREFIX] in calls
+
+
+def test_bootstrap_installs_when_only_an_external_record_exists(monkeypatch):
+    calls = _fake_spack(monkeypatch, external=True)
+
+    bootstrap_module.bootstrap(
+        "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV
+    )
+
+    assert [*COMMAND, "install", "gcc@15"] in calls
     assert [*COMMAND, "compiler", "find", PREFIX] in calls
 
 

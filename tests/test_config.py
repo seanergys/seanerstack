@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 from pathlib import Path
 
+import pytest
+
 from seanstack.config import load_config
 
 
@@ -15,3 +17,24 @@ def test_named_resources_and_credentials(tmp_path: Path):
     assert config.resource("gitlab").credentials == "gitlab-user"
     assert config.resource("cache").env_prefix == "SEANSTACK_RESOURCE_CACHE"
     assert config.resource("cache").autopush is True
+
+
+def test_oci_build_cache_must_be_unsigned(tmp_path: Path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[resources.registry]\nkind = "spack-buildcache"\nurl = "oci://registry.example.org/cache"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="cannot be signed"):
+        load_config(path)
+
+
+def test_shipped_config_names_the_project_registry_cache():
+    cache = load_config().resource("seanstack-buildcache")
+
+    assert cache.oci and not cache.signed
+    assert cache.credential_variables == (
+        "SEANSTACK_RESOURCE_SEANSTACK_BUILDCACHE_USERNAME",
+        "SEANSTACK_RESOURCE_SEANSTACK_BUILDCACHE_PASSWORD",
+    )

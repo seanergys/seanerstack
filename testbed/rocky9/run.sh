@@ -13,7 +13,7 @@ VOLUMES="${SEANSTACK_VOLUMES:-seanstack-spack}"
 
 usage() {
     cat <<'USAGE'
-Usage: run.sh COMMAND [--shell]
+Usage: run.sh COMMAND [--shell] [--push | --from-cache]
 
 Commands:
   check       run the workflow without installing flux-core
@@ -26,6 +26,10 @@ Add --shell to any of the others to be left in a shell once it finishes:
 
   ./run.sh check --shell
   ./run.sh install --shell
+
+Build cache options for install and full (cache: seanstack-buildcache):
+  --push        push what was installed to the cache
+  --from-cache  install only from the cache; fails if anything would be built
 
 Environment:
   SEANSTACK_REPO   repository checkout to mount at /src (default: this repo)
@@ -40,12 +44,16 @@ Environment:
                    seconds Spack may spend on a single concretization before
                    it reports an error (default: 600)
   SEANSTACK_CPUS   value for `docker run --cpus`
+  SEANSTACK_BUILTIN_COMMIT
+                   pin Spack's builtin package repository to this commit. A
+                   --push run prints the value its --from-cache runs need.
   UV_INDEX_SEANERGYS_USERNAME, UV_INDEX_SEANERGYS_PASSWORD
                    credentials for the internal package index that supplies
                    seanvault, a seanstack dependency. Your GitLab username, and
                    a personal access token with the `api` scope as the password.
                    Without them `uv tool install` cannot resolve seanstack and
-                   the workflow stops at its first step.
+                   the workflow stops at its first step. The build cache uses
+                   the same token for the container registry.
 USAGE
     exit "${1:-0}"
 }
@@ -55,8 +63,17 @@ COMMAND="${1:-}"
 shift
 
 SHELL_AFTER=0
-[[ "${1:-}" == "--shell" ]] && { SHELL_AFTER=1; shift; }
-[[ $# -gt 0 ]] && { echo "unknown argument: $1" >&2; usage 2; }
+CACHE=none
+for arg in "$@"; do
+    case "$arg" in
+        --shell) SHELL_AFTER=1 ;;
+        --push|--from-cache)
+            [[ "$CACHE" == none ]] || { echo "--push and --from-cache are exclusive" >&2; usage 2; }
+            [[ "$arg" == --push ]] && CACHE=push || CACHE=only
+            ;;
+        *) echo "unknown argument: $arg" >&2; usage 2 ;;
+    esac
+done
 
 case "$COMMAND" in
     check)     MODE=concretize ;;
@@ -66,6 +83,11 @@ case "$COMMAND" in
     shell)     MODE=shell ;;
     *)         echo "unknown command: $COMMAND" >&2; usage 2 ;;
 esac
+
+if [[ "$CACHE" != none && "$MODE" != install && "$MODE" != full ]]; then
+    echo "--push and --from-cache apply to install and full only" >&2
+    usage 2
+fi
 
 # seanstack depends on seanvault, which lives in the internal index, so without
 # credentials `uv tool install` fails inside the container with a dependency
@@ -110,6 +132,7 @@ args=(
 [[ -n "${SEANSTACK_JOBS:-}" ]] && args+=(-e "SEANSTACK_JOBS=$SEANSTACK_JOBS")
 [[ -n "${SEANSTACK_GC:-}" ]] && args+=(-e "SEANSTACK_GC=$SEANSTACK_GC")
 [[ -n "${SEANSTACK_SOLVE_TIMEOUT:-}" ]] && args+=(-e "SEANSTACK_SOLVE_TIMEOUT=$SEANSTACK_SOLVE_TIMEOUT")
+[[ -n "${SEANSTACK_BUILTIN_COMMIT:-}" ]] && args+=(-e "SEANSTACK_BUILTIN_COMMIT=$SEANSTACK_BUILTIN_COMMIT")
 # seanstack depends on seanvault, which lives in the internal index rather than
 # on PyPI, so the container needs the same credentials the host uses.
 for name in UV_INDEX_SEANERGYS_USERNAME UV_INDEX_SEANERGYS_PASSWORD; do
@@ -121,7 +144,7 @@ if [[ "$MODE" == shell ]]; then
     exec docker run "${args[@]}" "$IMAGE" bash --rcfile /scripts/shellrc -i
 fi
 
-args+=(-e "SEANSTACK_MODE=$MODE")
+args+=(-e "SEANSTACK_MODE=$MODE" -e "SEANSTACK_CACHE=$CACHE")
 
 if [[ "$SHELL_AFTER" == 1 ]]; then
     # Deliberately not `set -e` on the workflow: even when it fails we want a
