@@ -28,6 +28,30 @@ Append `--shell` to any of the first four to be left in a shell once the
 workflow finishes, whether it succeeded or not. `./run.sh --help` lists the
 environment variables (`SEANSTACK_JOBS`, `SEANSTACK_CPUS`, and others).
 
+## Build cache
+
+`install` and `full` take `--push` or `--from-cache` to exercise the project
+build cache, `seanstack-buildcache` in the seanstack GitLab container registry.
+The GitLab token from [Credentials](#credentials) is also the registry password.
+
+```console
+./run.sh full --push
+SEANSTACK_BUILTIN_COMMIT=<commit> SEANSTACK_VOLUMES=consumer ./run.sh full --from-cache
+```
+
+The first run builds as usual and pushes everything it installed, gcc@15
+included. The second starts from an empty state and installs with
+`--use-buildcache only`, so it fails as soon as anything would have to be built:
+a green run proves the cache serves the whole stack.
+
+A binary is used only when the consumer concretizes the identical spec, so both
+runs need the same image, host CPU, and recipes. A fresh state clones the latest
+builtin package repository, which is why the consumer pins the commit the push
+run prints at its end.
+
+`install --push` puts gcc@11 builds into the project cache; prefer `full` for
+anything meant to stay there.
+
 The repository checkout is mounted read-only at `/src` and installed with
 `uv tool install --from /src seanstack`, so the workflow tests the working tree
 rather than a published release.

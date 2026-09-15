@@ -44,6 +44,10 @@ class SecretStore:
             self._data = data
         return self._data
 
+    def has_credentials(self, name: str) -> bool:
+        credentials = self._load().get("credentials")
+        return isinstance(credentials, dict) and isinstance(credentials.get(name), dict)
+
     def credentials(self, name: str) -> dict[str, Any]:
         data = self._load()
         credentials = data.get("credentials", {}).get(name) if isinstance(data.get("credentials"), dict) else None

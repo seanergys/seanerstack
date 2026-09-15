@@ -10,6 +10,35 @@ from seanstack.isolation import (
     prepare_isolation,
     spack_env,
 )
+from seanstack.secrets import SecretStore
+
+
+def test_activation_skips_build_caches_without_vault_credentials(tmp_path: Path):
+    real_spack = tmp_path / "spack-src" / "bin" / "spack"
+    real_spack.parent.mkdir(parents=True)
+    real_spack.write_text("#!/bin/sh\n", encoding="utf-8")
+    resources = {
+        name: Resource(
+            name=name,
+            kind="spack-buildcache",
+            url=f"oci://registry.example.org/{name}",
+            credentials=name,
+            signed=False,
+        )
+        for name in ("present", "absent")
+    }
+    secrets = SecretStore(tmp_path / "vault", _data={"credentials": {"present": {"token": "glpat"}}})
+
+    script = activation_script(
+        state_dir=tmp_path / "state",
+        real_spack=real_spack,
+        config=Config(path=tmp_path / "config.toml", resources=resources),
+        secrets=secrets,
+        environ={"PATH": "/usr/bin"},
+    )
+
+    assert "export SEANSTACK_RESOURCE_PRESENT_PASSWORD=glpat" in script
+    assert "SEANSTACK_RESOURCE_ABSENT_PASSWORD" not in script
 
 
 def test_isolation_paths_never_default_to_home(tmp_path: Path):

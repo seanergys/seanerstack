@@ -116,7 +116,7 @@ def build_parser() -> argparse.ArgumentParser:
     cache_parser = subparsers.add_parser("buildcache", help="Configure and verify Spack binary build caches.")
     cache_sub = cache_parser.add_subparsers(dest="buildcache_command", required=True)
     cache_sub.add_parser("configure", help="Install configured build-cache mirrors into the isolated Spack configuration.")
-    cache_sub.add_parser("check", help="Check access to configured build caches using SeanVault credentials.")
+    cache_sub.add_parser("check", help="Check access to configured build caches using session or SeanVault credentials.")
 
     subparsers.add_parser("activate", help="Emit shell code that activates an isolated SeanStack Spack session.")
     subparsers.add_parser("deactivate", help="Emit shell code that restores the shell state saved by activation.")

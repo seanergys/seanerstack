@@ -7,7 +7,15 @@
 # kind = "git"
 # url = "https://gitlab.seanergys.fz-juelich.de/"
 # credentials = "seanergys-gitlab"
-#
+
+# Project binary build cache in the seanstack GitLab container registry. Spack
+# cannot sign OCI build caches, so registry access control is the trust boundary.
+[resources.seanstack-buildcache]
+kind = "spack-buildcache"
+url = "oci://registry.seanergys.fz-juelich.de/software/seanstack/buildcache"
+credentials = "seanergys-registry"
+signed = false
+
 # Example S3-backed Spack binary build cache:
 # [resources.jsc-buildcache]
 # kind = "spack-buildcache"

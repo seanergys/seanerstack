@@ -24,6 +24,17 @@ class Resource:
         normalized = re.sub(r"[^A-Za-z0-9]+", "_", self.name).strip("_").upper()
         return f"SEANSTACK_RESOURCE_{normalized}"
 
+    @property
+    def oci(self) -> bool:
+        return self.url.startswith(("oci://", "oci+http://"))
+
+    @property
+    def credential_variables(self) -> tuple[str, str]:
+        """Variables Spack reads the user name (or key id) and secret from."""
+        if self.oci:
+            return (f"{self.env_prefix}_USERNAME", f"{self.env_prefix}_PASSWORD")
+        return (f"{self.env_prefix}_ACCESS_KEY_ID", f"{self.env_prefix}_SECRET_ACCESS_KEY")
+
 
 @dataclass(frozen=True)
 class Config:
@@ -58,7 +69,7 @@ def load_config(path: Path | None = None) -> Config:
         url = raw.get("url")
         if not isinstance(kind, str) or not isinstance(url, str):
             raise ValueError(f"{path}: resources.{name} requires string kind and url")
-        resources[name] = Resource(
+        resource = Resource(
             name=name,
             kind=kind,
             url=url,
@@ -67,4 +78,8 @@ def load_config(path: Path | None = None) -> Config:
             autopush=bool(raw.get("autopush", False)),
             signed=bool(raw.get("signed", True)),
         )
+        # Spack cannot sign OCI build caches; it warns and pushes unsigned anyway.
+        if resource.kind == "spack-buildcache" and resource.oci and resource.signed:
+            raise ValueError(f"{path}: resources.{name}: OCI build caches cannot be signed; set signed = false")
+        resources[name] = resource
     return Config(path=path, resources=resources)

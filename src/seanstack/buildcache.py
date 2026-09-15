@@ -21,11 +21,12 @@ def _mirror_args(resource: Resource, command: list[str]) -> list[str]:
     if resource.endpoint_url:
         args.extend(["--s3-endpoint-url", resource.endpoint_url])
     if resource.credentials:
-        args.extend([
-            "--s3-access-key-id-variable", f"{resource.env_prefix}_ACCESS_KEY_ID",
-            "--s3-access-key-secret-variable", f"{resource.env_prefix}_SECRET_ACCESS_KEY",
-        ])
-        # The session-token variable is configured only when a token is present at runtime.
+        user_variable, secret_variable = resource.credential_variables
+        if resource.oci:
+            args.extend(["--oci-username-variable", user_variable, "--oci-password-variable", secret_variable])
+        else:
+            args.extend(["--s3-access-key-id-variable", user_variable, "--s3-access-key-secret-variable", secret_variable])
+            # The session-token variable is configured only when a token is present at runtime.
     args.extend([resource.name, resource.url])
     return args
 
@@ -52,7 +53,9 @@ def check_buildcaches(config: Config, secrets: SecretStore, *, command: list[str
     results: list[tuple[str, bool, str]] = []
     for resource in buildcaches(config):
         env = dict(os.environ if base_env is None else base_env)
-        env.update(spack_resource_environment(resource, secrets))
+        # An activated session already carries the credentials; only then is SeanVault skipped.
+        if not all(name in env for name in resource.credential_variables):
+            env.update(spack_resource_environment(resource, secrets))
         process = subprocess.run(
             [*command, "buildcache", "list", "--allarch"],
             check=False,
