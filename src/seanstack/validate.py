@@ -147,6 +147,10 @@ def _validate_resources(repository: Path, config: Config) -> list[Finding]:
             findings.append(Finding("error", f"resource:{name}", f"{resource.name} is {resource.kind}, expected git"))
         elif recipe.git and not recipe.git.startswith(resource.url):
             findings.append(Finding("error", f"resource:{name}", f"Git URL is outside resource {resource.name}"))
+        elif recipe.url and any(
+            directive.name == "version" and "sha256" in directive.kwargs for directive in recipe.directives
+        ) and not recipe.url.startswith(resource.url):
+            findings.append(Finding("error", f"resource:{name}", f"archive URL is outside resource {resource.name}"))
         else:
             findings.append(Finding("ok", f"resource:{name}", f"uses {resource.name}"))
     return findings

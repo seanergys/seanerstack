@@ -61,6 +61,17 @@ def git_environment(auth: GitAuth | None) -> Iterator[Mapping[str, str]]:
         yield env
 
 
+def http_auth_headers(auth: GitAuth | None) -> dict[str, str]:
+    """Headers authenticating an HTTPS download from a Git resource.
+
+    GitLab accepts a token as PRIVATE-TOKEN for repository archives; it does
+    not accept HTTP basic authentication there.
+    """
+    if auth is None:
+        return {}
+    return {"PRIVATE-TOKEN": auth.password}
+
+
 def spack_resource_environment(resource: Resource, secrets: SecretStore) -> dict[str, str]:
     if resource.credentials is None:
         return {}

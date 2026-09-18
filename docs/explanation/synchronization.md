@@ -19,4 +19,24 @@ version("1.6.6", tag="v1.6.6")
 
 establishes the `v{version}` convention. A new upstream `v1.6.8` can therefore be added as a new native Spack version directive.
 
+## Archive releases
+
+A recipe may fetch releases as archives instead of cloning Git:
+
+```python
+url = "https://gitlab.seanergys.fz-juelich.de/software/demobus/-/archive/v0.2.1/demobus-v0.2.1.tar.gz"
+git = "https://gitlab.seanergys.fz-juelich.de/software/demobus.git"
+
+version("develop", branch="main")
+version("0.2.1", sha256="3a5c...")
+```
+
+Upstream tags are still read from `git`. The release-tag convention comes from the `url` path segment holding one of the recipe's `sha256` versions; when several segments hold it, the one naming an existing upstream tag is used. Here `v0.2.1` establishes `v{version}`.
+
+For a new tag, Seanstack substitutes the version into `url` as Spack does, downloads the archive, and adds `version("X", sha256="...")`. Only gzip archives (`.tar.gz`) are supported; any other download, such as a sign-in page, is an error. `--check`, `--dry-run`, and `validate --online` only report missing releases; they download nothing and do not re-verify existing checksums.
+
+A recipe that mixes `tag=` and `sha256=` releases is rejected.
+
+GitLab generates `/-/archive/` tarballs on demand. They are byte-stable today, but a GitLab upgrade could change them and invalidate recorded checksums.
+
 If the existing recipe does not establish one unambiguous convention, synchronization fails rather than creating Seanstack-specific synchronization metadata.

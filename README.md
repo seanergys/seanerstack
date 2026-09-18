@@ -84,6 +84,17 @@ class PrivatePackage(Package):
     seanstack_resource = "seanergys-gitlab"
 ```
 
+A recipe that fetches releases as archives keeps `url` under the same resource.
+Seanstack sends the resource token as a `PRIVATE-TOKEN` header, only over HTTPS,
+when downloading new releases to compute their `sha256`:
+
+```python
+class PrivatePackage(Package):
+    url = "https://gitlab.seanergys.fz-juelich.de/software/private-package/-/archive/v1.0/private-package-v1.0.tar.gz"
+    git = "https://gitlab.seanergys.fz-juelich.de/software/private-package.git"
+    seanstack_resource = "seanergys-gitlab"
+```
+
 The corresponding SeanVault file can use a shared credential entry:
 
 ```toml

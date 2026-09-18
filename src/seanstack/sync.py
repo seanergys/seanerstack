@@ -2,13 +2,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 from pathlib import Path
+import re
 import subprocess
+import urllib.error
+import urllib.request
+from urllib.parse import urlsplit
 
-from .auth import GitAuth, git_environment
+from .auth import GitAuth, git_environment, http_auth_headers
 from .config import Config
 from .secrets import SecretStore
-from typing import Iterable
+from typing import Collection, Iterable
 
 from packaging.version import InvalidVersion, Version
 
@@ -112,7 +117,87 @@ def _tracked_branches(recipe: Recipe) -> dict[str, str]:
     }
 
 
-def infer_tag_convention(recipe: Recipe) -> TagConvention:
+def _release_kind(recipe: Recipe) -> str:
+    """Return "tag" for Git-fetched releases or "sha256" for archive releases."""
+    tagged: list[str] = []
+    archived: list[str] = []
+    for directive in recipe.directives:
+        if directive.name != "version" or not directive.args:
+            continue
+        if "tag" in directive.kwargs:
+            tagged.append(str(directive.args[0]))
+        elif "sha256" in directive.kwargs and not {"branch", "commit"} & directive.kwargs.keys():
+            archived.append(str(directive.args[0]))
+    if tagged and archived:
+        raise ValueError(
+            f"{recipe.path}: recipe mixes tag= releases ({', '.join(tagged)}) "
+            f"and sha256= releases ({', '.join(archived)}); use one release kind"
+        )
+    return "sha256" if archived else "tag"
+
+
+def _version_pattern(version: str) -> re.Pattern[str]:
+    # Match a whole version: "0.2" must not match inside "0.2.1" or "10.2".
+    return re.compile(rf"(?<![0-9.]){re.escape(version)}(?!\.?[0-9])")
+
+
+def _url_version(recipe: Recipe) -> str:
+    """Return the release version the recipe's url points to."""
+    assert recipe.url is not None
+    candidates = [
+        str(directive.args[0])
+        for directive in recipe.directives
+        if directive.name == "version"
+        and directive.args
+        and "sha256" in directive.kwargs
+        and _version_pattern(str(directive.args[0])).search(recipe.url)
+    ]
+    if len(candidates) != 1:
+        found = ", ".join(candidates) if candidates else "none"
+        raise ValueError(
+            f"{recipe.path}: url must contain exactly one sha256 release version "
+            f"(found: {found}): {recipe.url}"
+        )
+    return candidates[0]
+
+
+def archive_url(recipe: Recipe, version: str) -> str:
+    """Substitute version into the recipe url, like Spack's url_for_version."""
+    assert recipe.url is not None
+    return _version_pattern(_url_version(recipe)).sub(lambda _: version, recipe.url)
+
+
+def _url_tag_convention(recipe: Recipe, tags: Collection[str] | None) -> TagConvention:
+    if not recipe.url:
+        raise ValueError(f"{recipe.path}: sha256 releases require a url to infer the release-tag convention")
+    version = _url_version(recipe)
+    pattern = _version_pattern(version)
+    conventions: set[tuple[str, str]] = set()
+    for segment in urlsplit(recipe.url).path.split("/"):
+        matches = list(pattern.finditer(segment))
+        if len(matches) == 1:
+            conventions.add((segment[:matches[0].start()], segment[matches[0].end():]))
+    if tags is not None:
+        conventions = {(prefix, suffix) for prefix, suffix in conventions if f"{prefix}{version}{suffix}" in tags}
+    if len(conventions) != 1:
+        rendered = ", ".join(f"{prefix}{{version}}{suffix}" for prefix, suffix in sorted(conventions)) or "none"
+        raise ValueError(
+            f"{recipe.path}: cannot infer one release-tag convention for {version} "
+            f"from url {recipe.url} (candidates: {rendered})"
+        )
+    prefix, suffix = next(iter(conventions))
+    return TagConvention(prefix=prefix, suffix=suffix)
+
+
+def infer_tag_convention(recipe: Recipe, tags: Collection[str] | None = None) -> TagConvention:
+    """Infer how release tags are named from the recipe's existing releases.
+
+    Tag releases carry the tag name directly. For sha256 releases the tag is
+    taken from the url path segment holding the version; upstream tags, when
+    given, pick among several such segments.
+    """
+    if _release_kind(recipe) == "sha256":
+        return _url_tag_convention(recipe, tags)
     conventions: set[tuple[str, str]] = set()
     for directive in recipe.directives:
         if directive.name != "version" or not directive.args:
@@ -132,7 +217,7 @@ def infer_tag_convention(recipe: Recipe) -> TagConvention:
     if not conventions:
         raise ValueError(
             f"{recipe.path}: cannot infer release-tag convention; "
-            "add at least one version(..., tag=...) directive"
+            "add at least one version(..., tag=...) or version(..., sha256=...) directive"
         )
     if len(conventions) != 1:
         rendered = ", ".join(f"{prefix}{{version}}{suffix}" for prefix, suffix in sorted(conventions))
@@ -149,8 +234,41 @@ def _version_key(value: str) -> tuple[int, Version | str]:
         return (0, value)
 
 
-def _insert_releases(path: Path, recipe: Recipe, releases: list[tuple[str, str, str]]) -> None:
-    if not releases:
+def _urlopen(request: urllib.request.Request):
+    return urllib.request.urlopen(request, timeout=120)
+
+
+def archive_sha256(url: str, *, auth: GitAuth | None = None) -> str:
+    """Download a .tar.gz archive and return its sha256 without keeping it."""
+    request = urllib.request.Request(url)
+    for name, value in http_auth_headers(auth).items():
+        # Unredirected headers are not sent again if the server redirects.
+        request.add_unredirected_header(name, value)
+    digest = hashlib.sha256()
+    try:
+        with _urlopen(request) as response:
+            content_type = response.headers.get_content_type()
+            head = response.read(2)
+            digest.update(head)
+            while chunk := response.read(1 << 16):
+                digest.update(chunk)
+    except urllib.error.HTTPError as error:
+        raise ValueError(f"{url}: download failed: HTTP {error.code} {error.reason}") from None
+    except urllib.error.URLError as error:
+        raise ValueError(f"{url}: download failed: {error.reason}") from None
+
+    # A private archive fetched without valid credentials is GitLab's sign-in
+    # page, served with HTTP 200.
+    if content_type == "text/html" or head != b"\x1f\x8b":  # gzip magic bytes
+        raise ValueError(
+            f"{url}: download is not a gzip archive (Content-Type {content_type}); "
+            "check that the recipe's seanstack_resource credentials grant access"
+        )
+    return digest.hexdigest()
+
+
+def _insert_releases(path: Path, recipe: Recipe, directives: list[str]) -> None:
+    if not directives:
         return
 
     lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
@@ -161,10 +279,7 @@ def _insert_releases(path: Path, recipe: Recipe, releases: list[tuple[str, str, 
     else:
         raise ValueError(f"{path}: at least one version directive is required for synchronization")
 
-    additions = [
-        f'    version("{version}", tag="{tag}", commit="{commit}")\n'
-        for version, tag, commit in releases
-    ]
+    additions = [f"    {directive}\n" for directive in directives]
     lines[anchor:anchor] = additions
     path.write_text("".join(lines), encoding="utf-8")
 
@@ -187,6 +302,10 @@ def sync_package(
     if not recipe.git:
         raise ValueError(f"{package}: recipe has no git URL")
 
+    kind = _release_kind(recipe)
+    if kind == "sha256" and not recipe.url:
+        raise ValueError(f"{package}: recipe has sha256 releases but no url")
+
     auth = None
     if recipe.seanstack_resource:
         if config is None:
@@ -196,13 +315,19 @@ def sync_package(
             raise ValueError(f"{package}: resource {resource.name!r} is {resource.kind!r}, expected 'git'")
         if not recipe.git.startswith(resource.url):
             raise ValueError(f"{package}: Git URL {recipe.git!r} does not belong to resource {resource.name!r} ({resource.url!r})")
+        if kind == "sha256":
+            assert recipe.url is not None
+            if not recipe.url.startswith(resource.url):
+                raise ValueError(f"{package}: archive URL {recipe.url!r} does not belong to resource {resource.name!r} ({resource.url!r})")
+            if resource.credentials and not recipe.url.startswith("https://"):
+                raise ValueError(f"{package}: refusing to send credentials of {resource.name!r} to non-HTTPS URL {recipe.url!r}")
         if resource.credentials:
             if secrets is None:
                 raise ValueError(f"{package}: resource {resource.name!r} requires credentials")
             from .auth import git_auth
             auth = git_auth(resource, secrets)
     refs = read_remote_refs(recipe.git, auth=auth) if auth is not None else read_remote_refs(recipe.git)
-    convention = infer_tag_convention(recipe)
+    convention = infer_tag_convention(recipe, tags=refs.tags)
     existing = _release_versions(recipe)
 
     releases: list[tuple[str, str, str]] = []
@@ -216,7 +341,15 @@ def sync_package(
     missing_branches = tuple(sorted(branch for branch in tracked_branches if branch not in refs.heads))
 
     if releases and not (check or dry_run):
-        _insert_releases(path, recipe, releases)
+        if kind == "sha256":
+            # Download everything before touching the recipe.
+            directives = [
+                f'version("{version}", sha256="{archive_sha256(archive_url(recipe, version), auth=auth)}")'
+                for version, _, _ in releases
+            ]
+        else:
+            directives = [f'version("{version}", tag="{tag}", commit="{commit}")' for version, tag, commit in releases]
+        _insert_releases(path, recipe, directives)
 
     return SyncResult(
         package=package,
