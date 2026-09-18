@@ -32,6 +32,11 @@ class Recipe:
         return value if isinstance(value, str) else None
 
     @property
+    def url(self) -> str | None:
+        value = self.attributes.get("url")
+        return value if isinstance(value, str) else None
+
+    @property
     def seanstack_resource(self) -> str | None:
         value = self.attributes.get("seanstack_resource")
         return value if isinstance(value, str) else None

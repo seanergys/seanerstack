@@ -11,3 +11,9 @@ def test_parse_properdocs_recipe(monkeypatch):
     versions = [directive for directive in recipe.directives if directive.name == "version"]
     assert any(directive.args[0] == "develop" for directive in versions)
     assert any(directive.comment for directive in versions)
+
+
+def test_recipe_exposes_url(tmp_path):
+    path = tmp_path / "package.py"
+    path.write_text('class Demo:\n    url = "https://example.invalid/demo-1.0.tar.gz"\n', encoding="utf-8")
+    assert parse_recipe(path).url == "https://example.invalid/demo-1.0.tar.gz"
