@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 spack:
   specs:
-    - demobus@develop
+    - demobus@main
 
   # A source checkout is deliberately not committed here. After activating this
   # environment, bind one with:
-  #   spack develop --path /path/to/demobus demobus@develop
+  #   spack develop --path /path/to/demobus demobus@main
   concretizer:
     unify: true
