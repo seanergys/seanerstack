@@ -9,7 +9,7 @@ def test_parse_properdocs_recipe(monkeypatch):
     recipe = parse_recipe(root / "data/share/seanstack/spack_repo/seanstack/packages/properdocs/package.py")
     assert recipe.git == "https://github.com/ProperDocs/properdocs.git"
     versions = [directive for directive in recipe.directives if directive.name == "version"]
-    assert any(directive.args[0] == "develop" for directive in versions)
+    assert any(directive.args[0] == "master" for directive in versions)
     assert any(directive.comment for directive in versions)
 
 
