@@ -11,7 +11,7 @@ class Properdocs(PythonPackage):
     git = "https://github.com/ProperDocs/properdocs.git"
 
     # Development follows the upstream default branch.
-    version("develop", branch="master")
+    version("master", branch="master")
 
     # Released versions are synchronized from upstream Git tags by `seanstack sync`.
     version("1.6.7", tag="v1.6.7")

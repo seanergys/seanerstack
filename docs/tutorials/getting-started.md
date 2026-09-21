@@ -101,10 +101,10 @@ The environment is an ordinary Spack environment supplied by Seanstack. The acti
 
 ## 10. Bind the local checkout
 
-Tell Spack that `properdocs@develop` is provided by the checkout you just cloned:
+Tell Spack that `properdocs@master` is provided by the checkout you just cloned:
 
 ```console
-spack develop --path "$PWD" properdocs@develop
+spack develop --path "$PWD" properdocs@master
 ```
 
 The checkout path is machine-local state, so it is deliberately not stored in Seanstack.

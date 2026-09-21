@@ -24,7 +24,7 @@ spack env activate "$(seanstack paths env --package properdocs)"
 ## Bind the checkout
 
 ```console
-spack develop --path "$PWD" properdocs@develop
+spack develop --path "$PWD" properdocs@master
 ```
 
 ## Install the environment
