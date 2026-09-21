@@ -1,12 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 # External resources are named here. Recipes and build-cache configuration refer
 # to the resource name; credential values live only in the SeanVault file.
-#
-# Example private Git resource:
-# [resources.seanergys-gitlab]
-# kind = "git"
-# url = "https://gitlab.seanergys.fz-juelich.de/"
-# credentials = "seanergys-gitlab"
+
+# Private SEANERGYS Git resource. A recipe names the resource, never the
+# credential; the token itself lives in the SeanVault file under the credential
+# name below. Seanstack authenticates `git ls-remote` with it, and sends it as
+# the PRIVATE-TOKEN header when downloading a release archive to checksum it.
+[resources.seanergys-gitlab]
+kind = "git"
+url = "https://gitlab.seanergys.fz-juelich.de/"
+credentials = "seanergys-gitlab"
 
 # Project binary build cache in the seanstack GitLab container registry. Spack
 # cannot sign OCI build caches, so registry access control is the trust boundary.

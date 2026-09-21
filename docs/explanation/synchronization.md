@@ -27,7 +27,7 @@ A recipe may fetch releases as archives instead of cloning Git:
 url = "https://gitlab.seanergys.fz-juelich.de/software/demobus/-/archive/v0.2.1/demobus-v0.2.1.tar.gz"
 git = "https://gitlab.seanergys.fz-juelich.de/software/demobus.git"
 
-version("develop", branch="main")
+version("main", branch="main")
 version("0.2.1", sha256="3a5c...")
 ```
 
