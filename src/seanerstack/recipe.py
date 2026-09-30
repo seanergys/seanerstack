@@ -37,8 +37,8 @@ class Recipe:
         return value if isinstance(value, str) else None
 
     @property
-    def seanstack_resource(self) -> str | None:
-        value = self.attributes.get("seanstack_resource")
+    def seanerstack_resource(self) -> str | None:
+        value = self.attributes.get("seanerstack_resource")
         return value if isinstance(value, str) else None
 
 

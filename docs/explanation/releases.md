@@ -1,8 +1,8 @@
-# Seanstack releases
+# Seanerstack releases
 
-A Seanstack release is a snapshot of the complete SEANERGYS Spack distribution at a particular point in time. The version covers the command-line tooling, curated package recipes, and shipped environments together.
+A Seanerstack release is a snapshot of the complete SEANERGYS Spack distribution at a particular point in time. The version covers the command-line tooling, curated package recipes, and shipped environments together.
 
-Individual recipes and environments are not given independent Seanstack release numbers.
+Individual recipes and environments are not given independent Seanerstack release numbers.
 
 ## Calendar versions
 
@@ -24,7 +24,7 @@ The generated release version is used only for the build and is not committed ba
 
 ## Publishing policy
 
-Every push to the default branch runs the normal tests and documentation build. After those stages succeed, GitLab exposes the PyPI publishing job as a manual action. A maintainer explicitly starts that job when the current default-branch state should become a published Seanstack snapshot. The job then builds the distribution with `uv build` and publishes it with `uv publish`.
+Every push to the default branch runs the normal tests and documentation build. After those stages succeed, GitLab exposes the PyPI publishing job as a manual action. A maintainer explicitly starts that job when the current default-branch state should become a published Seanerstack snapshot. The job then builds the distribution with `uv build` and publishes it with `uv publish`.
 
 The manual release job is optional for the pipeline itself: a normal default-branch pipeline can finish successfully without publishing a release. Publishing therefore always requires an explicit action in the GitLab CI/CD interface.
 
@@ -32,20 +32,20 @@ The self-managed SEANERGYS GitLab instance cannot currently use PyPI's GitLab Tr
 
 ## Installing releases
 
-Normal systems track the latest successfully published Seanstack snapshot:
+Normal systems track the latest successfully published Seanerstack snapshot:
 
 ```console
-uv tool install seanstack@latest
+uv tool install seanerstack@latest
 ```
 
 Existing installations are updated with:
 
 ```console
-uv tool upgrade seanstack
+uv tool upgrade seanerstack
 ```
 
-When reproducibility requires an exact Seanstack snapshot, pin the published calendar version:
+When reproducibility requires an exact Seanerstack snapshot, pin the published calendar version:
 
 ```console
-uv tool install seanstack==2026.8.26.143
+uv tool install seanerstack==2026.8.26.143
 ```

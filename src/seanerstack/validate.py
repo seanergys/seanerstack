@@ -100,13 +100,13 @@ def _validate_compiler(compiler: str, languages: tuple[str, ...], command: list[
     for language in languages:
         require = _requirements(packages.get(language, {}).get("require") if isinstance(packages.get(language), dict) else None)
         if compiler in require:
-            findings.append(Finding("ok", f"compiler:{language}", f"requires {compiler} in the isolated SeanStack configuration"))
+            findings.append(Finding("ok", f"compiler:{language}", f"requires {compiler} in the isolated Seanerstack configuration"))
         else:
             findings.append(
                 Finding(
                     "error",
                     f"compiler:{language}",
-                    f"does not require {compiler} in the isolated SeanStack configuration; run `seanstack toolchain bootstrap {compiler}`",
+                    f"does not require {compiler} in the isolated Seanerstack configuration; run `seanerstack toolchain bootstrap {compiler}`",
                 )
             )
     return findings
@@ -115,7 +115,7 @@ def _validate_compiler(compiler: str, languages: tuple[str, ...], command: list[
 def _validate_with_spack(environments: Path, command: list[str], env) -> list[Finding]:
     findings: list[Finding] = []
     for directory in sorted(path for path in environments.iterdir() if path.is_dir() and (path / "spack.yaml").is_file()):
-        with tempfile.TemporaryDirectory(prefix="seanstack-validate-") as temp:
+        with tempfile.TemporaryDirectory(prefix="seanerstack-validate-") as temp:
             temp_env = Path(temp) / directory.name
             shutil.copytree(directory, temp_env)
             process = subprocess.run(
@@ -136,10 +136,10 @@ def _validate_resources(repository: Path, config: Config) -> list[Finding]:
     for name, path in package_paths(repository).items():
         from .recipe import parse_recipe
         recipe = parse_recipe(path)
-        if not recipe.seanstack_resource:
+        if not recipe.seanerstack_resource:
             continue
         try:
-            resource = config.resource(recipe.seanstack_resource)
+            resource = config.resource(recipe.seanerstack_resource)
         except ValueError as error:
             findings.append(Finding("error", f"resource:{name}", str(error)))
             continue

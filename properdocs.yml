@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-site_name: Seanstack
+site_name: Seanerstack
 site_description: "Curated Spack stack and maintenance tooling for SEANERGYS"
 copyright: "SEANERGYS"
 docs_dir: docs

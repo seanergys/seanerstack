@@ -1,28 +1,28 @@
 # SPDX-License-Identifier: Apache-2.0
 # Bash rc for the interactive shell inside the Rocky Linux 9 test bed. Prepares
-# the same state the workflow does: seanstack installed, the isolated Spack
+# the same state the workflow does: seanerstack installed, the isolated Spack
 # session activated, flux-core environment activated, and then hands the shell
 # over.
 source /root/.bashrc
 
 export PATH="/root/.local/bin:$PATH"
 
-uv tool install --force --quiet --from /src seanstack
-eval "$(seanstack activate)"
+uv tool install --force --quiet --from /src seanerstack
+eval "$(seanerstack activate)"
 spack compiler find >/dev/null 2>&1 || true
-spack env activate "$(seanstack paths env --package flux-core)"
+spack env activate "$(seanerstack paths env --package flux-core)"
 
 cat <<'BANNER'
 
   Rocky Linux 9 test bed. Ready:
-    seanstack        installed from /src (read-only mount of your checkout)
-    seanstack active isolated Spack state in $SEANSTACK_STATE_DIR (/state)
+    seanerstack        installed from /src (read-only mount of your checkout)
+    seanerstack active isolated Spack state in $SEANERSTACK_STATE_DIR (/state)
     spack env        flux-core-dev activated
 
-  The Seanstack repository comes from the isolated configuration, so there is
+  The Seanerstack repository comes from the isolated configuration, so there is
   no `spack repo add` to run. Plain `spack` already uses that configuration.
 
-  Note: the seanstack installation lives in the container's ephemeral layer, so
+  Note: the seanerstack installation lives in the container's ephemeral layer, so
   the environment starts without a spack.lock. `spack find` therefore shows
   nothing at first even when the store does hold an installation, run
   `spack concretize` first.
@@ -34,6 +34,6 @@ cat <<'BANNER'
     spack install                 build (anything already in the store is skipped)
     spack load flux-core && flux start flux resource list
 
-  Leave the isolated session with:  eval "$(seanstack deactivate)"
+  Leave the isolated session with:  eval "$(seanerstack deactivate)"
 
 BANNER

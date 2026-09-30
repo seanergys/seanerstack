@@ -4,7 +4,7 @@ requires = ["uv_build>=0.10,<0.11"]
 build-backend = "uv_build"
 
 [project]
-name = "seanstack"
+name = "seanerstack"
 version = "0.1.0"
 description = "Curated Spack recipes and environments for SEANERGYS, with synchronization, bootstrap, and validation tooling."
 readme = "README.md"
@@ -17,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-seanstack = "seanstack.cli:main"
+seanerstack = "seanerstack.cli:main"
 
 [dependency-groups]
 dev = [
@@ -33,7 +33,7 @@ docs = [
 
 # Install the curated Spack repository and environments outside site-packages.
 # The contents of data/ are installed relative to the Python environment prefix,
-# yielding <prefix>/share/seanstack/...
+# yielding <prefix>/share/seanerstack/...
 [tool.uv.build-backend]
 data = { data = "data" }
 

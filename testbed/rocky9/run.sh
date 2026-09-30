@@ -7,9 +7,9 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="${SEANSTACK_REPO:-$(cd "$HERE/../.." && pwd)}"
-IMAGE="${SEANSTACK_IMAGE:-seanstack-rocky9}"
-VOLUMES="${SEANSTACK_VOLUMES:-seanstack-spack}"
+REPO="${SEANERSTACK_REPO:-$(cd "$HERE/../.." && pwd)}"
+IMAGE="${SEANERSTACK_IMAGE:-seanerstack-rocky9}"
+VOLUMES="${SEANERSTACK_VOLUMES:-seanerstack-spack}"
 
 usage() {
     cat <<'USAGE'
@@ -27,31 +27,31 @@ Add --shell to any of the others to be left in a shell once it finishes:
   ./run.sh check --shell
   ./run.sh install --shell
 
-Build cache options for install and full (cache: seanstack-buildcache):
+Build cache options for install and full (cache: seanerstack-buildcache):
   --push        push what was installed to the cache
   --from-cache  install only from the cache; fails if anything would be built
 
 Environment:
-  SEANSTACK_REPO   repository checkout to mount at /src (default: this repo)
-  SEANSTACK_IMAGE  image name to build and run (default: seanstack-rocky9)
-  SEANSTACK_VOLUMES
+  SEANERSTACK_REPO   repository checkout to mount at /src (default: this repo)
+  SEANERSTACK_IMAGE  image name to build and run (default: seanerstack-rocky9)
+  SEANERSTACK_VOLUMES
                    prefix for the named volume holding the Spack state
-                   (default: seanstack-spack); use another prefix to run
+                   (default: seanerstack-spack); use another prefix to run
                    against a clean state without discarding the default one
-  SEANSTACK_JOBS   build jobs for `spack install` (default: nproc)
-  SEANSTACK_GC     set to 1 to also run `spack gc` in uninstall mode
-  SEANSTACK_SOLVE_TIMEOUT
+  SEANERSTACK_JOBS   build jobs for `spack install` (default: nproc)
+  SEANERSTACK_GC     set to 1 to also run `spack gc` in uninstall mode
+  SEANERSTACK_SOLVE_TIMEOUT
                    seconds Spack may spend on a single concretization before
                    it reports an error (default: 600)
-  SEANSTACK_CPUS   value for `docker run --cpus`
-  SEANSTACK_BUILTIN_COMMIT
+  SEANERSTACK_CPUS   value for `docker run --cpus`
+  SEANERSTACK_BUILTIN_COMMIT
                    pin Spack's builtin package repository to this commit. A
                    --push run prints the value its --from-cache runs need.
   UV_INDEX_SEANERGYS_USERNAME, UV_INDEX_SEANERGYS_PASSWORD
                    credentials for the internal package index that supplies
-                   seanervault, a seanstack dependency. Your GitLab username, and
+                   seanervault, a seanerstack dependency. Your GitLab username, and
                    a personal access token with the `api` scope as the password.
-                   Without them `uv tool install` cannot resolve seanstack and
+                   Without them `uv tool install` cannot resolve seanerstack and
                    the workflow stops at its first step. The build cache uses
                    the same token for the container registry.
 USAGE
@@ -89,7 +89,7 @@ if [[ "$CACHE" != none && "$MODE" != install && "$MODE" != full ]]; then
     usage 2
 fi
 
-# seanstack depends on seanervault, which lives in the internal index, so without
+# seanerstack depends on seanervault, which lives in the internal index, so without
 # credentials `uv tool install` fails inside the container with a dependency
 # resolution error that says nothing about what to set. Warn rather than refuse:
 # uv also reads ~/.netrc and its own configuration.
@@ -97,7 +97,7 @@ if [[ -z "${UV_INDEX_SEANERGYS_USERNAME:-}" || -z "${UV_INDEX_SEANERGYS_PASSWORD
     cat >&2 <<'WARNING'
 ==> warning: UV_INDEX_SEANERGYS_USERNAME / UV_INDEX_SEANERGYS_PASSWORD are unset
 
-    seanstack depends on seanervault from the SEANERGYS package index, so the
+    seanerstack depends on seanervault from the SEANERGYS package index, so the
     install step will fail unless uv finds credentials elsewhere:
 
       export UV_INDEX_SEANERGYS_USERNAME=<your GitLab username>
@@ -118,7 +118,7 @@ fi
 echo "==> building $IMAGE"
 docker build -t "$IMAGE" "$HERE"
 
-# Seanstack keeps the whole mutable Spack state under one root, so a single
+# Seanerstack keeps the whole mutable Spack state under one root, so a single
 # volume covers the private configuration, install store, stages, caches, and
 # managed environments.
 args=(
@@ -129,22 +129,22 @@ args=(
 )
 # -it only when a terminal is attached, so the script also works in CI and pipes.
 [[ -t 0 && -t 1 ]] && args+=(-it)
-[[ -n "${SEANSTACK_JOBS:-}" ]] && args+=(-e "SEANSTACK_JOBS=$SEANSTACK_JOBS")
-[[ -n "${SEANSTACK_GC:-}" ]] && args+=(-e "SEANSTACK_GC=$SEANSTACK_GC")
-[[ -n "${SEANSTACK_SOLVE_TIMEOUT:-}" ]] && args+=(-e "SEANSTACK_SOLVE_TIMEOUT=$SEANSTACK_SOLVE_TIMEOUT")
-[[ -n "${SEANSTACK_BUILTIN_COMMIT:-}" ]] && args+=(-e "SEANSTACK_BUILTIN_COMMIT=$SEANSTACK_BUILTIN_COMMIT")
-# seanstack depends on seanervault, which lives in the internal index rather than
+[[ -n "${SEANERSTACK_JOBS:-}" ]] && args+=(-e "SEANERSTACK_JOBS=$SEANERSTACK_JOBS")
+[[ -n "${SEANERSTACK_GC:-}" ]] && args+=(-e "SEANERSTACK_GC=$SEANERSTACK_GC")
+[[ -n "${SEANERSTACK_SOLVE_TIMEOUT:-}" ]] && args+=(-e "SEANERSTACK_SOLVE_TIMEOUT=$SEANERSTACK_SOLVE_TIMEOUT")
+[[ -n "${SEANERSTACK_BUILTIN_COMMIT:-}" ]] && args+=(-e "SEANERSTACK_BUILTIN_COMMIT=$SEANERSTACK_BUILTIN_COMMIT")
+# seanerstack depends on seanervault, which lives in the internal index rather than
 # on PyPI, so the container needs the same credentials the host uses.
 for name in UV_INDEX_SEANERGYS_USERNAME UV_INDEX_SEANERGYS_PASSWORD; do
     [[ -n "${!name:-}" ]] && args+=(-e "$name=${!name}")
 done
-[[ -n "${SEANSTACK_CPUS:-}" ]] && args+=(--cpus "$SEANSTACK_CPUS")
+[[ -n "${SEANERSTACK_CPUS:-}" ]] && args+=(--cpus "$SEANERSTACK_CPUS")
 
 if [[ "$MODE" == shell ]]; then
     exec docker run "${args[@]}" "$IMAGE" bash --rcfile /scripts/shellrc -i
 fi
 
-args+=(-e "SEANSTACK_MODE=$MODE" -e "SEANSTACK_CACHE=$CACHE")
+args+=(-e "SEANERSTACK_MODE=$MODE" -e "SEANERSTACK_CACHE=$CACHE")
 
 if [[ "$SHELL_AFTER" == 1 ]]; then
     # Deliberately not `set -e` on the workflow: even when it fails we want a

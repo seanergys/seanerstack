@@ -10,11 +10,11 @@ RUN dnf -y install --setopt=install_weak_deps=False \
         tar unzip which xz zlib-devel \
  && dnf clean all
 
-# uv, per the SEANERGYS tutorial, brings its own Python and installs seanstack.
+# uv, per the SEANERGYS tutorial, brings its own Python and installs seanerstack.
 ENV UV_INSTALL_DIR=/usr/local/bin
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh && uv --version
 
-# Seanstack isolates Spack's configuration and state, so the checkout only has
+# Seanerstack isolates Spack's configuration and state, so the checkout only has
 # to provide the executable. It may live anywhere; /opt keeps it clear of the
 # state directory, which is the part that persists in a volume.
 ENV SPACK_ROOT=/opt/spack
@@ -23,7 +23,7 @@ RUN git clone --depth=1 https://github.com/spack/spack.git "$SPACK_ROOT" \
 
 # The complete mutable Spack state: private configuration, install store,
 # stages, caches, and managed environments.
-ENV SEANSTACK_STATE_DIR=/state
+ENV SEANERSTACK_STATE_DIR=/state
 
 WORKDIR /work
 CMD ["/bin/bash", "-l"]

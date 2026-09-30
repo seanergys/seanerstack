@@ -6,9 +6,9 @@ import urllib.error
 
 import pytest
 
-import seanstack.sync as sync
-from seanstack.config import Config, Resource
-from seanstack.secrets import SecretStore
+import seanerstack.sync as sync
+from seanerstack.config import Config, Resource
+from seanerstack.secrets import SecretStore
 
 
 def test_private_repo_uses_named_resource_credentials_without_argv_secret(monkeypatch, tmp_path: Path):
@@ -16,7 +16,7 @@ def test_private_repo_uses_named_resource_credentials_without_argv_secret(monkey
     package = repo / "packages" / "demo"
     package.mkdir(parents=True)
     (package / "package.py").write_text(
-        '''class Demo:\n    git = "https://gitlab.example.org/group/demo.git"\n    seanstack_resource = "gitlab"\n    version("1.0", tag="v1.0")\n''',
+        '''class Demo:\n    git = "https://gitlab.example.org/group/demo.git"\n    seanerstack_resource = "gitlab"\n    version("1.0", tag="v1.0")\n''',
         encoding="utf-8",
     )
     config = Config(
@@ -52,7 +52,7 @@ def test_private_repo_uses_named_resource_credentials_without_argv_secret(monkey
     sync.sync_package("demo", repository=repo, check=True, config=config, secrets=secrets)
 
     assert "super-secret-token" not in " ".join(seen["args"])
-    assert seen["env"]["SEANSTACK_GIT_PASSWORD"] == "super-secret-token"
+    assert seen["env"]["SEANERSTACK_GIT_PASSWORD"] == "super-secret-token"
     assert seen["env"]["GIT_TERMINAL_PROMPT"] == "0"
 
 
@@ -64,7 +64,7 @@ def test_private_archive_download_sends_token_only_as_unredirected_header(monkey
         "class Demo:\n"
         '    url = "https://gitlab.example.org/group/demo/-/archive/v1.0/demo-v1.0.tar.gz"\n'
         '    git = "https://gitlab.example.org/group/demo.git"\n'
-        '    seanstack_resource = "gitlab"\n'
+        '    seanerstack_resource = "gitlab"\n'
         '    version("1.0", sha256="aaa")\n',
         encoding="utf-8",
     )
@@ -107,7 +107,7 @@ def test_private_archive_requires_https_for_credentials(monkeypatch, tmp_path: P
         "class Demo:\n"
         '    url = "http://gitlab.example.org/group/demo/-/archive/v1.0/demo-v1.0.tar.gz"\n'
         '    git = "http://gitlab.example.org/group/demo.git"\n'
-        '    seanstack_resource = "gitlab"\n'
+        '    seanerstack_resource = "gitlab"\n'
         '    version("1.0", sha256="aaa")\n',
         encoding="utf-8",
     )

@@ -13,7 +13,7 @@ class Properdocs(PythonPackage):
     # Development follows the upstream default branch.
     version("master", branch="master")
 
-    # Released versions are synchronized from upstream Git tags by `seanstack sync`.
+    # Released versions are synchronized from upstream Git tags by `seanerstack sync`.
     version("1.6.7", tag="v1.6.7")
     version("1.6.6", tag="v1.6.6")
     version("1.6.5", tag="v1.6.5")

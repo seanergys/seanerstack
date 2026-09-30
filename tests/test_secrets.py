@@ -3,7 +3,7 @@ from pathlib import Path
 import sys
 import types
 
-from seanstack.secrets import SecretStore
+from seanerstack.secrets import SecretStore
 
 
 def test_secret_store_uses_seanervault_load_and_password_file(monkeypatch, tmp_path: Path):

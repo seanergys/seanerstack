@@ -6,22 +6,22 @@ import sysconfig
 
 
 def _source_share_path() -> Path:
-    return Path(__file__).resolve().parents[2] / "data" / "share" / "seanstack"
+    return Path(__file__).resolve().parents[2] / "data" / "share" / "seanerstack"
 
 
 def _installed_share_path() -> Path:
     data_root = sysconfig.get_path("data")
     if not data_root:
         raise RuntimeError("Python did not report an installation data directory")
-    return Path(data_root).resolve() / "share" / "seanstack"
+    return Path(data_root).resolve() / "share" / "seanerstack"
 
 
 def share_path() -> Path:
-    """Return the Seanstack shared-data directory.
+    """Return the Seanerstack shared-data directory.
 
     A source checkout is preferred when the Python module itself is imported from
     that checkout. Installed wheels otherwise resolve through Python's ``data``
-    installation scheme, which maps to ``<prefix>/share/seanstack``.
+    installation scheme, which maps to ``<prefix>/share/seanerstack``.
     """
 
     source = _source_share_path()
@@ -33,20 +33,20 @@ def share_path() -> Path:
         return installed
 
     raise RuntimeError(
-        "could not locate Seanstack shared data; expected "
+        "could not locate Seanerstack shared data; expected "
         f"{installed}"
     )
 
 
 def repository_path() -> Path:
-    path = share_path() / "spack_repo" / "seanstack"
+    path = share_path() / "spack_repo" / "seanerstack"
     if not path.is_dir():
-        raise RuntimeError(f"Seanstack Spack repository is missing: {path}")
+        raise RuntimeError(f"Seanerstack Spack repository is missing: {path}")
     return path
 
 
 def environments_path() -> Path:
     path = share_path() / "environments"
     if not path.is_dir():
-        raise RuntimeError(f"Seanstack environment directory is missing: {path}")
+        raise RuntimeError(f"Seanerstack environment directory is missing: {path}")
     return path

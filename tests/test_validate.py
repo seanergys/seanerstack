@@ -2,7 +2,7 @@
 from pathlib import Path
 import subprocess
 
-from seanstack.validate import validate
+from seanerstack.validate import validate
 
 
 def test_static_validation_needs_no_compiler_state(tmp_path):
@@ -25,7 +25,7 @@ def test_spack_validation_reaches_spack(tmp_path, monkeypatch):
     # `_validate_with_spack` copies each environment to a temporary directory
     # before concretizing it. A missing `shutil` import made that raise
     # NameError, so `validate --spack` failed before running Spack at all.
-    import seanstack.validate as validate_module
+    import seanerstack.validate as validate_module
 
     environments = tmp_path / "environments"
     (environments / "demo-dev").mkdir(parents=True)

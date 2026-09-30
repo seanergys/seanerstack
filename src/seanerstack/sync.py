@@ -50,7 +50,7 @@ class TagConvention:
         if not version:
             return None
         # Keep synchronization conservative. Spack accepts a broad version
-        # grammar, but existing Seanstack release recipes use PEP 440-compatible
+        # grammar, but existing Seanerstack release recipes use PEP 440-compatible
         # version strings and packaging gives us reliable ordering as well.
         try:
             Version(version)
@@ -262,7 +262,7 @@ def archive_sha256(url: str, *, auth: GitAuth | None = None) -> str:
     if content_type == "text/html" or head != b"\x1f\x8b":  # gzip magic bytes
         raise ValueError(
             f"{url}: download is not a gzip archive (Content-Type {content_type}); "
-            "check that the recipe's seanstack_resource credentials grant access"
+            "check that the recipe's seanerstack_resource credentials grant access"
         )
     return digest.hexdigest()
 
@@ -295,7 +295,7 @@ def sync_package(
 ) -> SyncResult:
     paths = package_paths(repository)
     if package not in paths:
-        raise ValueError(f"unknown Seanstack package: {package}")
+        raise ValueError(f"unknown Seanerstack package: {package}")
 
     path = paths[package]
     recipe = parse_recipe(path)
@@ -307,10 +307,10 @@ def sync_package(
         raise ValueError(f"{package}: recipe has sha256 releases but no url")
 
     auth = None
-    if recipe.seanstack_resource:
+    if recipe.seanerstack_resource:
         if config is None:
-            raise ValueError(f"{package}: recipe requires resource {recipe.seanstack_resource!r} but no Seanstack config was supplied")
-        resource = config.resource(recipe.seanstack_resource)
+            raise ValueError(f"{package}: recipe requires resource {recipe.seanerstack_resource!r} but no Seanerstack config was supplied")
+        resource = config.resource(recipe.seanerstack_resource)
         if resource.kind != "git":
             raise ValueError(f"{package}: resource {resource.name!r} is {resource.kind!r}, expected 'git'")
         if not recipe.git.startswith(resource.url):

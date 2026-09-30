@@ -1,13 +1,13 @@
-# Seanstack
+# Seanerstack
 
-Seanstack defines and maintains the isolated Spack setup used by SEANERGYS.
+Seanerstack defines and maintains the isolated Spack setup used by SEANERGYS.
 
 It ships the project's curated Spack package recipes and environments, prepares Spack to use the project compiler, and provides maintenance checks for that curated content. It also establishes a private configuration and state boundary so an existing user or system Spack setup cannot silently affect SEANERGYS builds.
 
 The boundary is intentional:
 
 ```text
-Seanstack
+Seanerstack
     curates content and establishes isolated Spack state
         |
         v
@@ -15,11 +15,11 @@ Spack
     concretizes, installs, develops, and deploys software
 ```
 
-Seanstack does not introduce another package manager, environment format, compiler model, or replacement syntax for normal Spack commands.
+Seanerstack does not introduce another package manager, environment format, compiler model, or replacement syntax for normal Spack commands.
 
-## What Seanstack provides
+## What Seanerstack provides
 
-Seanstack provides:
+Seanerstack provides:
 
 - the Spack package recipes curated by SEANERGYS;
 - the Spack environments curated for development and, as they are added, deployment;
@@ -33,9 +33,9 @@ Seanstack provides:
 A normal development session looks like:
 
 ```console
-export SEANSTACK_STATE_DIR=/path/to/seanstack-state
-eval "$(seanstack activate)"
-spack env activate "$(seanstack paths env --package <package>)"
+export SEANERSTACK_STATE_DIR=/path/to/seanerstack-state
+eval "$(seanerstack activate)"
+spack env activate "$(seanerstack paths env --package <package>)"
 spack develop --path /path/to/checkout <package>@develop
 spack concretize -f
 spack install

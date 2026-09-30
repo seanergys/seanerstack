@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-from seanstack.cli import build_parser
+from seanerstack.cli import build_parser
 
 
 def test_reorganized_cli():

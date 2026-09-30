@@ -12,7 +12,7 @@ class Demobus(CargoPackage):
     homepage = "https://gitlab.seanergys.fz-juelich.de/software/demobus"
     url = "https://gitlab.seanergys.fz-juelich.de/software/demobus/-/archive/v0.2.1/demobus-v0.2.1.tar.gz"
     git = "https://gitlab.seanergys.fz-juelich.de/software/demobus.git"
-    seanstack_resource = "seanergys-gitlab"
+    seanerstack_resource = "seanergys-gitlab"
 
     # Cargo.toml declares path dependencies on deps/internal/internal_schemas
     # and deps/internal/async, both inside the `deps` submodule, and Spack
@@ -29,7 +29,7 @@ class Demobus(CargoPackage):
     # Development follows the upstream default branch.
     version("main", branch="main")
 
-    # Released versions are synchronized from upstream Git tags by `seanstack sync`,
+    # Released versions are synchronized from upstream Git tags by `seanerstack sync`,
     # which resolves each tag to its /-/archive/ tarball and records its sha256.
     # They cannot be built yet: GitLab writes /-/archive/ tarballs with
     # `git archive`, which emits a submodule path as an empty directory, so only

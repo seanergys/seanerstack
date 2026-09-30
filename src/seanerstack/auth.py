@@ -39,13 +39,13 @@ def git_environment(auth: GitAuth | None) -> Iterator[Mapping[str, str]]:
         yield env
         return
 
-    with tempfile.TemporaryDirectory(prefix="seanstack-git-auth-") as temp:
+    with tempfile.TemporaryDirectory(prefix="seanerstack-git-auth-") as temp:
         helper = Path(temp) / "askpass"
         helper.write_text(
             "#!/bin/sh\n"
             "case \"$1\" in\n"
-            "  *sername*) printf '%s\\n' \"$SEANSTACK_GIT_USERNAME\" ;;\n"
-            "  *)         printf '%s\\n' \"$SEANSTACK_GIT_PASSWORD\" ;;\n"
+            "  *sername*) printf '%s\\n' \"$SEANERSTACK_GIT_USERNAME\" ;;\n"
+            "  *)         printf '%s\\n' \"$SEANERSTACK_GIT_PASSWORD\" ;;\n"
             "esac\n",
             encoding="utf-8",
         )
@@ -54,8 +54,8 @@ def git_environment(auth: GitAuth | None) -> Iterator[Mapping[str, str]]:
             {
                 "GIT_ASKPASS": str(helper),
                 "GIT_TERMINAL_PROMPT": "0",
-                "SEANSTACK_GIT_USERNAME": auth.username,
-                "SEANSTACK_GIT_PASSWORD": auth.password,
+                "SEANERSTACK_GIT_USERNAME": auth.username,
+                "SEANERSTACK_GIT_PASSWORD": auth.password,
             }
         )
         yield env
