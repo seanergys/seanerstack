@@ -49,7 +49,7 @@ Environment:
                    --push run prints the value its --from-cache runs need.
   UV_INDEX_SEANERGYS_USERNAME, UV_INDEX_SEANERGYS_PASSWORD
                    credentials for the internal package index that supplies
-                   seanvault, a seanstack dependency. Your GitLab username, and
+                   seanervault, a seanstack dependency. Your GitLab username, and
                    a personal access token with the `api` scope as the password.
                    Without them `uv tool install` cannot resolve seanstack and
                    the workflow stops at its first step. The build cache uses
@@ -89,7 +89,7 @@ if [[ "$CACHE" != none && "$MODE" != install && "$MODE" != full ]]; then
     usage 2
 fi
 
-# seanstack depends on seanvault, which lives in the internal index, so without
+# seanstack depends on seanervault, which lives in the internal index, so without
 # credentials `uv tool install` fails inside the container with a dependency
 # resolution error that says nothing about what to set. Warn rather than refuse:
 # uv also reads ~/.netrc and its own configuration.
@@ -97,7 +97,7 @@ if [[ -z "${UV_INDEX_SEANERGYS_USERNAME:-}" || -z "${UV_INDEX_SEANERGYS_PASSWORD
     cat >&2 <<'WARNING'
 ==> warning: UV_INDEX_SEANERGYS_USERNAME / UV_INDEX_SEANERGYS_PASSWORD are unset
 
-    seanstack depends on seanvault from the SEANERGYS package index, so the
+    seanstack depends on seanervault from the SEANERGYS package index, so the
     install step will fail unless uv finds credentials elsewhere:
 
       export UV_INDEX_SEANERGYS_USERNAME=<your GitLab username>
@@ -133,7 +133,7 @@ args=(
 [[ -n "${SEANSTACK_GC:-}" ]] && args+=(-e "SEANSTACK_GC=$SEANSTACK_GC")
 [[ -n "${SEANSTACK_SOLVE_TIMEOUT:-}" ]] && args+=(-e "SEANSTACK_SOLVE_TIMEOUT=$SEANSTACK_SOLVE_TIMEOUT")
 [[ -n "${SEANSTACK_BUILTIN_COMMIT:-}" ]] && args+=(-e "SEANSTACK_BUILTIN_COMMIT=$SEANSTACK_BUILTIN_COMMIT")
-# seanstack depends on seanvault, which lives in the internal index rather than
+# seanstack depends on seanervault, which lives in the internal index rather than
 # on PyPI, so the container needs the same credentials the host uses.
 for name in UV_INDEX_SEANERGYS_USERNAME UV_INDEX_SEANERGYS_PASSWORD; do
     [[ -n "${!name:-}" ]] && args+=(-e "$name=${!name}")

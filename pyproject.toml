@@ -13,7 +13,7 @@ license = "Apache-2.0"
 dependencies = [
   "packaging>=24",
   "PyYAML>=6",
-  "seanvault>=0.1.0",
+  "seanervault>=0.1.0",
 ]
 
 [project.scripts]
@@ -47,4 +47,4 @@ url = "https://gitlab.seanergys.fz-juelich.de/api/v4/groups/158/-/packages/pypi/
 explicit = true
 
 [tool.uv.sources]
-seanvault = { index = "seanergys" }
+seanervault = { index = "seanergys" }

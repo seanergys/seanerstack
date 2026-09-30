@@ -58,7 +58,7 @@ uv run --group docs properdocs serve
 ## External resources and secrets
 
 External services are named in `config.toml`.  A resource may refer to a
-credential set by name; the credential values themselves stay in a SeanVault
+credential set by name; the credential values themselves stay in a Seanervault
 file.
 
 ```toml
@@ -95,20 +95,20 @@ class PrivatePackage(Package):
     seanstack_resource = "seanergys-gitlab"
 ```
 
-The corresponding SeanVault file can use a shared credential entry:
+The corresponding Seanervault file can use a shared credential entry:
 
 ```toml
 [credentials.seanergys-gitlab]
 username = "oauth2"
-token = { __seanvault__ = "secret", value = "$SEAN_VAULT;..." }
+token = { __seanervault__ = "secret", value = "$SEAN_VAULT;..." }
 
 [credentials.objectstore]
 access_key_id = "..."
-secret_access_key = { __seanvault__ = "secret", value = "$SEAN_VAULT;..." }
+secret_access_key = { __seanervault__ = "secret", value = "$SEAN_VAULT;..." }
 
 [credentials.seanergys-registry]
 username = "oauth2"
-token = { __seanvault__ = "secret", value = "$SEAN_VAULT;..." }
+token = { __seanervault__ = "secret", value = "$SEAN_VAULT;..." }
 ```
 
 Use it without putting either the vault password or service credential on the
@@ -117,12 +117,12 @@ command line:
 ```console
 seanstack \
   --secrets-file ./secrets.toml \
-  --secrets-password-file /run/secrets/seanvault-password \
+  --secrets-password-file /run/secrets/seanervault-password \
   package update private-package
 ```
 
 For interactive use, omit `--secrets-password-file`; Seanstack prompts for the
-SeanVault password. CI may use `--secrets-password-stdin` instead.
+Seanervault password. CI may use `--secrets-password-stdin` instead.
 
 Configure the Spack binary build caches from `config.toml` in the selected isolated state with:
 
@@ -162,7 +162,7 @@ local Spack configuration, redirects Spack user data, and places a transparent
 launcher first on `PATH`. The private tree contains the install store, build
 stages, source and miscellaneous caches, managed environments, and configuration.
 
-If the private build cache needs credentials, activate with the existing SeanVault
+If the private build cache needs credentials, activate with the existing Seanervault
 options, for example:
 
 ```console

@@ -36,7 +36,7 @@ spack install hdf5
 
 ## Activate with private build-cache credentials
 
-When configured build caches require SeanVault credentials, supply the vault while activating:
+When configured build caches require Seanervault credentials, supply the vault while activating:
 
 ```console
 eval "$(seanstack \
@@ -45,7 +45,7 @@ eval "$(seanstack \
     activate)"
 ```
 
-For interactive use, Seanstack prompts for the SeanVault password. The decrypted build-cache credentials are exported only into the activated session; they are not written into Spack configuration.
+For interactive use, Seanstack prompts for the Seanervault password. The decrypted build-cache credentials are exported only into the activated session; they are not written into Spack configuration.
 
 For a non-interactive session, use one of the existing password-source options instead of placing the vault password on the command line.
 

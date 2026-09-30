@@ -58,7 +58,7 @@ rather than a published release.
 
 ## Credentials
 
-seanstack depends on seanvault, which lives in the SEANERGYS package index
+seanstack depends on seanervault, which lives in the SEANERGYS package index
 rather than on PyPI, so the install step needs credentials for it. Export them
 before running anything; `run.sh` passes them into the container and warns when
 they are missing.

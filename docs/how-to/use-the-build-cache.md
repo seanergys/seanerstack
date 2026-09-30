@@ -4,12 +4,12 @@ Seanstack ships the SEANERGYS binary build cache as the `seanstack-buildcache` r
 
 ## Provide credentials
 
-The registry takes a GitLab personal access token: `read_registry` to install, `write_registry` to push (`api` covers both). Store it in SeanVault under the name the resource refers to:
+The registry takes a GitLab personal access token: `read_registry` to install, `write_registry` to push (`api` covers both). Store it in Seanervault under the name the resource refers to:
 
 ```toml
 [credentials.seanergys-registry]
 username = "oauth2"
-token = { __seanvault__ = "secret", value = "$SEAN_VAULT;..." }
+token = { __seanervault__ = "secret", value = "$SEAN_VAULT;..." }
 ```
 
 Activation with that vault exports the token into the session:
