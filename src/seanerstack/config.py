@@ -22,7 +22,7 @@ class Resource:
     @property
     def env_prefix(self) -> str:
         normalized = re.sub(r"[^A-Za-z0-9]+", "_", self.name).strip("_").upper()
-        return f"SEANSTACK_RESOURCE_{normalized}"
+        return f"SEANERSTACK_RESOURCE_{normalized}"
 
     @property
     def oci(self) -> bool:
@@ -45,7 +45,7 @@ class Config:
         try:
             return self.resources[name]
         except KeyError as error:
-            raise ValueError(f"unknown Seanstack resource: {name}") from error
+            raise ValueError(f"unknown Seanerstack resource: {name}") from error
 
 
 def default_config_path() -> Path:
@@ -55,7 +55,7 @@ def default_config_path() -> Path:
 def load_config(path: Path | None = None) -> Config:
     path = path or default_config_path()
     if not path.is_file():
-        raise ValueError(f"Seanstack config does not exist: {path}")
+        raise ValueError(f"Seanerstack config does not exist: {path}")
     data = tomllib.loads(path.read_text(encoding="utf-8"))
     raw_resources = data.get("resources", {})
     if not isinstance(raw_resources, dict):

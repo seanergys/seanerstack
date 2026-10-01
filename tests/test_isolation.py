@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 from pathlib import Path
 
-from seanstack.config import Config, Resource
-from seanstack.isolation import (
+from seanerstack.config import Config, Resource
+from seanerstack.isolation import (
     BUILTIN_REPO_GIT,
     activation_script,
     deactivation_script,
@@ -10,7 +10,7 @@ from seanstack.isolation import (
     prepare_isolation,
     spack_env,
 )
-from seanstack.secrets import SecretStore
+from seanerstack.secrets import SecretStore
 
 
 def test_activation_skips_build_caches_without_vault_credentials(tmp_path: Path):
@@ -37,8 +37,8 @@ def test_activation_skips_build_caches_without_vault_credentials(tmp_path: Path)
         environ={"PATH": "/usr/bin"},
     )
 
-    assert "export SEANSTACK_RESOURCE_PRESENT_PASSWORD=glpat" in script
-    assert "SEANSTACK_RESOURCE_ABSENT_PASSWORD" not in script
+    assert "export SEANERSTACK_RESOURCE_PRESENT_PASSWORD=glpat" in script
+    assert "SEANERSTACK_RESOURCE_ABSENT_PASSWORD" not in script
 
 
 def test_isolation_paths_never_default_to_home(tmp_path: Path):
@@ -96,19 +96,19 @@ def test_activation_makes_isolated_spack_default_and_deactivation_restores(tmp_p
     x = layout(state)
     assert f"export PATH={x.bin}:/usr/bin:/bin" in script
     assert f"export SPACK_USER_CONFIG_PATH={x.config}" in script
-    assert f"export SEANSTACK_REAL_SPACK={real_spack}" in script
+    assert f"export SEANERSTACK_REAL_SPACK={real_spack}" in script
 
     shim = (x.bin / "spack").read_text(encoding="utf-8")
-    assert 'exec "$SEANSTACK_REAL_SPACK" -C "$SEANSTACK_SPACK_CONFIG_DIR" "$@"' in shim
+    assert 'exec "$SEANERSTACK_REAL_SPACK" -C "$SEANERSTACK_SPACK_CONFIG_DIR" "$@"' in shim
 
     active = {
-        "SEANSTACK_ACTIVE": "1",
+        "SEANERSTACK_ACTIVE": "1",
         "PATH": f"{x.bin}:/usr/bin:/bin",
-        "SEANSTACK_SAVED_PATH_SET": "1",
-        "SEANSTACK_SAVED_PATH": "/usr/bin:/bin",
+        "SEANERSTACK_SAVED_PATH_SET": "1",
+        "SEANERSTACK_SAVED_PATH": "/usr/bin:/bin",
         "SPACK_USER_CACHE_PATH": str(x.cache),
-        "SEANSTACK_SAVED_SPACK_USER_CACHE_PATH_SET": "1",
-        "SEANSTACK_SAVED_SPACK_USER_CACHE_PATH": "/hostile/home/.spack",
+        "SEANERSTACK_SAVED_SPACK_USER_CACHE_PATH_SET": "1",
+        "SEANERSTACK_SAVED_SPACK_USER_CACHE_PATH": "/hostile/home/.spack",
     }
     deactivate = deactivation_script(active)
     assert "export PATH=/usr/bin:/bin" in deactivate
@@ -160,8 +160,8 @@ def test_activation_clears_an_inherited_disable_local_config(tmp_path: Path):
 
     assert "unset SPACK_DISABLE_LOCAL_CONFIG" in script
     # Saved, so deactivation can put it back.
-    assert "export SEANSTACK_SAVED_SPACK_DISABLE_LOCAL_CONFIG=true" in script
-    assert "export SEANSTACK_SAVED_SPACK_DISABLE_LOCAL_CONFIG_SET=1" in script
+    assert "export SEANERSTACK_SAVED_SPACK_DISABLE_LOCAL_CONFIG=true" in script
+    assert "export SEANERSTACK_SAVED_SPACK_DISABLE_LOCAL_CONFIG_SET=1" in script
 
 
 def test_private_scope_carries_the_builtin_repository(tmp_path: Path):
@@ -175,6 +175,6 @@ def test_private_scope_carries_the_builtin_repository(tmp_path: Path):
     repos = (x.config / "repos.yaml").read_text(encoding="utf-8")
     assert repos.startswith("repos::")
     assert BUILTIN_REPO_GIT in repos
-    assert "seanstack:" in repos
-    # Seanstack is listed first so its own recipes take precedence.
-    assert repos.index("seanstack:") < repos.index("builtin:")
+    assert "seanerstack:" in repos
+    # Seanerstack is listed first so its own recipes take precedence.
+    assert repos.index("seanerstack:") < repos.index("builtin:")

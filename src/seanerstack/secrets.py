@@ -21,13 +21,13 @@ class SecretStore:
         elif self.password_file is not None:
             value = self.password_file.read_text(encoding="utf-8")
         else:
-            value = getpass("SeanVault password: ")
+            value = getpass("Seanervault password: ")
         if value.endswith("\r\n"):
             value = value[:-2]
         elif value.endswith("\n"):
             value = value[:-1]
         if not value:
-            raise ValueError("SeanVault password must not be empty")
+            raise ValueError("Seanervault password must not be empty")
         return value
 
     def _load(self) -> dict[str, Any]:
@@ -35,9 +35,9 @@ class SecretStore:
             raise ValueError("resource requires credentials; provide --secrets-file FILE")
         if self._data is None:
             try:
-                from seanvault import load
+                from seanervault import load
             except ImportError as error:
-                raise RuntimeError("seanvault is required to read --secrets-file") from error
+                raise RuntimeError("seanervault is required to read --secrets-file") from error
             data = load(self.path, self._password())
             if not isinstance(data, dict):
                 raise ValueError(f"{self.path}: decrypted secrets root must be a mapping")

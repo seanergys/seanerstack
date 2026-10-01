@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-import seanstack.sync as sync
-from seanstack.recipe import parse_recipe
+import seanerstack.sync as sync
+from seanerstack.recipe import parse_recipe
 
 
 def _repo(tmp_path: Path) -> Path:
-    repo = tmp_path / "spack_repo" / "seanstack"
+    repo = tmp_path / "spack_repo" / "seanerstack"
     package = repo / "packages" / "demo"
     package.mkdir(parents=True)
     (package / "package.py").write_text(
@@ -56,7 +56,7 @@ ARCHIVE_URL = "https://example.invalid/demo/-/archive/v0.2.1/demo-v0.2.1.tar.gz"
 
 
 def _archive_repo(tmp_path: Path, extra: str = "") -> Path:
-    repo = tmp_path / "spack_repo" / "seanstack"
+    repo = tmp_path / "spack_repo" / "seanerstack"
     package = repo / "packages" / "demo"
     package.mkdir(parents=True)
     (package / "package.py").write_text(

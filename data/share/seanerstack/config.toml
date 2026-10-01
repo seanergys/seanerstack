@@ -1,28 +1,28 @@
 # SPDX-License-Identifier: Apache-2.0
 # External resources are named here. Recipes and build-cache configuration refer
-# to the resource name; credential values live only in the SeanVault file.
+# to the resource name; credential values live only in the Seanervault file.
 
 # Private SEANERGYS Git resource. A recipe names the resource, never the
-# credential; the token itself lives in the SeanVault file under the credential
-# name below. Seanstack authenticates `git ls-remote` with it, and sends it as
+# credential; the token itself lives in the Seanervault file under the credential
+# name below. Seanerstack authenticates `git ls-remote` with it, and sends it as
 # the PRIVATE-TOKEN header when downloading a release archive to checksum it.
 [resources.seanergys-gitlab]
 kind = "git"
 url = "https://gitlab.seanergys.fz-juelich.de/"
 credentials = "seanergys-gitlab"
 
-# Project binary build cache in the seanstack GitLab container registry. Spack
+# Project binary build cache in the seanerstack GitLab container registry. Spack
 # cannot sign OCI build caches, so registry access control is the trust boundary.
-[resources.seanstack-buildcache]
+[resources.seanerstack-buildcache]
 kind = "spack-buildcache"
-url = "oci://registry.seanergys.fz-juelich.de/software/seanstack/buildcache"
+url = "oci://registry.seanergys.fz-juelich.de/software/seanerstack/buildcache"
 credentials = "seanergys-registry"
 signed = false
 
 # Example S3-backed Spack binary build cache:
 # [resources.jsc-buildcache]
 # kind = "spack-buildcache"
-# url = "s3://seanstack-buildcache"
+# url = "s3://seanerstack-buildcache"
 # endpoint_url = "https://objectstore.example.org"
 # credentials = "jsc-objectstore"
 # autopush = true

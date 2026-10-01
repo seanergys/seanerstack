@@ -33,7 +33,7 @@ def _cli_pages(command: str, parser: argparse.ArgumentParser):
 
 def generate_cli() -> None:
     parser = build_parser()
-    pages = list(_cli_pages("seanstack", parser))
+    pages = list(_cli_pages("seanerstack", parser))
     links: list[str] = []
     for command, command_parser in pages:
         slug = command.replace(" ", "-")
@@ -63,7 +63,7 @@ def generate_packages() -> None:
         recipe = parse_recipe(path)
         links.append(f"- [{name}]({name}.md)")
         attrs = []
-        for key in ("homepage", "git", "url", "pypi", "seanstack_resource"):
+        for key in ("homepage", "git", "url", "pypi", "seanerstack_resource"):
             if key in recipe.attributes:
                 attrs.append(f"- **{key}:** `{recipe.attributes[key]}`")
         content = f"""# {name}
@@ -74,7 +74,7 @@ def generate_packages() -> None:
 
 {chr(10).join(attrs) if attrs else '_No source attributes found._'}
 
-Recipe: `share/seanstack/{path.relative_to(root)}`
+Recipe: `share/seanerstack/{path.relative_to(root)}`
 
 ## Versions
 
@@ -120,7 +120,7 @@ def generate_environments() -> None:
         develop = spack.get("develop")
         content = f"""# {directory.name}
 
-Manifest: `share/seanstack/{manifest.relative_to(root)}`
+Manifest: `share/seanerstack/{manifest.relative_to(root)}`
 
 ## Root specs
 

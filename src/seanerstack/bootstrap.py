@@ -74,7 +74,7 @@ def _compiler_name(compiler: str) -> str:
 
 
 def _set_language_requirement(command: list[str], language: str, compiler: str, env) -> None:
-    # Remove an earlier Seanstack-style single requirement before adding the new
+    # Remove an earlier Seanerstack-style single requirement before adding the new
     # one. A missing path is harmless and is intentionally ignored.
     _run(
         [*command, "config", "remove", f"packages:{language}:require"],

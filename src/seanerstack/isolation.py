@@ -55,17 +55,17 @@ def layout(state_dir: Path) -> SpackLayout:
 def resolve_state_dir(value: Path | None) -> Path:
     if value is not None:
         return value.expanduser().resolve()
-    raw = os.environ.get("SEANSTACK_STATE_DIR")
+    raw = os.environ.get("SEANERSTACK_STATE_DIR")
     if raw:
         return Path(raw).expanduser().resolve()
-    raise ValueError("Spack isolation requires --state-dir DIR or SEANSTACK_STATE_DIR")
+    raise ValueError("Spack isolation requires --state-dir DIR or SEANERSTACK_STATE_DIR")
 
 
 def resolve_real_spack(explicit: Path | None = None) -> Path:
     if explicit is not None:
         path = explicit.expanduser().resolve()
-    elif os.environ.get("SEANSTACK_REAL_SPACK"):
-        path = Path(os.environ["SEANSTACK_REAL_SPACK"]).expanduser().resolve()
+    elif os.environ.get("SEANERSTACK_REAL_SPACK"):
+        path = Path(os.environ["SEANERSTACK_REAL_SPACK"]).expanduser().resolve()
     else:
         found = shutil.which("spack")
         if not found:
@@ -92,7 +92,7 @@ def prepare_isolation(state_dir: Path, real_spack: Path) -> SpackLayout:
         directory.mkdir(parents=True, exist_ok=True)
 
     # Double-colon keys intentionally replace lower-precedence configuration,
-    # preventing site/instance/user configuration from merging into SeanStack.
+    # preventing site/instance/user configuration from merging into Seanerstack.
     _write_if_missing(
         x.config / "config.yaml",
         "config::\n"
@@ -115,13 +115,13 @@ def prepare_isolation(state_dir: Path, real_spack: Path) -> SpackLayout:
     _write_if_missing(x.config / "concretizer.yaml", "concretizer:\n  reuse: false\n")
     # The private scope replaces lower-precedence configuration, so it has to
     # carry `builtin` itself. Spack's defaults declare it as a git remote, and
-    # without it no package loads at all: Seanstack recipes, and every recipe
-    # they depend on, import from spack_repo.builtin. Seanstack comes first so
+    # without it no package loads at all: Seanerstack recipes, and every recipe
+    # they depend on, import from spack_repo.builtin. Seanerstack comes first so
     # its own recipes take precedence.
     _write_if_missing(
         x.config / "repos.yaml",
         "repos::\n"
-        f"  seanstack: {repository_path()}\n"
+        f"  seanerstack: {repository_path()}\n"
         f"  builtin:\n    git: {BUILTIN_REPO_GIT}\n",
     )
 
@@ -129,11 +129,11 @@ def prepare_isolation(state_dir: Path, real_spack: Path) -> SpackLayout:
     _write(
         shim,
         "#!/bin/sh\n"
-        'if [ -z "${SEANSTACK_REAL_SPACK:-}" ] || [ -z "${SEANSTACK_SPACK_CONFIG_DIR:-}" ]; then\n'
-        '  echo "seanstack: isolated spack launcher requires an activated SeanStack environment" >&2\n'
+        'if [ -z "${SEANERSTACK_REAL_SPACK:-}" ] || [ -z "${SEANERSTACK_SPACK_CONFIG_DIR:-}" ]; then\n'
+        '  echo "seanerstack: isolated spack launcher requires an activated Seanerstack environment" >&2\n'
         "  exit 2\n"
         "fi\n"
-        'exec "$SEANSTACK_REAL_SPACK" -C "$SEANSTACK_SPACK_CONFIG_DIR" "$@"\n',
+        'exec "$SEANERSTACK_REAL_SPACK" -C "$SEANERSTACK_SPACK_CONFIG_DIR" "$@"\n',
     )
     shim.chmod(shim.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return x
@@ -171,16 +171,16 @@ def activation_script(
     environ: Mapping[str, str] | None = None,
 ) -> str:
     env = dict(os.environ if environ is None else environ)
-    if env.get("SEANSTACK_ACTIVE") == "1":
-        raise ValueError("SeanStack is already active; deactivate it before activating another state directory")
+    if env.get("SEANERSTACK_ACTIVE") == "1":
+        raise ValueError("Seanerstack is already active; deactivate it before activating another state directory")
     x = prepare_isolation(state_dir, real_spack)
 
     changes = spack_env(x)
     changes.update({
-        "SEANSTACK_ACTIVE": "1",
-        "SEANSTACK_STATE_DIR": str(x.state),
-        "SEANSTACK_REAL_SPACK": str(real_spack),
-        "SEANSTACK_SPACK_CONFIG_DIR": str(x.config),
+        "SEANERSTACK_ACTIVE": "1",
+        "SEANERSTACK_STATE_DIR": str(x.state),
+        "SEANERSTACK_REAL_SPACK": str(real_spack),
+        "SEANERSTACK_SPACK_CONFIG_DIR": str(x.config),
         "PATH": f"{x.bin}{os.pathsep}{env.get('PATH', '')}",
     })
     if secrets is not None and secrets.path is not None:
@@ -195,8 +195,8 @@ def activation_script(
 
     lines = []
     for name in (*changes, *UNSET_ON_ACTIVATION):
-        marker = f"SEANSTACK_SAVED_{name}_SET"
-        saved = f"SEANSTACK_SAVED_{name}"
+        marker = f"SEANERSTACK_SAVED_{name}_SET"
+        saved = f"SEANERSTACK_SAVED_{name}"
         if name in env:
             lines.extend((_export(marker, "1"), _export(saved, env[name])))
         else:
@@ -208,19 +208,19 @@ def activation_script(
 
 def deactivation_script(environ: Mapping[str, str] | None = None) -> str:
     env = dict(os.environ if environ is None else environ)
-    if env.get("SEANSTACK_ACTIVE") != "1":
-        raise ValueError("SeanStack is not active")
+    if env.get("SEANERSTACK_ACTIVE") != "1":
+        raise ValueError("Seanerstack is not active")
 
     managed = [
         "SPACK_DISABLE_LOCAL_CONFIG", "SPACK_USER_CONFIG_PATH", "SPACK_SYSTEM_CONFIG_PATH",
-        "SPACK_USER_CACHE_PATH", "SEANSTACK_ACTIVE", "SEANSTACK_STATE_DIR",
-        "SEANSTACK_REAL_SPACK", "SEANSTACK_SPACK_CONFIG_DIR", "PATH",
+        "SPACK_USER_CACHE_PATH", "SEANERSTACK_ACTIVE", "SEANERSTACK_STATE_DIR",
+        "SEANERSTACK_REAL_SPACK", "SEANERSTACK_SPACK_CONFIG_DIR", "PATH",
     ]
-    managed.extend(name for name in env if name.startswith("SEANSTACK_RESOURCE_") and not name.startswith("SEANSTACK_SAVED_"))
+    managed.extend(name for name in env if name.startswith("SEANERSTACK_RESOURCE_") and not name.startswith("SEANERSTACK_SAVED_"))
     lines = []
     for name in dict.fromkeys(managed):
-        marker = f"SEANSTACK_SAVED_{name}_SET"
-        saved = f"SEANSTACK_SAVED_{name}"
+        marker = f"SEANERSTACK_SAVED_{name}_SET"
+        saved = f"SEANERSTACK_SAVED_{name}"
         if env.get(marker) == "1":
             lines.append(_export(name, env.get(saved, "")))
         else:

@@ -1,14 +1,14 @@
 # Architecture
 
-Seanstack combines curated native Spack content for SEANERGYS with the small amount of tooling required to prepare, isolate, and maintain it.
+Seanerstack combines curated native Spack content for SEANERGYS with the small amount of tooling required to prepare, isolate, and maintain it.
 
 ## Curated Spack content
 
-Seanstack ships native Spack content under `share/seanstack`:
+Seanerstack ships native Spack content under `share/seanerstack`:
 
 ```text
-share/seanstack/
-├── spack_repo/seanstack/
+share/seanerstack/
+├── spack_repo/seanerstack/
 │   ├── repo.yaml
 │   └── packages/
 └── environments/
@@ -16,11 +16,11 @@ share/seanstack/
 
 The package recipes define the packages curated by SEANERGYS. The environments define project contexts used for development and, as deployment environments are added, deployment.
 
-These remain ordinary Spack artifacts. Seanstack determines which artifacts SEANERGYS ships; Spack determines their package and environment semantics.
+These remain ordinary Spack artifacts. Seanerstack determines which artifacts SEANERGYS ships; Spack determines their package and environment semantics.
 
 ## Private Spack state
 
-Seanstack keeps the mutable Spack setup separate from the installed curated content. The user chooses a state directory, and Seanstack creates the private Spack configuration, store, stages, caches, and managed environments below it.
+Seanerstack keeps the mutable Spack setup separate from the installed curated content. The user chooses a state directory, and Seanerstack creates the private Spack configuration, store, stages, caches, and managed environments below it.
 
 ```text
 <state-dir>/spack/
@@ -37,7 +37,7 @@ This boundary prevents a user's existing `~/.spack` configuration, mirrors, exte
 
 ## Preparation and maintenance tooling
 
-The `seanstack` command handles project-specific operations around native Spack:
+The `seanerstack` command handles project-specific operations around native Spack:
 
 ```text
 package update        upstream Git -> curated package.py
@@ -55,4 +55,4 @@ paths repo
 paths env --package <package>
 ```
 
-Seanstack is therefore not a replacement command language for Spack. Activation establishes the configuration and state boundary; users then invoke ordinary `spack` commands to concretize, install, develop, and deploy software.
+Seanerstack is therefore not a replacement command language for Spack. Activation establishes the configuration and state boundary; users then invoke ordinary `spack` commands to concretize, install, develop, and deploy software.

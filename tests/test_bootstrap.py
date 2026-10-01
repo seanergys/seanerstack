@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-import seanstack.bootstrap as bootstrap_module
+import seanerstack.bootstrap as bootstrap_module
 
 
 COMMAND = ["/opt/spack/bin/spack", "-C", "/state/spack/config"]

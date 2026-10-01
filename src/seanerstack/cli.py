@@ -23,33 +23,33 @@ def _add_secret_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--config-file",
         type=Path,
-        help="Seanstack config.toml (default: installed share/seanstack/config.toml)",
+        help="Seanerstack config.toml (default: installed share/seanerstack/config.toml)",
     )
     parser.add_argument(
         "--secrets-file",
         type=Path,
-        help="SeanVault file containing credentials referenced by config.toml",
+        help="Seanervault file containing credentials referenced by config.toml",
     )
     source = parser.add_mutually_exclusive_group()
     source.add_argument(
         "--secrets-password-file",
         type=Path,
-        help="read the SeanVault password from FILE instead of prompting",
+        help="read the Seanervault password from FILE instead of prompting",
     )
     source.add_argument(
         "--secrets-password-stdin",
         action="store_true",
-        help="read the SeanVault password from stdin instead of prompting",
+        help="read the Seanervault password from stdin instead of prompting",
     )
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="seanstack",
+        prog="seanerstack",
         description="Maintain and use the curated SEANERGYS Spack stack.",
     )
     _add_secret_options(parser)
-    parser.add_argument("--state-dir", type=Path, help="private SeanStack state directory (or SEANSTACK_STATE_DIR)")
+    parser.add_argument("--state-dir", type=Path, help="private Seanerstack state directory (or SEANERSTACK_STATE_DIR)")
     parser.add_argument("--spack-executable", type=Path, help="real Spack executable to use for the isolated session")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -64,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     update_parser.add_argument("package", nargs="?", help="package to update")
-    update_parser.add_argument("--all", action="store_true", help="update every Seanstack package")
+    update_parser.add_argument("--all", action="store_true", help="update every Seanerstack package")
     update_parser.add_argument("--check", action="store_true", help="report drift without changing files; return non-zero on drift")
     update_parser.add_argument("--dry-run", action="store_true", help="show what would change without changing files")
 
@@ -104,10 +104,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="language requirement to validate; repeat as needed (default: c, cxx, fortran)",
     )
 
-    paths_parser = subparsers.add_parser("paths", help="Print installed Seanstack paths.")
+    paths_parser = subparsers.add_parser("paths", help="Print installed Seanerstack paths.")
     paths_sub = paths_parser.add_subparsers(dest="paths_command", required=True)
-    paths_sub.add_parser("share", help="Print the installed Seanstack share directory.")
-    paths_sub.add_parser("repo", help="Print the native Seanstack Spack repository path.")
+    paths_sub.add_parser("share", help="Print the installed Seanerstack share directory.")
+    paths_sub.add_parser("repo", help="Print the native Seanerstack Spack repository path.")
     env_parser = paths_sub.add_parser("env", help="Print the path of a shipped Spack environment.")
     selector = env_parser.add_mutually_exclusive_group(required=True)
     selector.add_argument("--package", help="select the unique environment whose root specs contain PACKAGE")
@@ -116,9 +116,9 @@ def build_parser() -> argparse.ArgumentParser:
     cache_parser = subparsers.add_parser("buildcache", help="Configure and verify Spack binary build caches.")
     cache_sub = cache_parser.add_subparsers(dest="buildcache_command", required=True)
     cache_sub.add_parser("configure", help="Install configured build-cache mirrors into the isolated Spack configuration.")
-    cache_sub.add_parser("check", help="Check access to configured build caches using session or SeanVault credentials.")
+    cache_sub.add_parser("check", help="Check access to configured build caches using session or Seanervault credentials.")
 
-    subparsers.add_parser("activate", help="Emit shell code that activates an isolated SeanStack Spack session.")
+    subparsers.add_parser("activate", help="Emit shell code that activates an isolated Seanerstack Spack session.")
     subparsers.add_parser("deactivate", help="Emit shell code that restores the shell state saved by activation.")
 
     return parser
@@ -218,7 +218,7 @@ def _run_envpath(args: argparse.Namespace) -> int:
     if args.environment:
         path = root / args.environment
         if not (path / "spack.yaml").is_file():
-            raise ValueError(f"unknown Seanstack environment: {args.environment}")
+            raise ValueError(f"unknown Seanerstack environment: {args.environment}")
         print(path)
         return 0
 
@@ -229,10 +229,10 @@ def _run_envpath(args: argparse.Namespace) -> int:
         if package in _environment_packages(path)
     ]
     if not matches:
-        raise ValueError(f"no Seanstack environment contains root package {args.package!r}")
+        raise ValueError(f"no Seanerstack environment contains root package {args.package!r}")
     if len(matches) > 1:
         names = ", ".join(path.name for path in matches)
-        raise ValueError(f"multiple Seanstack environments contain {args.package!r}: {names}; use --environment")
+        raise ValueError(f"multiple Seanerstack environments contain {args.package!r}: {names}; use --environment")
     print(matches[0])
     return 0
 
@@ -313,7 +313,7 @@ def main(argv: list[str] | None = None) -> None:
             parser.error(f"unknown command: {args.command}")
             return
     except (RuntimeError, ValueError, OSError, subprocess.CalledProcessError) as error:
-        print(f"seanstack: error: {error}", file=sys.stderr)
+        print(f"seanerstack: error: {error}", file=sys.stderr)
         code = 2
     raise SystemExit(code)
 

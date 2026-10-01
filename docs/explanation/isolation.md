@@ -1,17 +1,17 @@
 # Spack isolation
 
-Seanstack treats a selected state directory as the complete mutable Spack state for a SEANERGYS session. This prevents an existing user or system Spack setup from changing concretization or causing packages to be reused accidentally.
+Seanerstack treats a selected state directory as the complete mutable Spack state for a SEANERGYS session. This prevents an existing user or system Spack setup from changing concretization or causing packages to be reused accidentally.
 
 There are two separate isolation guarantees.
 
 ## Configuration isolation
 
-Seanstack does not use the normal user or system Spack configuration for managed operations. In particular, configuration from locations such as `~/.spack` and `/etc/spack` is not part of the Seanstack session.
+Seanerstack does not use the normal user or system Spack configuration for managed operations. In particular, configuration from locations such as `~/.spack` and `/etc/spack` is not part of the Seanerstack session.
 
-The private configuration starts with Seanstack-controlled package repositories, no inherited mirrors or upstream stores, and no inherited package configuration or externals. Compiler requirements and build-cache configuration written by Seanstack are stored in this private configuration.
+The private configuration starts with Seanerstack-controlled package repositories, no inherited mirrors or upstream stores, and no inherited package configuration or externals. Compiler requirements and build-cache configuration written by Seanerstack are stored in this private configuration.
 
 ```text
-normal user/system Spack configuration       Seanstack configuration
+normal user/system Spack configuration       Seanerstack configuration
 
 ~/.spack/                         X          <state-dir>/spack/config/
 /etc/spack/                       X                    |
@@ -23,11 +23,11 @@ user upstreams                   X                    +-- mirrors.yaml
                                                       +-- repos.yaml
 ```
 
-Seanstack sets `SPACK_DISABLE_LOCAL_CONFIG` and supplies its private configuration explicitly to Spack. The generated configuration uses replacement sections where necessary so lower-precedence configuration is not merged into the Seanstack view.
+Seanerstack sets `SPACK_DISABLE_LOCAL_CONFIG` and supplies its private configuration explicitly to Spack. The generated configuration uses replacement sections where necessary so lower-precedence configuration is not merged into the Seanerstack view.
 
 ## State and store isolation
 
-All mutable Spack state controlled by Seanstack is redirected below the selected state directory:
+All mutable Spack state controlled by Seanerstack is redirected below the selected state directory:
 
 ```text
 <state-dir>/
@@ -44,21 +44,21 @@ All mutable Spack state controlled by Seanstack is redirected below the selected
 
 The install tree, build stages, source cache, miscellaneous cache, test stage, and managed-environment root therefore do not reuse corresponding state from another Spack setup.
 
-Seanstack also initializes the concretizer with reuse disabled. Packages are not selected merely because a matching installation exists in another store or build cache. Build caches used by the stack must be configured explicitly as Seanstack resources.
+Seanerstack also initializes the concretizer with reuse disabled. Packages are not selected merely because a matching installation exists in another store or build cache. Build caches used by the stack must be configured explicitly as Seanerstack resources.
 
-The Spack executable itself can live outside the state directory. It is executable code, not mutable package state. Seanstack records the selected executable and invokes it with the isolated configuration and state paths.
+The Spack executable itself can live outside the state directory. It is executable code, not mutable package state. Seanerstack records the selected executable and invokes it with the isolated configuration and state paths.
 
 ## Why activation exists
 
-A command such as `seanstack toolchain bootstrap` can inject the isolation settings into the Spack subprocess it starts. Normal development is different: users should be able to invoke the native `spack` CLI directly.
+A command such as `seanerstack toolchain bootstrap` can inject the isolation settings into the Spack subprocess it starts. Normal development is different: users should be able to invoke the native `spack` CLI directly.
 
 Activation bridges that boundary:
 
 ```console
-eval "$(seanstack --state-dir /path/to/seanstack-state activate)"
+eval "$(seanerstack --state-dir /path/to/seanerstack-state activate)"
 ```
 
-The activated shell places a small Seanstack-generated `spack` launcher first on `PATH`. The launcher preserves the complete native Spack command line while always supplying the private configuration. Environment variables redirect the remaining user state into the selected state directory.
+The activated shell places a small Seanerstack-generated `spack` launcher first on `PATH`. The launcher preserves the complete native Spack command line while always supplying the private configuration. Environment variables redirect the remaining user state into the selected state directory.
 
 Consequently these remain ordinary Spack commands:
 
@@ -68,39 +68,39 @@ spack install hdf5
 spack find
 ```
 
-They do not need to be written as `seanstack spack ...`.
+They do not need to be written as `seanerstack spack ...`.
 
 ## State-directory selection
 
-Seanstack deliberately has no implicit home-directory state location. Select the state directory explicitly:
+Seanerstack deliberately has no implicit home-directory state location. Select the state directory explicitly:
 
 ```console
-seanstack --state-dir /path/to/seanstack-state toolchain bootstrap gcc@15
+seanerstack --state-dir /path/to/seanerstack-state toolchain bootstrap gcc@15
 ```
 
 or set it for the shell:
 
 ```console
-export SEANSTACK_STATE_DIR=/path/to/seanstack-state
+export SEANERSTACK_STATE_DIR=/path/to/seanerstack-state
 ```
 
 After that, commands that need Spack can omit `--state-dir`:
 
 ```console
-seanstack toolchain bootstrap gcc@15
-seanstack validate --compiler gcc@15 --spack
+seanerstack toolchain bootstrap gcc@15
+seanerstack validate --compiler gcc@15 --spack
 ```
 
-This makes the isolation boundary visible and prevents Seanstack from silently falling back to `$HOME`.
+This makes the isolation boundary visible and prevents Seanerstack from silently falling back to `$HOME`.
 
 ## Deactivation
 
 Leave the isolated session with:
 
 ```console
-eval "$(seanstack deactivate)"
+eval "$(seanerstack deactivate)"
 ```
 
-Seanstack restores the values that were present before activation, including `PATH` and the Spack-related environment variables it manages.
+Seanerstack restores the values that were present before activation, including `PATH` and the Spack-related environment variables it manages.
 
-Only one Seanstack session may be active in a shell at a time. Deactivate the current session before activating a different state directory.
+Only one Seanerstack session may be active in a shell at a time. Deactivate the current session before activating a different state directory.

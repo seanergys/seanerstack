@@ -15,7 +15,7 @@ test:
   script:
     - uv sync --group dev
     - uv run pytest
-    - uv run seanstack validate
+    - uv run seanerstack validate
 
 docs:
   stage: docs
@@ -47,7 +47,7 @@ publish:
     - when: never
   script:
     - VERSION="${CI_COMMIT_TAG#v}"
-    - echo "Publishing seanstack ${VERSION} to GitLab PyPI"
+    - echo "Publishing seanerstack ${VERSION} to GitLab PyPI"
     - uv version "${VERSION}" --frozen
     - uv build --no-sources
     - >-

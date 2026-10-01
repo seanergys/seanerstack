@@ -4,7 +4,7 @@ requires = ["uv_build>=0.10,<0.11"]
 build-backend = "uv_build"
 
 [project]
-name = "seanstack"
+name = "seanerstack"
 version = "0.1.0"
 description = "Curated Spack recipes and environments for SEANERGYS, with synchronization, bootstrap, and validation tooling."
 readme = "README.md"
@@ -13,11 +13,11 @@ license = "Apache-2.0"
 dependencies = [
   "packaging>=24",
   "PyYAML>=6",
-  "seanvault>=0.1.0",
+  "seanervault>=0.1.0",
 ]
 
 [project.scripts]
-seanstack = "seanstack.cli:main"
+seanerstack = "seanerstack.cli:main"
 
 [dependency-groups]
 dev = [
@@ -33,7 +33,7 @@ docs = [
 
 # Install the curated Spack repository and environments outside site-packages.
 # The contents of data/ are installed relative to the Python environment prefix,
-# yielding <prefix>/share/seanstack/...
+# yielding <prefix>/share/seanerstack/...
 [tool.uv.build-backend]
 data = { data = "data" }
 
@@ -47,4 +47,4 @@ url = "https://gitlab.seanergys.fz-juelich.de/api/v4/groups/158/-/packages/pypi/
 explicit = true
 
 [tool.uv.sources]
-seanvault = { index = "seanergys" }
+seanervault = { index = "seanergys" }

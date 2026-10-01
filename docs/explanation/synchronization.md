@@ -1,10 +1,10 @@
 # Synchronization
 
-Seanstack's package recipes are authoritative for the SEANERGYS stack, while upstream Git repositories are authoritative for their tags and tracked branches.
+Seanerstack's package recipes are authoritative for the SEANERGYS stack, while upstream Git repositories are authoritative for their tags and tracked branches.
 
-`seanstack package update` keeps those two sources aligned without introducing another package metadata file.
+`seanerstack package update` keeps those two sources aligned without introducing another package metadata file.
 
-For each recipe, Seanstack reads:
+For each recipe, Seanerstack reads:
 
 - the upstream Git repository from the recipe;
 - tracked development branches from branch-backed `version` directives;
@@ -33,10 +33,10 @@ version("0.2.1", sha256="3a5c...")
 
 Upstream tags are still read from `git`. The release-tag convention comes from the `url` path segment holding one of the recipe's `sha256` versions; when several segments hold it, the one naming an existing upstream tag is used. Here `v0.2.1` establishes `v{version}`.
 
-For a new tag, Seanstack substitutes the version into `url` as Spack does, downloads the archive, and adds `version("X", sha256="...")`. Only gzip archives (`.tar.gz`) are supported; any other download, such as a sign-in page, is an error. `--check`, `--dry-run`, and `validate --online` only report missing releases; they download nothing and do not re-verify existing checksums.
+For a new tag, Seanerstack substitutes the version into `url` as Spack does, downloads the archive, and adds `version("X", sha256="...")`. Only gzip archives (`.tar.gz`) are supported; any other download, such as a sign-in page, is an error. `--check`, `--dry-run`, and `validate --online` only report missing releases; they download nothing and do not re-verify existing checksums.
 
 A recipe that mixes `tag=` and `sha256=` releases is rejected.
 
 GitLab generates `/-/archive/` tarballs on demand. They are byte-stable today, but a GitLab upgrade could change them and invalidate recorded checksums.
 
-If the existing recipe does not establish one unambiguous convention, synchronization fails rather than creating Seanstack-specific synchronization metadata.
+If the existing recipe does not establish one unambiguous convention, synchronization fails rather than creating Seanerstack-specific synchronization metadata.

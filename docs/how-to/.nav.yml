@@ -4,4 +4,4 @@ nav:
   - Activate isolated Spack: activate-isolated-spack.md
   - Work on a package: work-on-a-package.md
   - Synchronize a package recipe: sync-a-package.md
-  - Validate Seanstack changes: validate-the-stack.md
+  - Validate Seanerstack changes: validate-the-stack.md

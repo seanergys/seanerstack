@@ -4,10 +4,10 @@
 # Verification workflow for the "Onboard Flux-Core" work item, run inside the
 # Rocky Linux 9 image built from the Dockerfile next to this script.
 #
-# SEANSTACK_MODE selects what the workflow does:
+# SEANERSTACK_MODE selects what the workflow does:
 #
 #   concretize  (default)  Everything up to `spack concretize`, plus
-#                          `seanstack validate --spack`. Installs nothing.
+#                          `seanerstack validate --spack`. Installs nothing.
 #                          Minutes.
 #
 #   install                Additionally runs `spack install` and a smoke test,
@@ -26,10 +26,10 @@
 #
 #   uninstall              Removes an installed flux-core from the Spack store
 #                          again, so the install can be repeated from scratch.
-#                          Set SEANSTACK_GC=1 to also collect the dependencies
+#                          Set SEANERSTACK_GC=1 to also collect the dependencies
 #                          that are left orphaned. Seconds to minutes.
 #
-# SEANSTACK_CACHE adds the project build cache (seanstack-buildcache) to
+# SEANERSTACK_CACHE adds the project build cache (seanerstack-buildcache) to
 # install and full:
 #
 #   none  (default)  Build from source as usual.
@@ -39,7 +39,7 @@
 #                    cache serves the whole stack.
 #
 # A binary is used only for an identical spec, recipes included. Set
-# SEANSTACK_BUILTIN_COMMIT on an `only` run to the builtin repository commit
+# SEANERSTACK_BUILTIN_COMMIT on an `only` run to the builtin repository commit
 # the `push` run printed.
 #
 # NOTE ON THE COMPILER
@@ -52,26 +52,26 @@
 # verification.
 set -euo pipefail
 
-MODE="${SEANSTACK_MODE:-concretize}"
-JOBS="${SEANSTACK_JOBS:-$(nproc)}"
-GC="${SEANSTACK_GC:-0}"
-SOLVE_TIMEOUT="${SEANSTACK_SOLVE_TIMEOUT:-600}"
-CACHE="${SEANSTACK_CACHE:-none}"
-BUILTIN_COMMIT="${SEANSTACK_BUILTIN_COMMIT:-}"
-CACHE_NAME=seanstack-buildcache
+MODE="${SEANERSTACK_MODE:-concretize}"
+JOBS="${SEANERSTACK_JOBS:-$(nproc)}"
+GC="${SEANERSTACK_GC:-0}"
+SOLVE_TIMEOUT="${SEANERSTACK_SOLVE_TIMEOUT:-600}"
+CACHE="${SEANERSTACK_CACHE:-none}"
+BUILTIN_COMMIT="${SEANERSTACK_BUILTIN_COMMIT:-}"
+CACHE_NAME=seanerstack-buildcache
 
 case "$MODE" in
     concretize|install|full|uninstall) ;;
-    *) echo "SEANSTACK_MODE must be concretize, install, full or uninstall (got '$MODE')" >&2; exit 2 ;;
+    *) echo "SEANERSTACK_MODE must be concretize, install, full or uninstall (got '$MODE')" >&2; exit 2 ;;
 esac
 
 case "$CACHE" in
     none|push|only) ;;
-    *) echo "SEANSTACK_CACHE must be none, push or only (got '$CACHE')" >&2; exit 2 ;;
+    *) echo "SEANERSTACK_CACHE must be none, push or only (got '$CACHE')" >&2; exit 2 ;;
 esac
 
 if [[ "$CACHE" != none && "$MODE" != install && "$MODE" != full ]]; then
-    echo "SEANSTACK_CACHE=$CACHE needs mode install or full (got '$MODE')" >&2
+    echo "SEANERSTACK_CACHE=$CACHE needs mode install or full (got '$MODE')" >&2
     exit 2
 fi
 
@@ -85,16 +85,16 @@ builtin_commit() {
 
 step "mode: $MODE, build cache: $CACHE, build jobs: $JOBS"
 
-step "install seanstack from the mounted source checkout"
-uv tool install --force --quiet --from /src seanstack
+step "install seanerstack from the mounted source checkout"
+uv tool install --force --quiet --from /src seanerstack
 export PATH="/root/.local/bin:$PATH"
 
-# Everything below runs against the isolated Spack state in $SEANSTACK_STATE_DIR
+# Everything below runs against the isolated Spack state in $SEANERSTACK_STATE_DIR
 # rather than ~/.spack. Activation exports the configuration Spack must use, so
-# it has to happen before any spack command. The Seanstack repository comes with
+# it has to happen before any spack command. The Seanerstack repository comes with
 # that configuration; registering it by hand would defeat the isolation.
-step "seanstack activate   (state: $SEANSTACK_STATE_DIR)"
-eval "$(seanstack activate)"
+step "seanerstack activate   (state: $SEANERSTACK_STATE_DIR)"
+eval "$(seanerstack activate)"
 spack config get repos
 
 # The isolated configuration starts with `packages:: {}`, which drops the
@@ -118,21 +118,21 @@ if [[ -n "$BUILTIN_COMMIT" ]]; then
     step "pin builtin package repository to $BUILTIN_COMMIT"
     spack repo update --scope user --commit "$BUILTIN_COMMIT" builtin
     # Spack rewrites repos.yaml without the `::` that keeps other scopes out.
-    sed -i 's/^repos:$/repos::/' "$SEANSTACK_STATE_DIR/spack/config/repos.yaml"
+    sed -i 's/^repos:$/repos::/' "$SEANERSTACK_STATE_DIR/spack/config/repos.yaml"
 fi
 
 if [[ "$CACHE" != none ]]; then
     step "build cache: configure $CACHE_NAME"
     # The mirror stores only variable names; the GitLab token is the registry password.
-    export SEANSTACK_RESOURCE_SEANSTACK_BUILDCACHE_USERNAME="${UV_INDEX_SEANERGYS_USERNAME:?the build cache needs UV_INDEX_SEANERGYS_USERNAME}"
-    export SEANSTACK_RESOURCE_SEANSTACK_BUILDCACHE_PASSWORD="${UV_INDEX_SEANERGYS_PASSWORD:?the build cache needs UV_INDEX_SEANERGYS_PASSWORD}"
-    seanstack buildcache configure
+    export SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME="${UV_INDEX_SEANERGYS_USERNAME:?the build cache needs UV_INDEX_SEANERGYS_USERNAME}"
+    export SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD="${UV_INDEX_SEANERGYS_PASSWORD:?the build cache needs UV_INDEX_SEANERGYS_PASSWORD}"
+    seanerstack buildcache configure
     spack mirror list
 fi
 
 if [[ "$CACHE" == only ]]; then
     step "build cache: check"
-    seanstack buildcache check
+    seanerstack buildcache check
 fi
 
 if [[ "$MODE" == uninstall ]]; then
@@ -158,16 +158,16 @@ if [[ "$MODE" == uninstall ]]; then
     exit 0
 fi
 
-step "seanstack --help"
-seanstack --help
+step "seanerstack --help"
+seanerstack --help
 
-step "seanstack paths share"
-seanstack paths share
+step "seanerstack paths share"
+seanerstack paths share
 
-step "seanstack paths repo"
-seanstack paths repo
+step "seanerstack paths repo"
+seanerstack paths repo
 
-# `seanstack toolchain bootstrap` writes the language requirements into the
+# `seanerstack toolchain bootstrap` writes the language requirements into the
 # isolated configuration, which persists in the state volume, so a `full` run
 # leaves `require: gcc@15` behind and every later gcc@11 run fails to
 # concretize against it. Each mode therefore states its own compiler intent
@@ -179,8 +179,8 @@ if [[ "$MODE" == full ]]; then
         spack install --use-buildcache only gcc@15
     fi
 
-    step "seanstack toolchain bootstrap gcc@15   (builds GCC 15 unless installed)"
-    seanstack toolchain bootstrap gcc@15
+    step "seanerstack toolchain bootstrap gcc@15   (builds GCC 15 unless installed)"
+    seanerstack toolchain bootstrap gcc@15
     # The bootstrap registers the compiler as an external before requiring it.
     # Without that registration the requirement cannot be satisfied at all, so
     # show what Spack now considers available.
@@ -202,11 +202,11 @@ fi
 
 spack config get packages
 
-step "seanstack paths env --package flux-core"
-seanstack paths env --package flux-core
+step "seanerstack paths env --package flux-core"
+seanerstack paths env --package flux-core
 
 step "spack env activate + spack concretize"
-spack env activate "$(seanstack paths env --package flux-core)"
+spack env activate "$(seanerstack paths env --package flux-core)"
 spack concretize
 
 if [[ "$MODE" == concretize ]]; then
@@ -236,11 +236,11 @@ if [[ "$MODE" != concretize ]]; then
     flux start flux run -N1 hostname
 fi
 
-step "seanstack validate"
+step "seanerstack validate"
 if [[ "$MODE" == full ]]; then
-    seanstack validate --compiler gcc@15 --spack
+    seanerstack validate --compiler gcc@15 --spack
 else
-    seanstack validate --spack
+    seanerstack validate --spack
 fi
 
 step "builtin package repository commit"
@@ -248,7 +248,7 @@ commit="$(builtin_commit)"
 echo "$commit"
 if [[ "$CACHE" == push ]]; then
     echo "install from the cache in a fresh state with:"
-    echo "  SEANSTACK_BUILTIN_COMMIT=$commit SEANSTACK_VOLUMES=consumer ./run.sh $MODE --from-cache"
+    echo "  SEANERSTACK_BUILTIN_COMMIT=$commit SEANERSTACK_VOLUMES=consumer ./run.sh $MODE --from-cache"
 fi
 
 step "done (mode: $MODE, build cache: $CACHE)"

@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 from pathlib import Path
 
-from seanstack.recipe import parse_recipe
+from seanerstack.recipe import parse_recipe
 
 
 def test_parse_properdocs_recipe(monkeypatch):
     root = Path(__file__).parents[1]
-    recipe = parse_recipe(root / "data/share/seanstack/spack_repo/seanstack/packages/properdocs/package.py")
+    recipe = parse_recipe(root / "data/share/seanerstack/spack_repo/seanerstack/packages/properdocs/package.py")
     assert recipe.git == "https://github.com/ProperDocs/properdocs.git"
     versions = [directive for directive in recipe.directives if directive.name == "version"]
     assert any(directive.args[0] == "master" for directive in versions)

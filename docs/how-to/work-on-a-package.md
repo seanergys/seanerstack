@@ -1,24 +1,24 @@
 # Work on a package
 
-Use this procedure for normal development on a SEANERGYS package checkout. It assumes the Seanstack state directory and project compiler have already been prepared.
+Use this procedure for normal development on a SEANERGYS package checkout. It assumes the Seanerstack state directory and project compiler have already been prepared.
 
 The example uses `properdocs`.
 
 ## Activate the isolated Spack session
 
-Select the prepared state directory and activate Seanstack:
+Select the prepared state directory and activate Seanerstack:
 
 ```console
-export SEANSTACK_STATE_DIR=/path/to/seanstack-state
-eval "$(seanstack activate)"
+export SEANERSTACK_STATE_DIR=/path/to/seanerstack-state
+eval "$(seanerstack activate)"
 ```
 
 ## Activate the package environment
 
-From the package checkout, activate the environment shipped by Seanstack:
+From the package checkout, activate the environment shipped by Seanerstack:
 
 ```console
-spack env activate "$(seanstack paths env --package properdocs)"
+spack env activate "$(seanerstack paths env --package properdocs)"
 ```
 
 ## Bind the checkout
@@ -34,7 +34,7 @@ spack concretize -f
 spack install
 ```
 
-These are normal Spack operations. The activated Seanstack session supplies the isolation boundary; it does not replace the Spack CLI.
+These are normal Spack operations. The activated Seanerstack session supplies the isolation boundary; it does not replace the Spack CLI.
 
 When dependencies or recipes change, rerun:
 
@@ -43,8 +43,8 @@ spack concretize -f
 spack install
 ```
 
-When the shell no longer needs Seanstack's Spack state, deactivate it:
+When the shell no longer needs Seanerstack's Spack state, deactivate it:
 
 ```console
-eval "$(seanstack deactivate)"
+eval "$(seanerstack deactivate)"
 ```

@@ -14,12 +14,12 @@ Spack builds gcc@15
 gcc@15 becomes the project compiler
         |
         v
-Seanstack environments are concretized and installed
+Seanerstack environments are concretized and installed
 ```
 
-The compiler recipe comes from the normal Spack repositories; Seanstack does not carry its own GCC or LLVM recipe.
+The compiler recipe comes from the normal Spack repositories; Seanerstack does not carry its own GCC or LLVM recipe.
 
-`seanstack toolchain bootstrap gcc@15` performs the project-specific transition from the initially available compiler to the Spack-installed production compiler. The compiler is established before package development environments are concretized, so compiler setup is separate from environment definitions.
+`seanerstack toolchain bootstrap gcc@15` performs the project-specific transition from the initially available compiler to the Spack-installed production compiler. The compiler is established before package development environments are concretized, so compiler setup is separate from environment definitions.
 
 For normal SEANERGYS work, this is a workstation setup operation rather than a per-environment choice.
 
@@ -44,7 +44,7 @@ gcc@15.3.0            %c,cxx=gcc@11.5.0     <- built by the system compiler
 
 Written on its own, the requirement forbids reusing that tree, so the only way to satisfy it is to rebuild gcc@15 with gcc@15, which is circular. The system compiler cannot stand in either, because `11.5.0` does not match `gcc@15`. There is no solution, and Spack does not report one: it keeps searching for hours at full CPU.
 
-`seanstack toolchain bootstrap` therefore registers the compiler as an external before writing the requirements:
+`seanerstack toolchain bootstrap` therefore registers the compiler as an external before writing the requirements:
 
 ```console
 $ spack compiler find "$(spack location -i gcc@15)"

@@ -1,4 +1,4 @@
 # SPDX-License-Identifier: Apache-2.0
-from seanstack.docsgen import main
+from seanerstack.docsgen import main
 
 main()
