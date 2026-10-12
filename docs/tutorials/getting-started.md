@@ -6,25 +6,23 @@ The procedure assumes Bash, Git, and a working system compiler are already provi
 
 The example package is `properdocs`.
 
-## 1. Install uv
+## 1. Configure pip for the SEANERGYS package registry
 
-Install uv using its standard installer:
+Seanerstack and its `seanervault` dependency are published to the SEANERGYS GitLab group's PyPI registry, which requires authentication even for read access. Create a GitLab personal, project, or group access token with at least the `read_api` scope, then point pip at the registry as an extra index:
 
 ```console
-curl -LsSf https://astral.sh/uv/install.sh | sh
+export PIP_EXTRA_INDEX_URL="https://<token-name>:<token>@gitlab.seanergys.fz-juelich.de/api/v4/groups/158/-/packages/pypi/simple"
 ```
 
-Start a new shell so `uv` is on `PATH`.
+Persist it instead of exporting it in every shell by adding the same assignment to `pip.conf` (`extra-index-url`) or your shell profile.
 
 ## 2. Install the latest Seanerstack
 
-Install Seanerstack as a uv tool:
-
 ```console
-uv tool install seanerstack@latest
+pip install --upgrade seanerstack
 ```
 
-Seanerstack installs its curated Spack repository and environments under its installation prefix in `share/seanerstack`. The `seanerstack` command exposes their installed paths, so users do not need to locate that directory themselves.
+`seanervault` is a dependency of `seanerstack`, so pip installs it automatically from the same extra index. Seanerstack installs its curated Spack repository and environments under its installation prefix in `share/seanerstack`. The `seanerstack` command exposes their installed paths, so users do not need to locate that directory themselves.
 
 ## 3. Install Spack
 
@@ -49,27 +47,19 @@ export SEANERSTACK_STATE_DIR=/path/to/seanerstack-state
 
 Seanerstack deliberately does not default this state to `$HOME`. The directory will contain the private Spack configuration, install store, stages, caches, and managed environments.
 
-## 5. Bootstrap the SEANERGYS compiler
+## 5. Initialize Seanerstack
 
-Prepare the isolated Spack setup to use the project compiler:
-
-```console
-seanerstack toolchain bootstrap gcc@15
-```
-
-Seanerstack uses the compiler package supplied by Spack; it does not ship a GCC recipe of its own. The initially available system compiler is used to build GCC when necessary, after which the isolated Seanerstack configuration requires the Spack-installed GCC for SEANERGYS builds.
-
-## 6. Verify the setup
-
-Run the standard validation against the same private state:
+Bootstrap the project compiler, configure build-cache/OCI registry access, and validate the result, all in one step:
 
 ```console
-seanerstack validate --compiler gcc@15 --spack
+seanerstack init gcc@15
 ```
 
-Fix validation failures before proceeding.
+Seanerstack uses the compiler package supplied by Spack; it does not ship a GCC recipe of its own. The initially available system compiler is used to build GCC when necessary, after which the isolated Seanerstack configuration requires the Spack-installed GCC for SEANERGYS builds. Fix any reported errors before proceeding.
 
-## 7. Activate the isolated Spack session
+If `config.toml` declares build caches that need credentials, pass `--secrets-file secrets.toml` (see the project README's "External resources and secrets" section); otherwise omit it, or add `--skip-buildcache-check`.
+
+## 6. Activate the isolated Spack session
 
 Activate Seanerstack before using Spack directly:
 
@@ -79,7 +69,7 @@ eval "$(seanerstack activate)"
 
 From this point, plain `spack` uses the Seanerstack configuration and state selected by `SEANERSTACK_STATE_DIR`. Existing `~/.spack` or system Spack configuration is not part of this session.
 
-## 8. Obtain the package checkout
+## 7. Obtain the package checkout
 
 For this tutorial:
 
@@ -89,7 +79,7 @@ git clone https://github.com/ProperDocs/properdocs.git /path/to/src/properdocs
 cd /path/to/src/properdocs
 ```
 
-## 9. Activate the environment shipped by Seanerstack
+## 8. Activate the environment shipped by Seanerstack
 
 Activate the development environment associated with the package:
 
@@ -99,7 +89,7 @@ spack env activate "$(seanerstack paths env --package properdocs)"
 
 The environment is an ordinary Spack environment supplied by Seanerstack. The active Seanerstack session ensures that its concretization and installations use only the selected private Spack state.
 
-## 10. Bind the local checkout
+## 9. Bind the local checkout
 
 Tell Spack that `properdocs@master` is provided by the checkout you just cloned:
 
@@ -109,7 +99,7 @@ spack develop --path "$PWD" properdocs@master
 
 The checkout path is machine-local state, so it is deliberately not stored in Seanerstack.
 
-## 11. Concretize and install
+## 10. Concretize and install
 
 Use Spack normally:
 
