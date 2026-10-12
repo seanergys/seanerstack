@@ -1,44 +1,37 @@
 # Set up Spack for SEANERGYS
 
-Use this procedure when preparing a Spack installation for SEANERGYS work. For a completely new machine, follow the tutorial instead; this how-to assumes `uv` and a `spack` executable are already available.
+Use this procedure when preparing a Spack installation for SEANERGYS work. For a completely new machine, follow the tutorial instead; this how-to assumes a `spack` executable is already available.
 
-## Install or update Seanerstack
+## 1. Configure pip for the SEANERGYS package registry
 
-For a new installation:
-
-```console
-uv tool install seanerstack@latest
-```
-
-To update an existing installation to the current curated stack:
+Seanerstack and its `seanervault` dependency are published to the SEANERGYS GitLab group's PyPI registry, which requires authentication even for read access. Create a GitLab personal, project, or group access token with at least the `read_api` scope, then point pip at the registry as an extra index:
 
 ```console
-uv tool upgrade seanerstack
+export PIP_EXTRA_INDEX_URL="https://<token-name>:<token>@gitlab.seanergys.fz-juelich.de/api/v4/groups/158/-/packages/pypi/simple"
 ```
 
-## Choose the private state directory
+Persist it instead of exporting it in every shell by adding the same assignment to `pip.conf` (`extra-index-url`) or your shell profile.
 
-Select the persistent directory in which Seanerstack will keep Spack configuration and mutable state:
+## 2. Install or update Seanerstack
+
+```console
+pip install --upgrade seanerstack
+```
+
+`seanervault` is a dependency of `seanerstack`, so pip installs it automatically from the same extra index.
+
+## 3. Initialize Seanerstack
+
+Choose the persistent directory in which Seanerstack will keep Spack configuration and mutable state, then bootstrap the compiler, configure build-cache/OCI registry access, and validate the result in one step:
 
 ```console
 export SEANERSTACK_STATE_DIR=/path/to/seanerstack-state
+seanerstack --secrets-file secrets.toml init gcc@15
 ```
 
-The directory contains Seanerstack's private Spack configuration, install store, stages, caches, and managed environments. Seanerstack does not implicitly use `$HOME` for this state.
+The directory contains Seanerstack's private Spack configuration, install store, stages, caches, and managed environments. Seanerstack does not implicitly use `$HOME` for this state, and there is no `spack repo add` step: Seanerstack installs its curated repository into the private configuration itself.
 
-There is no `spack repo add` step: Seanerstack installs its curated repository into the private configuration itself.
-
-## Bootstrap the project compiler
-
-```console
-seanerstack toolchain bootstrap gcc@15
-```
-
-## Verify the setup
-
-```console
-seanerstack validate --compiler gcc@15 --spack
-```
+`--secrets-file` is only required when `config.toml` declares build caches that need credentials (see the project README's "External resources and secrets" section). Omit it, or pass `--skip-buildcache-check`, when none do.
 
 ## Activate the setup
 

@@ -23,6 +23,7 @@ Seanerstack provides:
 
 - the Spack package recipes curated by SEANERGYS;
 - the Spack environments curated for development and, as they are added, deployment;
+- `init` for bootstrapping the compiler, configuring build-cache/OCI registry access, and validating the result, in one step;
 - `toolchain bootstrap` for making a Spack-installed compiler the compiler used for SEANERGYS builds;
 - `package update` for keeping curated recipes aligned with their upstream Git repositories;
 - `validate` for checking the curated stack;
