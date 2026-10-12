@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_PROBE_TIMEOUT, bootstrap
-from .buildcache import check_buildcaches, configure_buildcaches
+from .buildcache import buildcaches, check_buildcaches, configure_buildcaches
 from .config import Config, load_config
 from .paths import environments_path, repository_path, share_path
 from .secrets import SecretStore
@@ -118,6 +118,29 @@ def build_parser() -> argparse.ArgumentParser:
     cache_sub.add_parser("configure", help="Install configured build-cache mirrors into the isolated Spack configuration.")
     cache_sub.add_parser("check", help="Check access to configured build caches using session or Seanervault credentials.")
 
+    init_parser = subparsers.add_parser(
+        "init",
+        help="Bootstrap the compiler, configure build-cache/OCI registry access, and validate, in one step.",
+        description=(
+            "Prepare a complete Seanerstack setup in one command: bootstrap COMPILER "
+            "through Spack, configure the build caches declared in config.toml "
+            "(including OCI registry access, using --secrets-file), and validate "
+            "the result."
+        ),
+    )
+    init_parser.add_argument("compiler", help="Spack compiler spec, for example gcc@15")
+    init_parser.add_argument(
+        "--language",
+        action="append",
+        choices=("c", "cxx", "fortran"),
+        help="language provider to configure; repeat as needed (default: c, cxx, fortran)",
+    )
+    init_parser.add_argument("--probe", default=DEFAULT_PROBE, help=f"spec used to probe concretization (default: {DEFAULT_PROBE})")
+    init_parser.add_argument("--probe-timeout", type=float, default=DEFAULT_PROBE_TIMEOUT, help=f"seconds to allow the probe before giving up (default: {DEFAULT_PROBE_TIMEOUT:g}); 0 waits indefinitely")
+    init_parser.add_argument("--force", action="store_true", help="ask Spack to install the compiler even when it is already installed")
+    init_parser.add_argument("--skip-buildcache-check", action="store_true", help="configure build-cache mirrors without verifying access")
+    init_parser.add_argument("--skip-validate", action="store_true", help="skip the final validation pass")
+
     subparsers.add_parser("activate", help="Emit shell code that activates an isolated Seanerstack Spack session.")
     subparsers.add_parser("deactivate", help="Emit shell code that restores the shell state saved by activation.")
 
@@ -195,6 +218,56 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
     print(f"languages: {', '.join(result.languages)}")
     print(f"compiler probe ({result.probe}): {'ok' if result.probe_ok else 'warning: compiler name not visible in probe output'}")
     return 0 if result.probe_ok else 1
+
+
+def _run_init(args: argparse.Namespace) -> int:
+    config, secrets = _runtime(args)
+    languages = tuple(args.language) if args.language else DEFAULT_LANGUAGES
+    _, _, command, env = _spack_runtime(args)
+
+    result = bootstrap(
+        args.compiler,
+        languages=languages,
+        probe=args.probe,
+        command=command,
+        env=env,
+        force=args.force,
+        probe_timeout=args.probe_timeout or None,
+    )
+    print(f"compiler: {result.compiler}")
+    print(f"registered as external: {'yes' if result.registered else 'no'}")
+    print(f"languages: {', '.join(result.languages)}")
+    print(f"compiler probe ({result.probe}): {'ok' if result.probe_ok else 'warning: compiler name not visible in probe output'}")
+    failed = not result.probe_ok
+
+    configure_buildcaches(config, command=command, env=env)
+    print(f"build caches: configured {len(buildcaches(config))} resource(s)")
+
+    if not args.skip_buildcache_check:
+        for name, ok, message in check_buildcaches(config, secrets, command=command, base_env=env):
+            print(f"[{'OK' if ok else 'ERROR'}] buildcache:{name}: {message or 'accessible'}")
+            failed |= not ok
+
+    if not args.skip_validate:
+        findings = validate(
+            with_spack=True,
+            compiler=args.compiler,
+            languages=languages,
+            spack_command=command,
+            spack_env=env,
+            config=config,
+            secrets=secrets,
+        )
+        for finding in findings:
+            marker = {"ok": "OK", "warning": "WARN", "error": "ERROR"}[finding.level]
+            print(f"[{marker}] {finding.subject}: {finding.message}")
+            failed |= finding.level == "error"
+
+    if not failed:
+        print()
+        print("Setup complete. Activate with:")
+        print('  eval "$(seanerstack activate)"')
+    return 1 if failed else 0
 
 
 def _environment_packages(path) -> set[str]:
@@ -300,6 +373,8 @@ def main(argv: list[str] | None = None) -> None:
                 raise ValueError(f"unknown paths command: {args.paths_command}")
         elif args.command == "buildcache":
             code = _run_buildcache(args)
+        elif args.command == "init":
+            code = _run_init(args)
         elif args.command == "activate":
             config, secrets = _runtime(args)
             state_dir = resolve_state_dir(args.state_dir)
