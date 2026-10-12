@@ -54,6 +54,18 @@ def _compiler_prefix(command: list[str], compiler: str, env) -> str | None:
     return result.stdout.strip() or None
 
 
+def _ensure_system_compiler(command: list[str], env) -> None:
+    """Register whatever compiler is visible on PATH as a Spack external.
+
+    Seanerstack's isolated packages.yaml starts out empty, so on a fresh state
+    directory nothing provides the `c`/`cxx` virtuals that building the
+    project's own compiler itself requires: concretizing `install COMPILER`
+    fails outright with "Only external, or concrete, compilers are allowed".
+    A no-op when a compiler is already registered.
+    """
+    _run([*command, "compiler", "find"], check=False, env=env)
+
+
 def _register_compiler(command: list[str], prefix: str, env) -> None:
     """Register an installed compiler as an external package.
 
@@ -103,6 +115,7 @@ def bootstrap(
     prefix = _compiler_prefix(command, compiler, env)
     already_installed = prefix is not None
     if (force or not already_installed) and not dry_run:
+        _ensure_system_compiler(command, env)
         _run_streaming([*command, "install", compiler], env=env)
         prefix = _compiler_prefix(command, compiler, env)
 

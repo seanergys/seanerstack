@@ -86,6 +86,31 @@ def test_bootstrap_registers_before_requiring(monkeypatch):
     assert find < require
 
 
+def test_bootstrap_registers_a_system_compiler_before_installing(monkeypatch):
+    # An isolated state directory starts with no compiler registered at all,
+    # so nothing can satisfy the c/cxx virtuals needed to build the project's
+    # own compiler unless a system one is found first.
+    calls = _fake_spack(monkeypatch)
+
+    bootstrap_module.bootstrap(
+        "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV
+    )
+
+    find_system = calls.index([*COMMAND, "compiler", "find"])
+    install = calls.index([*COMMAND, "install", "gcc@15"])
+    assert find_system < install
+
+
+def test_bootstrap_skips_system_compiler_registration_when_already_installed(monkeypatch):
+    calls = _fake_spack(monkeypatch, installed=True)
+
+    bootstrap_module.bootstrap(
+        "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV
+    )
+
+    assert [*COMMAND, "compiler", "find"] not in calls
+
+
 def test_bootstrap_registers_an_already_installed_compiler(monkeypatch):
     calls = _fake_spack(monkeypatch, installed=True)
 
