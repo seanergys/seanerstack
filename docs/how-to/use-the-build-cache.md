@@ -4,13 +4,21 @@ Seanerstack ships the SEANERGYS binary build cache as the `seanerstack-buildcach
 
 ## Provide credentials
 
-The registry takes a GitLab personal access token: `read_registry` to install, `write_registry` to push (`api` covers both). Store it in Seanervault under the name the resource refers to:
+The registry takes a GitLab personal access token: `read_registry` to install, `write_registry` to push (`api` covers both). Store it in a keyloom secrets file under the name the resource refers to. Write the entry with a placeholder:
 
 ```toml
 [credentials.seanergys-registry]
 username = "oauth2"
-token = { __seanervault__ = "secret", value = "$SEAN_VAULT;..." }
+token = { __keyloom__ = "secret", value = "__keyloom__secret__" }
 ```
+
+Then encrypt the file in place; `keyloom` prompts for the vault password and for the token:
+
+```console
+keyloom encrypt secrets.toml
+```
+
+The `keyloom` command is installed together with Seanerstack.
 
 Activation with that vault exports the token into the session:
 

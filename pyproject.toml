@@ -13,7 +13,7 @@ license = "Apache-2.0"
 dependencies = [
   "packaging>=24",
   "PyYAML>=6",
-  "seanervault>=0.1.0",
+  "keyloom>=0.1.0",
 ]
 
 [project.scripts]
@@ -40,11 +40,3 @@ data = { data = "data" }
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
-
-[[tool.uv.index]]
-name = "seanergys"
-url = "https://gitlab.seanergys.fz-juelich.de/api/v4/groups/158/-/packages/pypi/simple"
-explicit = true
-
-[tool.uv.sources]
-seanervault = { index = "seanergys" }

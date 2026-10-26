@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # External resources are named here. Recipes and build-cache configuration refer
-# to the resource name; credential values live only in the Seanervault file.
+# to the resource name; credential values live only in the keyloom-encrypted
+# secrets file.
 
 # Private SEANERGYS Git resource. A recipe names the resource, never the
-# credential; the token itself lives in the Seanervault file under the credential
-# name below. Seanerstack authenticates `git ls-remote` with it, and sends it as
+# credential; the token itself lives in the secrets file under the credential name
+# below. Seanerstack authenticates `git ls-remote` with it, and sends it as
 # the PRIVATE-TOKEN header when downloading a release archive to checksum it.
 [resources.seanergys-gitlab]
 kind = "git"

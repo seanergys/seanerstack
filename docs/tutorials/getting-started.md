@@ -8,7 +8,7 @@ The example package is `properdocs`.
 
 ## 1. Configure pip for the SEANERGYS package registry
 
-Seanerstack and its `seanervault` dependency are published to the SEANERGYS GitLab group's PyPI registry, which requires authentication even for read access. Create a GitLab personal, project, or group access token with at least the `read_api` scope, then point pip at the registry as an extra index:
+Seanerstack is published to the SEANERGYS GitLab group's PyPI registry, which requires authentication even for read access. Create a GitLab personal, project, or group access token with at least the `read_api` scope, then point pip at the registry as an extra index:
 
 ```console
 export PIP_EXTRA_INDEX_URL="https://<token-name>:<token>@gitlab.seanergys.fz-juelich.de/api/v4/groups/158/-/packages/pypi/simple"
@@ -22,7 +22,7 @@ Persist it instead of exporting it in every shell by adding the same assignment 
 pip install --upgrade seanerstack
 ```
 
-`seanervault` is a dependency of `seanerstack`, so pip installs it automatically from the same extra index. Seanerstack installs its curated Spack repository and environments under its installation prefix in `share/seanerstack`. The `seanerstack` command exposes their installed paths, so users do not need to locate that directory themselves.
+Its dependencies, including `keyloom` for the secrets file, come from PyPI. Seanerstack installs its curated Spack repository and environments under its installation prefix in `share/seanerstack`. The `seanerstack` command exposes their installed paths, so users do not need to locate that directory themselves.
 
 ## 3. Install Spack
 

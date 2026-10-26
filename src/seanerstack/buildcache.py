@@ -53,7 +53,7 @@ def check_buildcaches(config: Config, secrets: SecretStore, *, command: list[str
     results: list[tuple[str, bool, str]] = []
     for resource in buildcaches(config):
         env = dict(os.environ if base_env is None else base_env)
-        # An activated session already carries the credentials; only then is Seanervault skipped.
+        # An activated session already carries the credentials; only then is the vault skipped.
         if not all(name in env for name in resource.credential_variables):
             env.update(spack_resource_environment(resource, secrets))
         process = subprocess.run(

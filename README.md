@@ -58,8 +58,8 @@ uv run --group docs properdocs serve
 ## External resources and secrets
 
 External services are named in `config.toml`.  A resource may refer to a
-credential set by name; the credential values themselves stay in a Seanervault
-file.
+credential set by name; the credential values themselves stay in a secrets file
+encrypted with [keyloom](https://seanergys.github.io/keyloom).
 
 ```toml
 [resources.seanergys-gitlab]
@@ -95,20 +95,20 @@ class PrivatePackage(Package):
     seanerstack_resource = "seanergys-gitlab"
 ```
 
-The corresponding Seanervault file can use a shared credential entry:
+The corresponding secrets file can use a shared credential entry:
 
 ```toml
 [credentials.seanergys-gitlab]
 username = "oauth2"
-token = { __seanervault__ = "secret", value = "$SEAN_VAULT;..." }
+token = { __keyloom__ = "secret", value = "$KEYLOOM;..." }
 
 [credentials.objectstore]
 access_key_id = "..."
-secret_access_key = { __seanervault__ = "secret", value = "$SEAN_VAULT;..." }
+secret_access_key = { __keyloom__ = "secret", value = "$KEYLOOM;..." }
 
 [credentials.seanergys-registry]
 username = "oauth2"
-token = { __seanervault__ = "secret", value = "$SEAN_VAULT;..." }
+token = { __keyloom__ = "secret", value = "$KEYLOOM;..." }
 ```
 
 Use it without putting either the vault password or service credential on the
@@ -117,12 +117,12 @@ command line:
 ```console
 seanerstack \
   --secrets-file ./secrets.toml \
-  --secrets-password-file /run/secrets/seanervault-password \
+  --secrets-password-file /run/secrets/vault-password \
   package update private-package
 ```
 
 For interactive use, omit `--secrets-password-file`; Seanerstack prompts for the
-Seanervault password. CI may use `--secrets-password-stdin` instead.
+vault password. CI may use `--secrets-password-stdin` instead.
 
 Configure the Spack binary build caches from `config.toml` in the selected isolated state with:
 
@@ -162,7 +162,7 @@ local Spack configuration, redirects Spack user data, and places a transparent
 launcher first on `PATH`. The private tree contains the install store, build
 stages, source and miscellaneous caches, managed environments, and configuration.
 
-If the private build cache needs credentials, activate with the existing Seanervault
+If the private build cache needs credentials, activate with the existing secrets
 options, for example:
 
 ```console

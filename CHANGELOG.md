@@ -7,6 +7,16 @@ and release process.
 
 ## [Unreleased]
 
+### Changed
+
+- Secrets files are read with `keyloom` instead of `seanervault`. A secret is
+  marked `{ __keyloom__ = "secret", value = ... }` and encrypted with
+  `keyloom encrypt`; existing Seanervault files must be re-encrypted with
+  keyloom. The `--secrets-file`, `--secrets-password-file` and
+  `--secrets-password-stdin` options are unchanged.
+- `keyloom` is installed from PyPI, so installing Seanerstack from source no
+  longer requires access to the SEANERGYS package index.
+
 ## [0.1.0] - 2026-10-22
 
 First published release.

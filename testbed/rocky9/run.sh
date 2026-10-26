@@ -48,12 +48,9 @@ Environment:
                    pin Spack's builtin package repository to this commit. A
                    --push run prints the value its --from-cache runs need.
   UV_INDEX_SEANERGYS_USERNAME, UV_INDEX_SEANERGYS_PASSWORD
-                   credentials for the internal package index that supplies
-                   seanervault, a seanerstack dependency. Your GitLab username, and
+                   credentials for the build-cache container registry, needed
+                   only with --push or --from-cache. Your GitLab username, and
                    a personal access token with the `api` scope as the password.
-                   Without them `uv tool install` cannot resolve seanerstack and
-                   the workflow stops at its first step. The build cache uses
-                   the same token for the container registry.
 USAGE
     exit "${1:-0}"
 }
@@ -89,16 +86,14 @@ if [[ "$CACHE" != none && "$MODE" != install && "$MODE" != full ]]; then
     usage 2
 fi
 
-# seanerstack depends on seanervault, which lives in the internal index, so without
-# credentials `uv tool install` fails inside the container with a dependency
-# resolution error that says nothing about what to set. Warn rather than refuse:
-# uv also reads ~/.netrc and its own configuration.
-if [[ -z "${UV_INDEX_SEANERGYS_USERNAME:-}" || -z "${UV_INDEX_SEANERGYS_PASSWORD:-}" ]]; then
+# The build cache authenticates to the container registry with these credentials.
+# workflow.sh stops at the cache step without them, which may be hours into a run,
+# so warn before starting.
+if [[ "$CACHE" != none && ( -z "${UV_INDEX_SEANERGYS_USERNAME:-}" || -z "${UV_INDEX_SEANERGYS_PASSWORD:-}" ) ]]; then
     cat >&2 <<'WARNING'
 ==> warning: UV_INDEX_SEANERGYS_USERNAME / UV_INDEX_SEANERGYS_PASSWORD are unset
 
-    seanerstack depends on seanervault from the SEANERGYS package index, so the
-    install step will fail unless uv finds credentials elsewhere:
+    --push and --from-cache need credentials for the build-cache registry:
 
       export UV_INDEX_SEANERGYS_USERNAME=<your GitLab username>
       read -rs UV_INDEX_SEANERGYS_PASSWORD && export UV_INDEX_SEANERGYS_PASSWORD
@@ -133,8 +128,7 @@ args=(
 [[ -n "${SEANERSTACK_GC:-}" ]] && args+=(-e "SEANERSTACK_GC=$SEANERSTACK_GC")
 [[ -n "${SEANERSTACK_SOLVE_TIMEOUT:-}" ]] && args+=(-e "SEANERSTACK_SOLVE_TIMEOUT=$SEANERSTACK_SOLVE_TIMEOUT")
 [[ -n "${SEANERSTACK_BUILTIN_COMMIT:-}" ]] && args+=(-e "SEANERSTACK_BUILTIN_COMMIT=$SEANERSTACK_BUILTIN_COMMIT")
-# seanerstack depends on seanervault, which lives in the internal index rather than
-# on PyPI, so the container needs the same credentials the host uses.
+# The build-cache step in workflow.sh reads the registry credentials from these.
 for name in UV_INDEX_SEANERGYS_USERNAME UV_INDEX_SEANERGYS_PASSWORD; do
     [[ -n "${!name:-}" ]] && args+=(-e "$name=${!name}")
 done

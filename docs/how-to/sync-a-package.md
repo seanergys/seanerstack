@@ -12,7 +12,7 @@ Review the resulting `package.py` change and commit it together with the corresp
 
 The recipe itself is the source of synchronization metadata. Seanerstack reads the upstream Git URL, branch-backed versions, and existing tag-backed or `sha256` archive versions from `package.py`; there is no parallel Seanerstack synchronization configuration.
 
-For a recipe with `url` and `sha256` releases, new releases are downloaded to compute their checksums. A private archive needs the recipe's `seanerstack_resource` and the Seanervault options:
+For a recipe with `url` and `sha256` releases, new releases are downloaded to compute their checksums. A private archive needs the recipe's `seanerstack_resource` and the secrets-file options:
 
 ```console
 seanerstack --secrets-file ./secrets.toml package update demobus

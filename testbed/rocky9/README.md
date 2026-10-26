@@ -58,10 +58,10 @@ rather than a published release.
 
 ## Credentials
 
-seanerstack depends on seanervault, which lives in the SEANERGYS package index
-rather than on PyPI, so the install step needs credentials for it. Export them
-before running anything; `run.sh` passes them into the container and warns when
-they are missing.
+seanerstack and its dependencies install from PyPI, so `check`, `install` and
+`full` need no credentials. `--push` and `--from-cache` authenticate to the
+build-cache container registry and need a GitLab token. Export it before
+running; `run.sh` passes it into the container and warns when it is missing.
 
 ```console
 $ export UV_INDEX_SEANERGYS_USERNAME=<your GitLab username>
