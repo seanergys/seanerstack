@@ -36,7 +36,7 @@ spack install hdf5
 
 ## Activate with private build-cache credentials
 
-When configured build caches require Seanervault credentials, supply the vault while activating:
+When configured build caches require credentials, supply the secrets file (see [Create a secrets file](create-a-secrets-file.md)) while activating:
 
 ```console
 eval "$(seanerstack \
@@ -45,9 +45,9 @@ eval "$(seanerstack \
     activate)"
 ```
 
-For interactive use, Seanerstack prompts for the Seanervault password. The decrypted build-cache credentials are exported only into the activated session; they are not written into Spack configuration.
+For interactive use, Seanerstack prompts for the vault password. The decrypted build-cache credentials are exported only into the activated session; they are not written into Spack configuration.
 
-For a non-interactive session, use one of the existing password-source options instead of placing the vault password on the command line.
+For a non-interactive session, pass `--secrets-password-file FILE` or `--secrets-password-stdin` instead of placing the vault password on the command line.
 
 ## Leave the session
 

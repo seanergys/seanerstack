@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
+import base64
 from contextlib import contextmanager
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import re
 import stat
+import subprocess
 import tempfile
 from typing import Iterator, Mapping
 
@@ -17,6 +20,8 @@ from .secrets import SecretStore
 class GitAuth:
     username: str
     password: str
+    url: str
+    """The resource URL; credentials are sent only to URLs under it."""
 
 
 def git_auth(resource: Resource, secrets: SecretStore) -> GitAuth | None:
@@ -29,7 +34,36 @@ def git_auth(resource: Resource, secrets: SecretStore) -> GitAuth | None:
         raise ValueError(
             f"credentials {resource.credentials!r} for {resource.name!r} require username/password or token"
         )
-    return GitAuth(username=username, password=password)
+    return GitAuth(username=username, password=password, url=resource.url)
+
+
+# GIT_CONFIG_COUNT, GIT_CONFIG_KEY_n and GIT_CONFIG_VALUE_n, which carry the
+# credentials header, were introduced in Git 2.31. Older versions ignore them.
+MINIMUM_GIT_VERSION = (2, 31)
+
+
+def parse_git_version(output: str) -> tuple[int, int]:
+    """Return the major and minor version from `git --version` output."""
+    match = re.match(r"git version (\d+)\.(\d+)", output.strip())
+    if match is None:
+        raise RuntimeError(f"cannot determine the Git version from {output.strip()!r}")
+    return int(match.group(1)), int(match.group(2))
+
+
+def git_version() -> tuple[int, int]:
+    process = subprocess.run(["git", "--version"], check=True, text=True, capture_output=True)
+    return parse_git_version(process.stdout)
+
+
+def require_git_for_credentials(auth: GitAuth) -> None:
+    """Refuse to run Git with credentials it would not send."""
+    found = git_version()
+    if found < MINIMUM_GIT_VERSION:
+        required = ".".join(map(str, MINIMUM_GIT_VERSION))
+        raise RuntimeError(
+            f"Git {found[0]}.{found[1]} cannot send the credentials for {auth.url}; "
+            f"Git {required} or later is required"
+        )
 
 
 @contextmanager
@@ -39,6 +73,7 @@ def git_environment(auth: GitAuth | None) -> Iterator[Mapping[str, str]]:
         yield env
         return
 
+    require_git_for_credentials(auth)
     with tempfile.TemporaryDirectory(prefix="seanerstack-git-auth-") as temp:
         helper = Path(temp) / "askpass"
         helper.write_text(
@@ -50,6 +85,19 @@ def git_environment(auth: GitAuth | None) -> Iterator[Mapping[str, str]]:
             encoding="utf-8",
         )
         helper.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+        # Git otherwise sends credentials only after a 401, which a server
+        # never answers for a public repository, so an invalid token would
+        # go unnoticed. The header is set through the environment rather than
+        # `git -c`, which would put it on the command line.
+        index = int(env.get("GIT_CONFIG_COUNT") or 0)
+        basic = base64.b64encode(f"{auth.username}:{auth.password}".encode("utf-8")).decode("ascii")
+        env.update(
+            {
+                f"GIT_CONFIG_KEY_{index}": f"http.{auth.url}.extraHeader",
+                f"GIT_CONFIG_VALUE_{index}": f"Authorization: Basic {basic}",
+                "GIT_CONFIG_COUNT": str(index + 1),
+            }
+        )
         env.update(
             {
                 "GIT_ASKPASS": str(helper),

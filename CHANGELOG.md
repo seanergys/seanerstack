@@ -7,6 +7,28 @@ and release process.
 
 ## [Unreleased]
 
+### Changed
+
+- Secrets files are read with `keyloom` instead of `seanervault`. A secret is
+  marked `{ __keyloom__ = "secret", value = ... }` and encrypted with
+  `keyloom encrypt`; existing Seanervault files must be re-encrypted with
+  keyloom. The `--secrets-file`, `--secrets-password-file` and
+  `--secrets-password-stdin` options are unchanged.
+- `keyloom` is installed from PyPI, so installing Seanerstack from source no
+  longer requires access to the SEANERGYS package index.
+- Git credentials of a resource are sent with the first request instead of
+  after an authentication challenge, so an invalid token is reported even for
+  a public repository. This requires Git 2.31 or later; with an older Git,
+  commands that use Git credentials fail with an error.
+
+### Added
+
+- How-to guide on creating, checking and updating the secrets file, and on
+  converting a Seanervault file.
+- End-to-end tests (`tests/e2e`, CI job `e2e`) that install the wheel of the commit
+  and, through a keyloom secrets file and the CI job token, read the demobus
+  repository and push a package to a test build cache and install it back.
+
 ## [0.1.0] - 2026-10-22
 
 First published release.

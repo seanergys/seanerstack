@@ -1,10 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
-variables:
-  UV_INDEX_SEANERGYS_USERNAME: "gitlab-ci-token"
-  UV_INDEX_SEANERGYS_PASSWORD: "$CI_JOB_TOKEN"
-
 stages:
   - test
   - docs
@@ -16,6 +12,31 @@ test:
     - uv sync --group dev
     - uv run pytest
     - uv run seanerstack validate
+
+# Builds the wheel of this commit, installs it into a fresh environment, and
+# runs tests/e2e against this GitLab instance. The job token reads the demobus
+# repository, and builds and pushes a small package into
+# test-e2e-buildcache-<test> in the project's container registry, separate
+# from the project build cache, before installing it back from there.
+e2e:
+  stage: test
+  variables:
+    SEANERSTACK_E2E_REQUIRED: "1"
+    SEANERSTACK_E2E_USERNAME: "gitlab-ci-token"
+    SEANERSTACK_E2E_TOKEN: "$CI_JOB_TOKEN"
+    SEANERSTACK_E2E_SPACK: "/opt/spack/bin/spack"
+    SEANERSTACK_E2E_REGISTRY: "oci://$CI_REGISTRY_IMAGE"
+    SPACK_VERSION: "v1.2.2"
+  before_script:
+    - apt-get update
+    # Git for Spack and the tests; a compiler, make and archivers for Spack to
+    # build the test package.
+    - >-
+      apt-get install -y --no-install-recommends
+      bzip2 ca-certificates file g++ gcc git libc6-dev make patch unzip xz-utils
+    - git clone --depth 1 --branch "$SPACK_VERSION" https://github.com/spack/spack.git /opt/spack
+  script:
+    - tests/e2e/run.sh
 
 docs:
   stage: docs

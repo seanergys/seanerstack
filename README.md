@@ -48,6 +48,25 @@ uv run pytest
 uv run seanerstack --help
 ```
 
+The unit tests are in `tests/unit`. The end-to-end tests in `tests/e2e` install
+the wheel of the checkout into a fresh environment and run it against the
+SEANERGYS GitLab, with credentials from a keyloom secrets file. They read the
+demobus repository, and build a small package, push it to a test build cache,
+and install it back from there. Each build-cache test pushes to its own
+repository, `test-e2e-buildcache-<test>`, under the registry location given by
+`SEANERSTACK_E2E_REGISTRY`, never to the project build cache. They need Git,
+Spack, a C compiler, make, and a GitLab token that can read demobus and write to
+that location; without a token they are skipped:
+
+```console
+export SEANERSTACK_E2E_TOKEN=<GitLab personal access token>
+export SEANERSTACK_E2E_SPACK=/path/to/spack/bin/spack
+export SEANERSTACK_E2E_REGISTRY=oci://registry.seanergys.fz-juelich.de/<namespace>/<project>
+tests/e2e/run.sh
+```
+
+CI runs them in the `e2e` job with the job token.
+
 Build or serve the documentation:
 
 ```console
@@ -58,8 +77,8 @@ uv run --group docs properdocs serve
 ## External resources and secrets
 
 External services are named in `config.toml`.  A resource may refer to a
-credential set by name; the credential values themselves stay in a Seanervault
-file.
+credential set by name; the credential values themselves stay in a secrets file
+encrypted with [keyloom](https://seanergys.github.io/keyloom).
 
 ```toml
 [resources.seanergys-gitlab]
@@ -84,6 +103,13 @@ class PrivatePackage(Package):
     seanerstack_resource = "seanergys-gitlab"
 ```
 
+Seanerstack sends the resource credentials to Git with the first request to a
+URL under the resource, rather than only after the server asks for them, so an
+invalid token fails even for a repository that anyone can read. They are passed
+through Git's environment configuration, never on the command line. Older
+versions of Git ignore that configuration, so Seanerstack refuses to run Git
+with credentials unless it is version 2.31 or later.
+
 A recipe that fetches releases as archives keeps `url` under the same resource.
 Seanerstack sends the resource token as a `PRIVATE-TOKEN` header, only over HTTPS,
 when downloading new releases to compute their `sha256`:
@@ -95,21 +121,25 @@ class PrivatePackage(Package):
     seanerstack_resource = "seanergys-gitlab"
 ```
 
-The corresponding Seanervault file can use a shared credential entry:
+The corresponding secrets file can use a shared credential entry:
 
 ```toml
 [credentials.seanergys-gitlab]
 username = "oauth2"
-token = { __seanervault__ = "secret", value = "$SEAN_VAULT;..." }
+token = { __keyloom__ = "secret", value = "$KEYLOOM;..." }
 
 [credentials.objectstore]
 access_key_id = "..."
-secret_access_key = { __seanervault__ = "secret", value = "$SEAN_VAULT;..." }
+secret_access_key = { __keyloom__ = "secret", value = "$KEYLOOM;..." }
 
 [credentials.seanergys-registry]
 username = "oauth2"
-token = { __seanervault__ = "secret", value = "$SEAN_VAULT;..." }
+token = { __keyloom__ = "secret", value = "$KEYLOOM;..." }
 ```
+
+Write each secret value as the placeholder `__keyloom__secret__` and run
+`keyloom encrypt secrets.toml`, which prompts for the vault password and for
+each value; see [Create a secrets file](docs/how-to/create-a-secrets-file.md).
 
 Use it without putting either the vault password or service credential on the
 command line:
@@ -117,12 +147,12 @@ command line:
 ```console
 seanerstack \
   --secrets-file ./secrets.toml \
-  --secrets-password-file /run/secrets/seanervault-password \
+  --secrets-password-file /run/secrets/vault-password \
   package update private-package
 ```
 
 For interactive use, omit `--secrets-password-file`; Seanerstack prompts for the
-Seanervault password. CI may use `--secrets-password-stdin` instead.
+vault password. CI may use `--secrets-password-stdin` instead.
 
 Configure the Spack binary build caches from `config.toml` in the selected isolated state with:
 
@@ -162,7 +192,7 @@ local Spack configuration, redirects Spack user data, and places a transparent
 launcher first on `PATH`. The private tree contains the install store, build
 stages, source and miscellaneous caches, managed environments, and configuration.
 
-If the private build cache needs credentials, activate with the existing Seanervault
+If the private build cache needs credentials, activate with the existing secrets
 options, for example:
 
 ```console

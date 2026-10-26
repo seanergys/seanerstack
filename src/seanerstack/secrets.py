@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from getpass import getpass
 from pathlib import Path
 import sys
-from typing import Any, Callable
+from typing import Any
 
 
 @dataclass
@@ -21,13 +21,13 @@ class SecretStore:
         elif self.password_file is not None:
             value = self.password_file.read_text(encoding="utf-8")
         else:
-            value = getpass("Seanervault password: ")
+            value = getpass("Vault password: ")
         if value.endswith("\r\n"):
             value = value[:-2]
         elif value.endswith("\n"):
             value = value[:-1]
         if not value:
-            raise ValueError("Seanervault password must not be empty")
+            raise ValueError("vault password must not be empty")
         return value
 
     def _load(self) -> dict[str, Any]:
@@ -35,10 +35,14 @@ class SecretStore:
             raise ValueError("resource requires credentials; provide --secrets-file FILE")
         if self._data is None:
             try:
-                from seanervault import load
+                import keyloom
             except ImportError as error:
-                raise RuntimeError("seanervault is required to read --secrets-file") from error
-            data = load(self.path, self._password())
+                raise RuntimeError("keyloom is required to read --secrets-file") from error
+            try:
+                data = keyloom.load(path=self.path, password=self._password())
+            except keyloom.KeyloomError as error:
+                # keyloom prefixes its messages with the file name.
+                raise ValueError(str(error)) from error
             if not isinstance(data, dict):
                 raise ValueError(f"{self.path}: decrypted secrets root must be a mapping")
             self._data = data
