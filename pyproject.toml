@@ -38,5 +38,6 @@ docs = [
 data = { data = "data" }
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+# tests/e2e runs only through tests/e2e/run.sh, against the installed wheel.
+testpaths = ["tests/unit"]
 addopts = "-ra"

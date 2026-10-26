@@ -14,7 +14,7 @@ test:
     - uv run seanerstack validate
 
 # Builds the wheel of this commit, installs it into a fresh environment, and
-# runs e2e/ against this GitLab instance. The job token reads the demobus
+# runs tests/e2e against this GitLab instance. The job token reads the demobus
 # repository, and builds and pushes a small package into
 # test-e2e-buildcache-<test> in the project's container registry, separate
 # from the project build cache, before installing it back from there.
@@ -36,7 +36,7 @@ e2e:
       bzip2 ca-certificates file g++ gcc git libc6-dev make patch unzip xz-utils
     - git clone --depth 1 --branch "$SPACK_VERSION" https://github.com/spack/spack.git /opt/spack
   script:
-    - e2e/run.sh
+    - tests/e2e/run.sh
 
 docs:
   stage: docs

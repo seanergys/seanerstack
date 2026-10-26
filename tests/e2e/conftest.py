@@ -2,7 +2,7 @@
 """Fixtures for the end-to-end tests.
 
 The tests run the `seanerstack` and `keyloom` commands of the environment
-that runs pytest, against the SEANERGYS GitLab instance. `e2e/run.sh` builds
+that runs pytest, against the SEANERGYS GitLab instance. `tests/e2e/run.sh` builds
 the wheel of the current checkout and installs it into a fresh environment for
 them; the tests do not import Seanerstack.
 
@@ -100,7 +100,7 @@ def commands() -> Commands:
     bin = Path(sys.executable).parent
     for name in ("seanerstack", "keyloom"):
         if not (bin / name).is_file():
-            pytest.fail(f"{name} is not installed in {bin}; run the tests through e2e/run.sh")
+            pytest.fail(f"{name} is not installed in {bin}; run the tests through tests/e2e/run.sh")
     return Commands(token=token, username=os.environ.get("SEANERSTACK_E2E_USERNAME", "oauth2"), bin=bin)
 
 

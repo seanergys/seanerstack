@@ -4,14 +4,15 @@
 # Run the end-to-end tests against the wheel of this checkout.
 #
 # Builds the wheel (or takes one with --wheel FILE), installs it into a fresh
-# virtual environment together with pytest, and runs e2e/ with that
+# virtual environment together with pytest, and runs tests/e2e with that
 # environment's pytest, so the tests see the installed package and its
 # installed share/seanerstack data, not the source tree. Remaining arguments
-# are passed to pytest. See e2e/conftest.py for the environment variables.
+# are passed to pytest. See tests/e2e/conftest.py for the environment
+# variables.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO="$(cd "$HERE/.." && pwd)"
+REPO="$(cd "$HERE/../.." && pwd)"
 
 WHEEL=""
 if [[ "${1:-}" == --wheel ]]; then

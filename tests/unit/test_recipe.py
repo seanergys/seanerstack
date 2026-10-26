@@ -5,7 +5,7 @@ from seanerstack.recipe import parse_recipe
 
 
 def test_parse_properdocs_recipe(monkeypatch):
-    root = Path(__file__).parents[1]
+    root = Path(__file__).parents[2]
     recipe = parse_recipe(root / "data/share/seanerstack/spack_repo/seanerstack/packages/properdocs/package.py")
     assert recipe.git == "https://github.com/ProperDocs/properdocs.git"
     versions = [directive for directive in recipe.directives if directive.name == "version"]

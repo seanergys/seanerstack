@@ -17,7 +17,7 @@ import sys
 
 from conftest import PASSWORD, Commands, write_secrets
 
-REPOSITORY = Path(__file__).resolve().parents[1]
+REPOSITORY = Path(__file__).resolve().parents[2]
 BUILDCACHE = "seanerstack-buildcache"
 REGISTRY_VARIABLES = (
     "SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME",
