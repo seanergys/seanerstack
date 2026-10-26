@@ -18,7 +18,8 @@ and release process.
   longer requires access to the SEANERGYS package index.
 - Git credentials of a resource are sent with the first request instead of
   after an authentication challenge, so an invalid token is reported even for
-  a public repository. This requires Git 2.31 or later.
+  a public repository. This requires Git 2.31 or later; with an older Git,
+  commands that use Git credentials fail with an error.
 
 ### Added
 

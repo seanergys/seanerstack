@@ -106,8 +106,9 @@ class PrivatePackage(Package):
 Seanerstack sends the resource credentials to Git with the first request to a
 URL under the resource, rather than only after the server asks for them, so an
 invalid token fails even for a repository that anyone can read. They are passed
-through Git's environment configuration, never on the command line; this
-requires Git 2.31 or later.
+through Git's environment configuration, never on the command line. Older
+versions of Git ignore that configuration, so Seanerstack refuses to run Git
+with credentials unless it is version 2.31 or later.
 
 A recipe that fetches releases as archives keeps `url` under the same resource.
 Seanerstack sends the resource token as a `PRIVATE-TOKEN` header, only over HTTPS,

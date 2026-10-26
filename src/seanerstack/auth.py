@@ -6,7 +6,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import re
 import stat
+import subprocess
 import tempfile
 from typing import Iterator, Mapping
 
@@ -35,6 +37,35 @@ def git_auth(resource: Resource, secrets: SecretStore) -> GitAuth | None:
     return GitAuth(username=username, password=password, url=resource.url)
 
 
+# GIT_CONFIG_COUNT, GIT_CONFIG_KEY_n and GIT_CONFIG_VALUE_n, which carry the
+# credentials header, were introduced in Git 2.31. Older versions ignore them.
+MINIMUM_GIT_VERSION = (2, 31)
+
+
+def parse_git_version(output: str) -> tuple[int, int]:
+    """Return the major and minor version from `git --version` output."""
+    match = re.match(r"git version (\d+)\.(\d+)", output.strip())
+    if match is None:
+        raise RuntimeError(f"cannot determine the Git version from {output.strip()!r}")
+    return int(match.group(1)), int(match.group(2))
+
+
+def git_version() -> tuple[int, int]:
+    process = subprocess.run(["git", "--version"], check=True, text=True, capture_output=True)
+    return parse_git_version(process.stdout)
+
+
+def require_git_for_credentials(auth: GitAuth) -> None:
+    """Refuse to run Git with credentials it would not send."""
+    found = git_version()
+    if found < MINIMUM_GIT_VERSION:
+        required = ".".join(map(str, MINIMUM_GIT_VERSION))
+        raise RuntimeError(
+            f"Git {found[0]}.{found[1]} cannot send the credentials for {auth.url}; "
+            f"Git {required} or later is required"
+        )
+
+
 @contextmanager
 def git_environment(auth: GitAuth | None) -> Iterator[Mapping[str, str]]:
     env = os.environ.copy()
@@ -42,6 +73,7 @@ def git_environment(auth: GitAuth | None) -> Iterator[Mapping[str, str]]:
         yield env
         return
 
+    require_git_for_credentials(auth)
     with tempfile.TemporaryDirectory(prefix="seanerstack-git-auth-") as temp:
         helper = Path(temp) / "askpass"
         helper.write_text(
