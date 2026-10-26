@@ -21,6 +21,9 @@ and release process.
 
 - How-to guide on creating, checking and updating the secrets file, and on
   converting a Seanervault file.
+- End-to-end tests (`e2e/`, CI job `e2e`) that install the wheel of the commit
+  and read the private demobus repository and the project build cache through
+  a keyloom secrets file, with the CI job token.
 
 ## [0.1.0] - 2026-10-22
 

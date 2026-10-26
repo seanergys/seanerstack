@@ -48,6 +48,20 @@ uv run pytest
 uv run seanerstack --help
 ```
 
+The end-to-end tests in `e2e/` install the wheel of the checkout into a fresh
+environment and run it against the SEANERGYS GitLab: they read the private
+demobus repository and the project build cache with credentials from a keyloom
+secrets file. They need Git, Spack, and a GitLab token with read access to
+both; without a token they are skipped:
+
+```console
+export SEANERSTACK_E2E_TOKEN=<GitLab personal access token>
+export SEANERSTACK_E2E_SPACK=/path/to/spack/bin/spack
+e2e/run.sh
+```
+
+CI runs them in the `e2e` job with the job token.
+
 Build or serve the documentation:
 
 ```console

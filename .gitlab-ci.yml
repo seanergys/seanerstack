@@ -13,6 +13,24 @@ test:
     - uv run pytest
     - uv run seanerstack validate
 
+# Builds the wheel of this commit, installs it into a fresh environment, and
+# runs e2e/ against this GitLab instance: the job token reads the private
+# demobus repository and the project's container registry.
+e2e:
+  stage: test
+  variables:
+    SEANERSTACK_E2E_REQUIRED: "1"
+    SEANERSTACK_E2E_USERNAME: "gitlab-ci-token"
+    SEANERSTACK_E2E_TOKEN: "$CI_JOB_TOKEN"
+    SEANERSTACK_E2E_SPACK: "/opt/spack/bin/spack"
+    SPACK_VERSION: "v1.2.2"
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends ca-certificates git
+    - git clone --depth 1 --branch "$SPACK_VERSION" https://github.com/spack/spack.git /opt/spack
+  script:
+    - e2e/run.sh
+
 docs:
   stage: docs
   script:
