@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import base64
 from email.message import Message
 from pathlib import Path
 import subprocess
@@ -6,6 +7,7 @@ import urllib.error
 
 import pytest
 
+from seanerstack.auth import GitAuth, git_environment
 import seanerstack.sync as sync
 from seanerstack.config import Config, Resource
 from seanerstack.secrets import SecretStore
@@ -54,6 +56,23 @@ def test_private_repo_uses_named_resource_credentials_without_argv_secret(monkey
     assert "super-secret-token" not in " ".join(seen["args"])
     assert seen["env"]["SEANERSTACK_GIT_PASSWORD"] == "super-secret-token"
     assert seen["env"]["GIT_TERMINAL_PROMPT"] == "0"
+    # Sent with the first request, scoped to the resource URL.
+    index = int(seen["env"]["GIT_CONFIG_COUNT"]) - 1
+    assert seen["env"][f"GIT_CONFIG_KEY_{index}"] == "http.https://gitlab.example.org/.extraHeader"
+    expected = base64.b64encode(b"oauth2:super-secret-token").decode("ascii")
+    assert seen["env"][f"GIT_CONFIG_VALUE_{index}"] == f"Authorization: Basic {expected}"
+    assert expected not in " ".join(seen["args"])
+
+
+def test_git_credentials_keep_existing_environment_configuration(monkeypatch):
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "safe.directory")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "*")
+
+    with git_environment(GitAuth(username="oauth2", password="token", url="https://gitlab.example.org/")) as env:
+        assert env["GIT_CONFIG_COUNT"] == "2"
+        assert (env["GIT_CONFIG_KEY_0"], env["GIT_CONFIG_VALUE_0"]) == ("safe.directory", "*")
+        assert env["GIT_CONFIG_KEY_1"] == "http.https://gitlab.example.org/.extraHeader"
 
 
 def test_private_archive_download_sends_token_only_as_unredirected_header(monkeypatch, tmp_path: Path):

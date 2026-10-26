@@ -16,6 +16,9 @@ and release process.
   `--secrets-password-stdin` options are unchanged.
 - `keyloom` is installed from PyPI, so installing Seanerstack from source no
   longer requires access to the SEANERGYS package index.
+- Git credentials of a resource are sent with the first request instead of
+  after an authentication challenge, so an invalid token is reported even for
+  a public repository. This requires Git 2.31 or later.
 
 ### Added
 

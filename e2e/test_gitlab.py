@@ -11,12 +11,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-import re
 import shlex
 import subprocess
 import sys
 
-import pytest
 from conftest import PASSWORD, Commands, write_secrets
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -41,22 +39,6 @@ def _environment() -> dict[str, str]:
     # Git must use the askpass helper of Seanerstack, not stored credentials.
     env.update({"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"})
     return env
-
-
-def _recipe_git_url(commands: Commands, package: str) -> str:
-    result = commands.run("seanerstack", "paths", "repo", env=_environment())
-    assert result.returncode == 0, result.stderr
-    recipe = Path(result.stdout.strip()) / "packages" / package / "package.py"
-    match = re.search(r'^\s*git\s*=\s*"([^"]+)"', recipe.read_text(encoding="utf-8"), re.MULTILINE)
-    assert match, f"{recipe} has no git URL"
-    return match.group(1)
-
-
-def _readable_without_credentials(url: str) -> bool:
-    env = {key: value for key, value in _environment().items() if key not in ("GIT_ASKPASS", "SSH_ASKPASS")}
-    env["GIT_TERMINAL_PROMPT"] = "0"
-    process = subprocess.run(["git", "ls-remote", "--heads", url], env=env, capture_output=True, timeout=120, check=False)
-    return process.returncode == 0
 
 
 def _files_containing(root: Path, text: str) -> list[Path]:
@@ -96,11 +78,8 @@ def test_package_update_reads_demobus_with_credentials(commands: Commands, secre
 
 
 def test_package_update_fails_with_an_invalid_token(commands: Commands, password_file: Path, tmp_path: Path):
-    # Git sends credentials only when the server asks for them, so against a
-    # repository anyone can read, an invalid token goes unnoticed.
-    url = _recipe_git_url(commands, "demobus")
-    if _readable_without_credentials(url):
-        pytest.skip(f"{url} can be read without credentials, so a token is never sent")
+    # Seanerstack sends the credentials with the first request, so GitLab
+    # rejects an invalid token even for a repository anyone can read.
     invalid = write_secrets(commands, tmp_path / "secrets.toml", password_file, token="invalid-e2e-token")
 
     result = commands.run(

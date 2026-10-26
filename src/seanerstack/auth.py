@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
+import base64
 from contextlib import contextmanager
 from dataclasses import dataclass
 import os
@@ -17,6 +18,8 @@ from .secrets import SecretStore
 class GitAuth:
     username: str
     password: str
+    url: str
+    """The resource URL; credentials are sent only to URLs under it."""
 
 
 def git_auth(resource: Resource, secrets: SecretStore) -> GitAuth | None:
@@ -29,7 +32,7 @@ def git_auth(resource: Resource, secrets: SecretStore) -> GitAuth | None:
         raise ValueError(
             f"credentials {resource.credentials!r} for {resource.name!r} require username/password or token"
         )
-    return GitAuth(username=username, password=password)
+    return GitAuth(username=username, password=password, url=resource.url)
 
 
 @contextmanager
@@ -50,6 +53,19 @@ def git_environment(auth: GitAuth | None) -> Iterator[Mapping[str, str]]:
             encoding="utf-8",
         )
         helper.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+        # Git otherwise sends credentials only after a 401, which a server
+        # never answers for a public repository, so an invalid token would
+        # go unnoticed. The header is set through the environment rather than
+        # `git -c`, which would put it on the command line.
+        index = int(env.get("GIT_CONFIG_COUNT") or 0)
+        basic = base64.b64encode(f"{auth.username}:{auth.password}".encode("utf-8")).decode("ascii")
+        env.update(
+            {
+                f"GIT_CONFIG_KEY_{index}": f"http.{auth.url}.extraHeader",
+                f"GIT_CONFIG_VALUE_{index}": f"Authorization: Basic {basic}",
+                "GIT_CONFIG_COUNT": str(index + 1),
+            }
+        )
         env.update(
             {
                 "GIT_ASKPASS": str(helper),
