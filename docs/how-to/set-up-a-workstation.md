@@ -31,7 +31,7 @@ seanerstack --secrets-file secrets.toml init gcc@15
 
 The directory contains Seanerstack's private Spack configuration, install store, stages, caches, and managed environments. Seanerstack does not implicitly use `$HOME` for this state, and there is no `spack repo add` step: Seanerstack installs its curated repository into the private configuration itself.
 
-`--secrets-file` is only required when `config.toml` declares build caches that need credentials (see the project README's "External resources and secrets" section). Omit it, or pass `--skip-buildcache-check`, when none do.
+`--secrets-file` is only required when `config.toml` declares build caches that need credentials (see [Create a secrets file](create-a-secrets-file.md)). Omit it, or pass `--skip-buildcache-check`, when none do.
 
 ## Activate the setup
 

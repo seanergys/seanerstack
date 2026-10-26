@@ -57,7 +57,7 @@ seanerstack init gcc@15
 
 Seanerstack uses the compiler package supplied by Spack; it does not ship a GCC recipe of its own. The initially available system compiler is used to build GCC when necessary, after which the isolated Seanerstack configuration requires the Spack-installed GCC for SEANERGYS builds. Fix any reported errors before proceeding.
 
-If `config.toml` declares build caches that need credentials, pass `--secrets-file secrets.toml` (see the project README's "External resources and secrets" section); otherwise omit it, or add `--skip-buildcache-check`.
+If `config.toml` declares build caches that need credentials, pass `--secrets-file secrets.toml` (see [Create a secrets file](../how-to/create-a-secrets-file.md)); otherwise omit it, or add `--skip-buildcache-check`.
 
 ## 6. Activate the isolated Spack session
 

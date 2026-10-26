@@ -111,6 +111,10 @@ username = "oauth2"
 token = { __keyloom__ = "secret", value = "$KEYLOOM;..." }
 ```
 
+Write each secret value as the placeholder `__keyloom__secret__` and run
+`keyloom encrypt secrets.toml`, which prompts for the vault password and for
+each value; see [Create a secrets file](docs/how-to/create-a-secrets-file.md).
+
 Use it without putting either the vault password or service credential on the
 command line:
 

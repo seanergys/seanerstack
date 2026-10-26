@@ -17,6 +17,11 @@ and release process.
 - `keyloom` is installed from PyPI, so installing Seanerstack from source no
   longer requires access to the SEANERGYS package index.
 
+### Added
+
+- How-to guide on creating, checking and updating the secrets file, and on
+  converting a Seanervault file.
+
 ## [0.1.0] - 2026-10-22
 
 First published release.
