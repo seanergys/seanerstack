@@ -13,8 +13,14 @@ Environment:
 - SEANERSTACK_E2E_USERNAME: user name for the token (default: oauth2;
   gitlab-ci-token for a job token).
 - SEANERSTACK_E2E_SPACK: Spack executable (default: spack on PATH).
-- SEANERSTACK_E2E_REQUIRED: set to 1 to fail instead of skipping when the
-  token or Spack is missing.
+- SEANERSTACK_E2E_REGISTRY: oci:// location under which each build-cache
+  test pushes to its own repository, test-e2e-buildcache-<test>, such as
+  oci://$CI_REGISTRY_IMAGE. The token needs write access to it.
+- SEANERSTACK_E2E_REQUIRED: set to 1 to fail instead of skipping when any of
+  the above is missing.
+
+The build-cache test compiles a small package, so it needs a C compiler and
+make in addition to Git.
 """
 
 from __future__ import annotations
@@ -23,6 +29,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -56,8 +63,17 @@ class Commands:
     bin: Path
 
     def run(self, name: str, *args: str | Path, input: str | None = None, env=None, timeout: float = 600) -> Result:
+        return self._run([str(self.bin / name), *map(str, args)], input=input, env=env, timeout=timeout)
+
+    def shell(self, script: str, *, env=None, timeout: float = 1800) -> Result:
+        """Run a bash script with `seanerstack` and `keyloom` first on PATH."""
+        env = dict(os.environ if env is None else env)
+        env["PATH"] = f"{self.bin}{os.pathsep}{env.get('PATH', '')}"
+        return self._run(["bash", "-euo", "pipefail", "-c", script], input=None, env=env, timeout=timeout)
+
+    def _run(self, argv: list[str], *, input: str | None, env, timeout: float) -> Result:
         process = subprocess.run(
-            [str(self.bin / name), *map(str, args)],
+            argv,
             input=input,
             env=env,
             text=True,
@@ -94,6 +110,23 @@ def spack() -> Path:
     if not configured:
         _unavailable("no Spack executable; set SEANERSTACK_E2E_SPACK")
     return Path(configured).resolve()
+
+
+@pytest.fixture
+def buildcache_url(request) -> str:
+    """The build cache of the requesting test, test-e2e-buildcache-<test>.
+
+    The test name loses its `test_` prefix and is reduced to the lower-case
+    letters, digits and hyphens an OCI repository name allows, so
+    test_buildcache_round_trip pushes to test-e2e-buildcache-buildcache-round-trip.
+    """
+    registry = os.environ.get("SEANERSTACK_E2E_REGISTRY", "").rstrip("/")
+    if not registry:
+        _unavailable("SEANERSTACK_E2E_REGISTRY is not set")
+    if not registry.startswith("oci://"):
+        pytest.fail(f"SEANERSTACK_E2E_REGISTRY must be an oci:// URL: {registry}")
+    name = re.sub(r"[^a-z0-9]+", "-", request.node.name.removeprefix("test_").lower()).strip("-")
+    return f"{registry}/test-e2e-buildcache-{name}"
 
 
 @pytest.fixture(scope="session")
