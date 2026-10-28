@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 [build-system]
-requires = ["uv_build>=0.10,<0.11"]
-build-backend = "uv_build"
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
 
 [project]
 name = "seanerstack"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Curated Spack recipes and environments for SEANERGYS, with synchronization, bootstrap, and validation tooling."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -31,11 +31,18 @@ docs = [
   "pymdown-extensions",
 ]
 
+# The version is defined once, in src/seanerstack/__init__.py.
+[tool.hatch.version]
+path = "src/seanerstack/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/seanerstack"]
+
 # Install the curated Spack repository and environments outside site-packages.
 # The contents of data/ are installed relative to the Python environment prefix,
 # yielding <prefix>/share/seanerstack/...
-[tool.uv.build-backend]
-data = { data = "data" }
+[tool.hatch.build.targets.wheel.shared-data]
+"data/share" = "share"
 
 [tool.pytest.ini_options]
 # tests/e2e runs only through tests/e2e/run.sh, against the installed wheel.

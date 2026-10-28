@@ -25,6 +25,10 @@ and release process.
   of `~/.spack/package_repos/`. Seanerstack now rewrites the private
   `repos.yaml` on every activation, so existing state directories follow a new
   pin.
+- The version is defined only in `src/seanerstack/__init__.py`, and the
+  package is built with Hatchling, which reads it from there. Before, the
+  version in `pyproject.toml` could disagree with it, so the 0.1.1 wheel was
+  labelled 0.1.0.
 
 ### Added
 
