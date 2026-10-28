@@ -23,6 +23,9 @@ and release process.
 
 ### Added
 
+- Build caches with a `file://` URL, kept in a directory on a local or shared
+  filesystem. Such a cache is unsigned unless the resource sets
+  `signed = true`, and a resource that names credentials for it is rejected.
 - How-to guide on creating, checking and updating the secrets file, and on
   converting a Seanervault file.
 - End-to-end tests (`tests/e2e`, CI job `e2e`) that install the wheel of the commit

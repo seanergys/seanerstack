@@ -29,6 +29,10 @@ class Resource:
         return self.url.startswith(("oci://", "oci+http://"))
 
     @property
+    def filesystem(self) -> bool:
+        return self.url.startswith("file://")
+
+    @property
     def credential_variables(self) -> tuple[str, str]:
         """Variables Spack reads the user name (or key id) and secret from."""
         if self.oci:
@@ -76,10 +80,14 @@ def load_config(path: Path | None = None) -> Config:
             credentials=raw.get("credentials") if isinstance(raw.get("credentials"), str) else None,
             endpoint_url=raw.get("endpoint_url") if isinstance(raw.get("endpoint_url"), str) else None,
             autopush=bool(raw.get("autopush", False)),
-            signed=bool(raw.get("signed", True)),
+            # A filesystem cache is local or project-private, so it defaults to unsigned.
+            signed=bool(raw.get("signed", not url.startswith("file://"))),
         )
         # Spack cannot sign OCI build caches; it warns and pushes unsigned anyway.
         if resource.kind == "spack-buildcache" and resource.oci and resource.signed:
             raise ValueError(f"{path}: resources.{name}: OCI build caches cannot be signed; set signed = false")
+        # File permissions are the access control of a filesystem cache.
+        if resource.kind == "spack-buildcache" and resource.filesystem and resource.credentials:
+            raise ValueError(f"{path}: resources.{name}: filesystem build caches take no credentials")
         resources[name] = resource
     return Config(path=path, resources=resources)

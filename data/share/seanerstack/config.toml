@@ -28,3 +28,10 @@ signed = false
 # credentials = "jsc-objectstore"
 # autopush = true
 # signed = false
+
+# Example build cache in a directory on a local or shared filesystem. It takes
+# no credentials and is unsigned unless signed = true is set:
+# [resources.local-buildcache]
+# kind = "spack-buildcache"
+# url = "file:///scratch/seanerstack/buildcache"
+# autopush = true

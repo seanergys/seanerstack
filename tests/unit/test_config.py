@@ -38,3 +38,47 @@ def test_shipped_config_names_the_project_registry_cache():
         "SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME",
         "SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD",
     )
+
+
+def test_filesystem_build_cache_defaults_to_unsigned(tmp_path: Path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[resources.local]\nkind = "spack-buildcache"\nurl = "file:///scratch/buildcache"\n',
+        encoding="utf-8",
+    )
+
+    cache = load_config(path).resource("local")
+    assert cache.filesystem and not cache.oci
+    assert cache.signed is False
+    assert cache.credentials is None
+
+
+def test_filesystem_build_cache_can_be_signed(tmp_path: Path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[resources.local]\nkind = "spack-buildcache"\nurl = "file:///scratch/buildcache"\nsigned = true\n',
+        encoding="utf-8",
+    )
+
+    assert load_config(path).resource("local").signed is True
+
+
+def test_filesystem_build_cache_takes_no_credentials(tmp_path: Path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[resources.local]\nkind = "spack-buildcache"\nurl = "file:///scratch/buildcache"\ncredentials = "objectstore"\n',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="take no credentials"):
+        load_config(path)
+
+
+def test_s3_build_cache_still_defaults_to_signed(tmp_path: Path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[resources.cache]\nkind = "spack-buildcache"\nurl = "s3://builds"\n',
+        encoding="utf-8",
+    )
+
+    assert load_config(path).resource("cache").signed is True

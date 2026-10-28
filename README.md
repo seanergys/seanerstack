@@ -162,9 +162,11 @@ seanerstack --state-dir /path/to/seanerstack-state buildcache configure
 
 A build cache with an `oci://` URL lives in a container registry and takes
 `username` plus `password` or `token`; Spack cannot sign OCI caches, so such a
-resource must set `signed = false`. Any other URL is S3 and takes the access key
-pair. The project cache, `seanerstack-buildcache`, is the seanerstack GitLab
-container registry.
+resource must set `signed = false`. A build cache with a `file://` URL is a
+directory on a local or shared filesystem. It takes no credentials, because file
+permissions control access to it, and it is unsigned unless the resource sets
+`signed = true`. Any other URL is S3 and takes the access key pair. The project
+cache, `seanerstack-buildcache`, is the seanerstack GitLab container registry.
 
 Seanerstack stores only environment-variable references in Spack's mirror
 configuration. It never writes S3 keys or registry tokens into Spack
