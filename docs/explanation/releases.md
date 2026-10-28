@@ -33,6 +33,10 @@ This process is currently manual. Automating the version bump and tagging throug
 
 The self-managed SEANERGYS GitLab instance cannot currently use PyPI's GitLab Trusted Publishing integration, which is limited to projects hosted on `gitlab.com`. The GitLab project therefore provides a protected and masked `UV_PUBLISH_TOKEN` CI/CD variable for the PyPI project.
 
+## Development builds
+
+Besides tagged releases, every push to the default branch publishes a development build to the same registry. Its version is the next patch version with the pipeline number as development release, for example `0.1.4.dev57` after release `0.1.3`. Development builds let consumers such as seanertest live at head: a requirement that names a development release, such as `seanerstack>=0.1.3.dev0`, makes installers choose the newest build. A development build sorts before the next release, so a release is always newer than the development builds before it.
+
 ## Installing releases
 
 ```console

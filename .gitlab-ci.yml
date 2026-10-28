@@ -81,3 +81,23 @@ publish:
       --publish-url "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi"
       --username gitlab-ci-token
       --password "${CI_JOB_TOKEN}"
+
+# Living at head: every push to the default branch publishes a development
+# build, <next patch>.dev<pipeline number>, for example 0.1.4.dev57. Consumers
+# that ask for development builds get the newest one; tagged releases stay the
+# stable versions and sort after the development builds before them.
+publish:dev:
+  stage: publish
+  environment:
+    name: gitlab-pypi
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "push"'
+  script:
+    - uv version --frozen --bump patch --bump "dev=${CI_PIPELINE_IID}"
+    - echo "Publishing seanerstack $(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])') to GitLab PyPI"
+    - uv build --no-sources
+    - >-
+      uv publish
+      --publish-url "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi"
+      --username gitlab-ci-token
+      --password "${CI_JOB_TOKEN}"
