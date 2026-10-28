@@ -69,7 +69,12 @@ publish:
   script:
     - VERSION="${CI_COMMIT_TAG#v}"
     - echo "Publishing seanerstack ${VERSION} to GitLab PyPI"
-    - uv version "${VERSION}" --frozen
+    - PACKAGE_VERSION="$(uv version --short --frozen)"
+    - >-
+      if [ "${VERSION}" != "${PACKAGE_VERSION}" ]; then
+      echo "Tag ${CI_COMMIT_TAG} does not match version ${PACKAGE_VERSION} in pyproject.toml";
+      exit 1;
+      fi
     - uv build --no-sources
     - >-
       uv publish

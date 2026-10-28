@@ -25,9 +25,9 @@ A maintainer owns cutting releases. The current version maintainer is Radek Lonk
 
 Cutting a release:
 
-1. On the default branch, make a dedicated commit that only bumps the version in `src/seanerstack/__init__.py` and adds the new section to [`CHANGELOG.md`](https://gitlab.seanergys.fz-juelich.de/software/seanerstack/-/blob/main/CHANGELOG.md). `__version__` in `src/seanerstack/__init__.py` is the only place that defines the version; the build reads it from there.
+1. On the default branch, make a dedicated commit that only bumps the version in `pyproject.toml` with `uv version MAJOR.MINOR.PATCH` and adds the new section to [`CHANGELOG.md`](https://gitlab.seanergys.fz-juelich.de/software/seanerstack/-/blob/main/CHANGELOG.md). `pyproject.toml` is the only place that defines the version; `seanerstack.__version__` reads it from the installed package metadata.
 2. Tag that commit `vMAJOR.MINOR.PATCH` (e.g. `v0.1.0`) and push the tag.
-3. Pushing the tag triggers the `publish` job, which builds the distribution with `uv build` and publishes it with `uv publish` to the GitLab group PyPI registry.
+3. Pushing the tag triggers the `publish` job, which checks that the tag matches the version in `pyproject.toml`, builds the distribution with `uv build`, and publishes it with `uv publish` to the GitLab group PyPI registry.
 
 This process is currently manual. Automating the version bump and tagging through a dedicated CI runner is tracked as future work.
 
