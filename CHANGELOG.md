@@ -7,6 +7,22 @@ and release process.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-28
+
+### Changed
+
+- The builtin `spack-packages` repository is pinned to the `v2026.10.0`
+  commit and cloned into `package_repos/` inside the state directory instead
+  of `~/.spack/package_repos/`. Seanerstack now rewrites the private
+  `repos.yaml` on every activation, so existing state directories follow a new
+  pin.
+- The version is defined only in `src/seanerstack/__init__.py`, and the
+  package is built with Hatchling, which reads it from there. Before, the
+  version in `pyproject.toml` could disagree with it, so the 0.1.1 wheel was
+  labelled 0.1.0.
+
+## [0.1.1] - 2026-10-28
+
 ### Changed
 
 - Secrets files are read with `keyloom` instead of `seanervault`. A secret is
@@ -20,15 +36,6 @@ and release process.
   after an authentication challenge, so an invalid token is reported even for
   a public repository. This requires Git 2.31 or later; with an older Git,
   commands that use Git credentials fail with an error.
-- The builtin `spack-packages` repository is pinned to the `v2026.10.0`
-  commit and cloned into `package_repos/` inside the state directory instead
-  of `~/.spack/package_repos/`. Seanerstack now rewrites the private
-  `repos.yaml` on every activation, so existing state directories follow a new
-  pin.
-- The version is defined only in `src/seanerstack/__init__.py`, and the
-  package is built with Hatchling, which reads it from there. Before, the
-  version in `pyproject.toml` could disagree with it, so the 0.1.1 wheel was
-  labelled 0.1.0.
 
 ### Added
 
