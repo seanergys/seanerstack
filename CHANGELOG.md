@@ -20,6 +20,11 @@ and release process.
   after an authentication challenge, so an invalid token is reported even for
   a public repository. This requires Git 2.31 or later; with an older Git,
   commands that use Git credentials fail with an error.
+- The builtin `spack-packages` repository is pinned to the `v2026.10.0`
+  commit and cloned into `package_repos/` inside the state directory instead
+  of `~/.spack/package_repos/`. Seanerstack now rewrites the private
+  `repos.yaml` on every activation, so existing state directories follow a new
+  pin.
 
 ### Added
 
