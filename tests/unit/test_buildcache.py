@@ -32,6 +32,21 @@ def _registry_config(tmp_path: Path) -> Config:
     )
 
 
+def _filesystem_config(tmp_path: Path) -> Config:
+    return Config(
+        path=tmp_path / "config.toml",
+        resources={
+            "local": Resource(
+                name="local",
+                kind="spack-buildcache",
+                url=(tmp_path / "buildcache").as_uri(),
+                autopush=True,
+                signed=False,
+            )
+        },
+    )
+
+
 def test_buildcache_configures_binary_s3_mirror_with_variable_credentials(monkeypatch, tmp_path: Path):
     config = Config(
         path=tmp_path / "config.toml",
@@ -140,3 +155,38 @@ def test_buildcache_configure_reports_what_spack_said(monkeypatch, tmp_path: Pat
 
     with pytest.raises(RuntimeError, match="something Spack said"):
         buildcache.configure_buildcaches(_s3_config(tmp_path), command=["spack"])
+
+
+def test_buildcache_configures_filesystem_mirror_without_credentials(monkeypatch, tmp_path: Path):
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(buildcache.subprocess, "run", fake_run)
+    buildcache.configure_buildcaches(_filesystem_config(tmp_path), command=["spack"])
+
+    add = next(args for args in calls if "mirror" in args and "add" in args)
+    assert add[:7] == ["spack", "mirror", "add", "--scope", "user", "--type", "binary"]
+    assert "--autopush" in add
+    assert "--unsigned" in add
+    assert not any(arg.startswith(("--s3", "--oci")) for arg in add)
+    assert add[-2:] == ["local", f"file://{tmp_path}/buildcache"]
+
+
+def test_buildcache_check_of_filesystem_cache_does_not_open_the_vault(monkeypatch, tmp_path: Path):
+    environments = []
+
+    def fake_run(args, **kwargs):
+        environments.append(kwargs["env"])
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(buildcache.subprocess, "run", fake_run)
+    # A store without a file raises as soon as anything reads it.
+    results = buildcache.check_buildcaches(
+        _filesystem_config(tmp_path), SecretStore(None), command=["spack"], base_env={}
+    )
+
+    assert results == [("local", True, "")]
+    assert not any(name.startswith("SEANERSTACK_RESOURCE_") for name in environments[0])

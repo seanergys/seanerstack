@@ -49,3 +49,16 @@ spack env activate "$(seanerstack paths env --package <package>)"
 spack install
 spack buildcache push --update-index seanerstack-buildcache
 ```
+
+## Use a filesystem build cache
+
+A build cache can also be a directory on a local or shared filesystem. Declare it as a resource with a `file://` URL in the `config.toml` passed with `--config-file`:
+
+```toml
+[resources.local-buildcache]
+kind = "spack-buildcache"
+url = "file:///scratch/seanerstack/buildcache"
+autopush = true
+```
+
+A filesystem build cache takes no credentials, because file permissions control access to it. It is unsigned unless the resource sets `signed = true`, in which case Spack needs GPG keys to push to it and to verify what it installs from it. With `autopush = true`, every package that Spack builds is pushed to the cache, so a later installation with the same concretized hashes is taken from the directory instead of being built again.
