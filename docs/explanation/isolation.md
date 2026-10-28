@@ -39,10 +39,19 @@ All mutable Spack state controlled by Seanerstack is redirected below the select
     ├── stage/
     ├── cache/
     ├── source-cache/
-    └── environments/
+    ├── environments/
+    └── package_repos/
 ```
 
 The install tree, build stages, source cache, miscellaneous cache, test stage, and managed-environment root therefore do not reuse corresponding state from another Spack setup.
+
+## Pinned builtin recipes
+
+Seanerstack pins the builtin `spack-packages` repository to one commit and clones it into `package_repos/` inside the state directory, not into `~/.spack/package_repos/`. The pinned commit is the release `v2026.10.0`.
+
+The pin makes build caches usable across sessions. A binary in a build cache is used only when its hash matches exactly, and the hash depends on the package recipes. Without a pin, two sessions set up at different times could load different recipes and fail to share binaries.
+
+The clone directory is named after the commit. When Seanerstack moves to a new pin, the next activation writes the new commit into the private configuration and Spack clones that commit into a new directory, so no `spack repo update` is needed. Older clones remain in `package_repos/` and can be deleted.
 
 Seanerstack also initializes the concretizer with reuse disabled. Packages are not selected merely because a matching installation exists in another store or build cache. Build caches used by the stack must be configured explicitly as Seanerstack resources.
 

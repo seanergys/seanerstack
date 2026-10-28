@@ -1,8 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 from pathlib import Path
+import re
+
+import yaml
 
 from seanerstack.config import Config, Resource
 from seanerstack.isolation import (
+    BUILTIN_REPO_COMMIT,
     BUILTIN_REPO_GIT,
     activation_script,
     deactivation_script,
@@ -178,3 +182,34 @@ def test_private_scope_carries_the_builtin_repository(tmp_path: Path):
     assert "seanerstack:" in repos
     # Seanerstack is listed first so its own recipes take precedence.
     assert repos.index("seanerstack:") < repos.index("builtin:")
+
+
+def test_builtin_repository_is_pinned_and_cloned_inside_the_state(tmp_path: Path):
+    real_spack = tmp_path / "real-spack"
+    real_spack.write_text("#!/bin/sh\n", encoding="utf-8")
+    x = prepare_isolation(tmp_path / "state", real_spack)
+
+    builtin = yaml.safe_load((x.config / "repos.yaml").read_text(encoding="utf-8"))["repos:"]["builtin"]
+    assert builtin["git"] == BUILTIN_REPO_GIT
+    assert builtin["commit"] == BUILTIN_REPO_COMMIT
+    assert re.fullmatch(r"[0-9a-f]{40}", BUILTIN_REPO_COMMIT)
+    # Inside the state, not ~/.spack/package_repos, and named after the commit
+    # so that a new pin gets its own clone.
+    destination = Path(builtin["destination"])
+    assert destination.parent == x.package_repos
+    assert destination.name == f"builtin-{BUILTIN_REPO_COMMIT[:12]}"
+
+
+def test_existing_state_follows_a_new_pin(tmp_path: Path):
+    real_spack = tmp_path / "real-spack"
+    real_spack.write_text("#!/bin/sh\n", encoding="utf-8")
+    x = prepare_isolation(tmp_path / "state", real_spack)
+    (x.config / "repos.yaml").write_text(
+        f"repos::\n  builtin:\n    git: {BUILTIN_REPO_GIT}\n    commit: {'0' * 40}\n", encoding="utf-8"
+    )
+
+    prepare_isolation(tmp_path / "state", real_spack)
+
+    repos = (x.config / "repos.yaml").read_text(encoding="utf-8")
+    assert BUILTIN_REPO_COMMIT in repos
+    assert "0" * 40 not in repos

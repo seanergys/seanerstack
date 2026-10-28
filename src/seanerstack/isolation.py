@@ -19,6 +19,11 @@ from .secrets import SecretStore
 # because it replaces those defaults rather than merging with them.
 BUILTIN_REPO_GIT = "https://github.com/spack/spack-packages.git"
 
+# Binary build-cache hashes depend on the recipes, so every session has to load
+# the same builtin commit: spack-packages v2026.10.0, package API v2.2, which
+# Spack 1.2 supports. Bump it together with the Spack version used in CI.
+BUILTIN_REPO_COMMIT = "91cfb5b973c311f742cd31061fe224d40f1fd830"
+
 # Spack tests for the presence of this variable, not its value, so an inherited
 # one has to be removed rather than overridden. It switches the user scope off,
 # and that scope is where the private configuration lives.
@@ -34,6 +39,7 @@ class SpackLayout:
     cache: Path
     source_cache: Path
     environments: Path
+    package_repos: Path
     bin: Path
 
 
@@ -48,6 +54,7 @@ def layout(state_dir: Path) -> SpackLayout:
         cache=root / "cache",
         source_cache=root / "source-cache",
         environments=root / "environments",
+        package_repos=root / "package_repos",
         bin=root / "bin",
     )
 
@@ -88,7 +95,7 @@ def _write_if_missing(path: Path, text: str) -> None:
 
 def prepare_isolation(state_dir: Path, real_spack: Path) -> SpackLayout:
     x = layout(state_dir)
-    for directory in (x.config, x.store, x.stage, x.cache, x.source_cache, x.environments, x.bin):
+    for directory in (x.config, x.store, x.stage, x.cache, x.source_cache, x.environments, x.package_repos, x.bin):
         directory.mkdir(parents=True, exist_ok=True)
 
     # Double-colon keys intentionally replace lower-precedence configuration,
@@ -118,11 +125,18 @@ def prepare_isolation(state_dir: Path, real_spack: Path) -> SpackLayout:
     # without it no package loads at all: Seanerstack recipes, and every recipe
     # they depend on, import from spack_repo.builtin. Seanerstack comes first so
     # its own recipes take precedence.
-    _write_if_missing(
+    #
+    # Rewritten every time, so an existing state follows a new pin or a moved
+    # installation. The clone directory names the commit: a new pin gets a fresh
+    # clone at that commit, where reusing the old one would need `spack repo update`.
+    _write(
         x.config / "repos.yaml",
         "repos::\n"
         f"  seanerstack: {repository_path()}\n"
-        f"  builtin:\n    git: {BUILTIN_REPO_GIT}\n",
+        "  builtin:\n"
+        f"    git: {BUILTIN_REPO_GIT}\n"
+        f"    commit: {BUILTIN_REPO_COMMIT}\n"
+        f"    destination: {x.package_repos / f'builtin-{BUILTIN_REPO_COMMIT[:12]}'}\n",
     )
 
     shim = x.bin / "spack"

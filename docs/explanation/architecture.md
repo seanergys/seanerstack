@@ -30,7 +30,8 @@ Seanerstack keeps the mutable Spack setup separate from the installed curated co
 ├── stage/
 ├── cache/
 ├── source-cache/
-└── environments/
+├── environments/
+└── package_repos/
 ```
 
 This boundary prevents a user's existing `~/.spack` configuration, mirrors, externals, compiler configuration, stores, or caches from silently changing the SEANERGYS setup.
