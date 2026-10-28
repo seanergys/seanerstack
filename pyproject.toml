@@ -5,7 +5,7 @@ build-backend = "uv_build"
 
 [project]
 name = "seanerstack"
-version = "0.1.2"
+version = "0.1.3"
 description = "Curated Spack recipes and environments for SEANERGYS, with synchronization, bootstrap, and validation tooling."
 readme = "README.md"
 requires-python = ">=3.12"

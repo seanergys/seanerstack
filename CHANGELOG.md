@@ -7,7 +7,7 @@ and release process.
 
 ## [Unreleased]
 
-## [0.1.2] - 2026-10-28
+## [0.1.3] - 2026-10-28
 
 ### Changed
 
