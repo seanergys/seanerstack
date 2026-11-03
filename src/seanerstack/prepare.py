@@ -3,13 +3,53 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import replace
 import json
+import os
+from pathlib import Path
 import re
+import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
 
-from .config import Resource
+import yaml
+
+from .auth import spack_resource_environment
+from .bootstrap import bootstrap
+from .buildcache import buildcaches, configure_buildcaches
+from .config import Config, Resource, Toolchain
+from .secrets import SecretStore
+
+
+GIB = 1024**3
+
+# Rust with four jobs ran a desktop with 4 GiB free out of memory, and the kernel
+# then also killed what else was running there. Two jobs finished.
+MEMORY_PER_JOB = 2 * GIB
+
+
+def _toolchain(config: Config) -> tuple[Toolchain, Resource]:
+    if config.toolchain is None:
+        raise ValueError(f"{config.path}: [toolchain] is missing")
+    target = config.resource(config.toolchain.cache)
+    if target.kind != "spack-buildcache":
+        raise ValueError(f"resource {target.name!r} is not a spack-buildcache")
+    return config.toolchain, target
+
+
+def _session(config: Config, secrets: SecretStore, environ) -> tuple[dict[str, Resource], dict[str, str]]:
+    """The build caches that can be used, and the credentials that are missing from `environ`."""
+    caches: dict[str, Resource] = {}
+    credentials: dict[str, str] = {}
+    for resource in buildcaches(config):
+        if not resource.credentials or all(name in environ for name in resource.credential_variables):
+            caches[resource.name] = resource
+        elif secrets.path is not None and secrets.has_credentials(resource.credentials):
+            # A vault need not hold credentials for every shipped build cache.
+            caches[resource.name] = resource
+            credentials.update(spack_resource_environment(resource, secrets))
+    return caches, credentials
 
 
 def _registry(resource: Resource) -> tuple[str, str]:
@@ -67,3 +107,66 @@ def check_push_access(resource: Resource, env) -> None:
             pass  # The registry drops an abandoned upload by itself.
         return
     raise RuntimeError(denied)
+
+
+def _available_memory() -> int | None:
+    try:
+        text = Path("/proc/meminfo").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    match = re.search(r"^MemAvailable:\s+(\d+) kB", text, re.MULTILINE)
+    return int(match.group(1)) * 1024 if match else None
+
+
+def default_jobs() -> int:
+    cores = os.cpu_count() or 1
+    memory = _available_memory()
+    return cores if memory is None else max(1, min(cores, memory // MEMORY_PER_JOB))
+
+
+def _stream(args: list[str], env) -> None:
+    # A compiler takes hours; capturing its output would look like a hang.
+    subprocess.run(args, check=True, text=True, env=env)
+
+
+def _output(args: list[str], env) -> str:
+    return subprocess.run(args, check=True, text=True, capture_output=True, env=env).stdout
+
+
+def prepare_here(config: Config, secrets: SecretStore, *, command: list[str], env, work: Path, jobs: int | None = None) -> int:
+    """Build the toolchain in this operating system and push it."""
+    toolchain, target = _toolchain(config)
+    caches, credentials = _session(config, secrets, env)
+    if target.name not in caches:
+        raise ValueError(f"no credentials for build cache {target.name!r}; provide --secrets-file FILE")
+    env = {**env, **credentials}
+    check_push_access(target, env)
+    system = _output([*command, "arch", "--operating-system"], env).strip()
+    if system != toolchain.operating_system:
+        raise RuntimeError(
+            f"this is {system}, and binaries for {toolchain.operating_system} cannot be built here; "
+            "run without --no-container"
+        )
+
+    # Every finished package goes out at once, so a failure hours in keeps them.
+    resources = {name: replace(cache, autopush=name == target.name) for name, cache in caches.items()}
+    configure_buildcaches(replace(config, resources=resources), command=command, env=env)
+    subprocess.run([*command, "config", "remove", "packages:all:require"], check=False, capture_output=True, env=env)
+    _output([*command, "config", "add", f"packages:all:require:target={toolchain.target}"], env)
+    result = bootstrap(toolchain.compiler, command=command, env=env)
+    if not result.probe_ok:
+        raise RuntimeError(f"Spack does not use {toolchain.compiler}")
+
+    work.mkdir(parents=True, exist_ok=True)
+    (work / "spack.yaml").write_text(
+        yaml.safe_dump({"spack": {"specs": list(toolchain.packages), "view": False, "concretizer": {"unify": True}}}),
+        encoding="utf-8",
+    )
+    _output([*command, "-e", str(work), "concretize", "--force"], env)
+    _stream([*command, "-e", str(work), "install", "--jobs", str(jobs or default_jobs())], env)
+
+    # Also what came from another cache, so that this one is complete by itself.
+    specs = _output([*command, "find", "--format", "/{hash}"], env).split()
+    _stream([*command, "buildcache", "push", "--update-index", "--only", "package", target.name, *specs], env)
+    print(f"the toolchain is in {target.url}")
+    return 0
