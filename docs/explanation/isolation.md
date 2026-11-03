@@ -53,6 +53,8 @@ The pin makes build caches usable across sessions. A binary in a build cache is 
 
 The clone directory is named after the commit. When Seanerstack moves to a new pin, the next activation writes the new commit into the private configuration and Spack clones that commit into a new directory, so no `spack repo update` is needed. Older clones remain in `package_repos/` and can be deleted.
 
+On a host without internet access, set `SEANERSTACK_BUILTIN_REPO_GIT` to a mirror or a local clone of `spack-packages` that the host can reach, for example a bare repository on a shared filesystem. Seanerstack clones the same pinned commit from there, so build-cache hashes do not change. The mirror has to contain that commit.
+
 Seanerstack also initializes the concretizer with reuse disabled. Packages are not selected merely because a matching installation exists in another store or build cache. Build caches used by the stack must be configured explicitly as Seanerstack resources.
 
 The Spack executable itself can live outside the state directory. It is executable code, not mutable package state. Seanerstack records the selected executable and invokes it with the isolated configuration and state paths.

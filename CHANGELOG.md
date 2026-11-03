@@ -7,6 +7,12 @@ and release process.
 
 ## [Unreleased]
 
+### Added
+
+- `SEANERSTACK_BUILTIN_REPO_GIT` overrides the Git location the pinned
+  builtin `spack-packages` repository is cloned from, for hosts without
+  internet access. The commit pin still applies.
+
 ## [0.1.3] - 2026-10-28
 
 ### Changed
