@@ -184,6 +184,19 @@ def test_private_scope_carries_the_builtin_repository(tmp_path: Path):
     assert repos.index("seanerstack:") < repos.index("builtin:")
 
 
+def test_builtin_repository_location_can_be_overridden(tmp_path: Path, monkeypatch):
+    real_spack = tmp_path / "real-spack"
+    real_spack.write_text("#!/bin/sh\n", encoding="utf-8")
+    mirror = tmp_path / "mirror" / "spack-packages.git"
+    monkeypatch.setenv("SEANERSTACK_BUILTIN_REPO_GIT", str(mirror))
+    x = prepare_isolation(tmp_path / "state", real_spack)
+
+    builtin = yaml.safe_load((x.config / "repos.yaml").read_text(encoding="utf-8"))["repos:"]["builtin"]
+    assert builtin["git"] == str(mirror)
+    # The pin is not affected, so build-cache hashes stay the same.
+    assert builtin["commit"] == BUILTIN_REPO_COMMIT
+
+
 def test_builtin_repository_is_pinned_and_cloned_inside_the_state(tmp_path: Path):
     real_spack = tmp_path / "real-spack"
     real_spack.write_text("#!/bin/sh\n", encoding="utf-8")

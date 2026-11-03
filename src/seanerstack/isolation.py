@@ -19,6 +19,10 @@ from .secrets import SecretStore
 # because it replaces those defaults rather than merging with them.
 BUILTIN_REPO_GIT = "https://github.com/spack/spack-packages.git"
 
+# Hosts without internet access point this at a mirror or a local clone. The
+# pinned commit still applies, so build-cache hashes stay the same.
+BUILTIN_REPO_GIT_ENV = "SEANERSTACK_BUILTIN_REPO_GIT"
+
 # Binary build-cache hashes depend on the recipes, so every session has to load
 # the same builtin commit: spack-packages v2026.10.0, package API v2.2, which
 # Spack 1.2 supports. Bump it together with the Spack version used in CI.
@@ -83,6 +87,10 @@ def resolve_real_spack(explicit: Path | None = None) -> Path:
     return path
 
 
+def resolve_builtin_repo_git() -> str:
+    return os.environ.get(BUILTIN_REPO_GIT_ENV) or BUILTIN_REPO_GIT
+
+
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
@@ -134,7 +142,7 @@ def prepare_isolation(state_dir: Path, real_spack: Path) -> SpackLayout:
         "repos::\n"
         f"  seanerstack: {repository_path()}\n"
         "  builtin:\n"
-        f"    git: {BUILTIN_REPO_GIT}\n"
+        f"    git: {resolve_builtin_repo_git()}\n"
         f"    commit: {BUILTIN_REPO_COMMIT}\n"
         f"    destination: {x.package_repos / f'builtin-{BUILTIN_REPO_COMMIT[:12]}'}\n",
     )
