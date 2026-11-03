@@ -33,6 +33,8 @@ The directory contains Seanerstack's private Spack configuration, install store,
 
 `--secrets-file` is only required when `config.toml` declares build caches that need credentials (see [Create a secrets file](create-a-secrets-file.md)). Omit it, or pass `--skip-buildcache-check`, when none do.
 
+With `--secrets-file`, Seanerstack asks for the keyloom vault password. Over `ssh host 'command'`, in a script or in CI there is no terminal to answer the prompt, and the command fails with `EOFError`. Supply the password with `--secrets-password-file FILE` or `--secrets-password-stdin` instead (see [Supply the vault password without a prompt](create-a-secrets-file.md#supply-the-vault-password-without-a-prompt)).
+
 ## Activate the setup
 
 ```console
