@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -10,6 +11,7 @@ from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_PROBE_TIMEOUT, 
 from .buildcache import buildcaches, check_buildcaches, configure_buildcaches
 from .config import Config, load_config
 from .paths import environments_path, repository_path, share_path
+from .prepare import prepare_here, prepare_in_container
 from .secrets import SecretStore
 from .isolation import (
     activation_script, deactivation_script, layout, prepare_isolation,
@@ -117,6 +119,18 @@ def build_parser() -> argparse.ArgumentParser:
     cache_sub = cache_parser.add_subparsers(dest="buildcache_command", required=True)
     cache_sub.add_parser("configure", help="Install configured build-cache mirrors into the isolated Spack configuration.")
     cache_sub.add_parser("check", help="Check access to configured build caches using session or vault credentials.")
+    prepare_parser = cache_sub.add_parser(
+        "prepare",
+        help="Build the toolchain and push it to the build cache of [toolchain] in config.toml.",
+        description=(
+            "Build the compiler and the packages of [toolchain] in config.toml, and push them "
+            "to its build cache. What a cache already holds is reused, not rebuilt. Needs "
+            "write access to that cache, which is checked before anything is built. The build "
+            "runs in the image of [toolchain], so docker or podman is enough on a desktop."
+        ),
+    )
+    prepare_parser.add_argument("--jobs", type=int, help="parallel jobs per package (default: what the free memory allows)")
+    prepare_parser.add_argument("--no-container", action="store_true", help="build here, for a CI job that runs in the image of [toolchain]")
 
     init_parser = subparsers.add_parser(
         "init",
@@ -347,6 +361,12 @@ def _run_buildcache(args: argparse.Namespace) -> int:
             print(f"[{'OK' if ok else 'ERROR'}] buildcache:{name}: {message or 'accessible'}")
             failed |= not ok
         return 1 if failed else 0
+    if args.buildcache_command == "prepare":
+        if args.no_container:
+            x, _, command, env = _spack_runtime(args)
+            return prepare_here(config, secrets, command=command, env=env, work=x.environments / "toolchain", jobs=args.jobs)
+        state_dir = args.state_dir or Path(os.environ.get("SEANERSTACK_STATE_DIR", "~/.cache/seanerstack"))
+        return prepare_in_container(config, secrets, state_dir=state_dir, jobs=args.jobs)
     raise ValueError(f"unknown buildcache command: {args.buildcache_command}")
 
 

@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from seanerstack import prepare as _prepare
+from seanerstack.cli import build_parser
 from seanerstack.config import Config, Resource, Toolchain, load_config
 from seanerstack.secrets import SecretStore
 
@@ -155,6 +156,11 @@ def test_the_toolchain_cache_has_to_be_a_build_cache(tmp_path):
     git = Resource(name="target", kind="git", url="https://example.org/")
     with pytest.raises(ValueError, match="not a spack-buildcache"):
         _prepare._toolchain(replace(config(tmp_path), resources={"target": git}))
+
+
+def test_prepare_parses():
+    args = build_parser().parse_args(["--config-file", "c", "--secrets-file", "s", "buildcache", "prepare", "--jobs", "2", "--no-container"])
+    assert (args.jobs, args.no_container) == (2, True)
 
 
 class Registry(BaseHTTPRequestHandler):

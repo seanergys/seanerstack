@@ -50,6 +50,22 @@ spack install
 spack buildcache push --update-index seanerstack-buildcache
 ```
 
+## Prepare the toolchain
+
+The compiler, Rust and `capnproto` take hours to compile, so everyone installs them from the cache. To put them there, run this on a desktop with `docker` or `podman`, and a token with `write_registry`:
+
+```console
+seanerstack --config-file config.toml --secrets-file credentials.toml buildcache prepare
+```
+
+Both files are optional as far as the defaults fit: the build cache comes from `[toolchain]` in `config.toml`, and its token from the secrets file. The token is checked before anything is built.
+
+The build runs in the image of `[toolchain]`, because the operating system is part of every hash: binaries from a desktop's own system would never match those the services install. What the configured caches already hold is reused, every finished package is pushed at once, and the state stays under `~/.cache/seanerstack` or `--state-dir`, so running the command again continues where it stopped.
+
+`--jobs` defaults to what the free memory allows, and the container gets at most 85 % of that memory. A CI job that already runs in the image uses `--no-container`.
+
+Run it again after changing the Spack version or the `spack-packages` pin, because binaries match only on an identical hash.
+
 ## Use a filesystem build cache
 
 A build cache can also be a directory on a local or shared filesystem. Declare it as a resource with a `file://` URL in the `config.toml` passed with `--config-file`:
