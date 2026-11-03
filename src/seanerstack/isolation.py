@@ -25,8 +25,11 @@ BUILTIN_REPO_GIT_ENV = "SEANERSTACK_BUILTIN_REPO_GIT"
 
 # Binary build-cache hashes depend on the recipes, so every session has to load
 # the same builtin commit: spack-packages v2026.10.0, package API v2.2, which
-# Spack 1.2 supports. Bump it together with the Spack version used in CI.
+# Spack 1.2 supports. Bump it together with SPACK_VERSION and the Spack version
+# used in CI.
 BUILTIN_REPO_COMMIT = "91cfb5b973c311f742cd31061fe224d40f1fd830"
+SPACK_GIT = "https://github.com/spack/spack.git"
+SPACK_VERSION = "v1.2.2"
 
 # Spack tests for the presence of this variable, not its value, so an inherited
 # one has to be removed rather than overridden. It switches the user scope off,

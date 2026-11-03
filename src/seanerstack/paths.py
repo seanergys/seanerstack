@@ -9,6 +9,12 @@ def _source_share_path() -> Path:
     return Path(__file__).resolve().parents[2] / "data" / "share" / "seanerstack"
 
 
+def source_checkout() -> Path | None:
+    """Return the root of the checkout this module runs from, if there is one."""
+    source = _source_share_path()
+    return source.parents[2] if source.is_dir() else None
+
+
 def _installed_share_path() -> Path:
     data_root = sysconfig.get_path("data")
     if not data_root:

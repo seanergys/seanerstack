@@ -106,6 +106,42 @@ def test_jobs_follow_the_free_memory(monkeypatch):
     assert _prepare.default_jobs() == 16
 
 
+def test_the_container_reaches_prepare_through_a_checkout_or_a_release():
+    arguments = dict(jobs=2, uid=1000, gid=1000, version="1.2.3")
+    source = _prepare.container_script(TOOLCHAIN, source=True, **arguments)
+    assert "pip install --quiet /src/seanerstack" in source
+    assert "buildcache prepare --no-container --jobs 2" in source
+    assert "dnf install -y --setopt=install_weak_deps=False git gcc" in source
+    release = _prepare.container_script(TOOLCHAIN, source=False, **arguments)
+    assert "pip install --quiet seanerstack==1.2.3" in release
+
+
+def test_the_container_state_is_where_the_binaries_of_the_caches_relocate_to():
+    assert _prepare.CONTAINER_STATE == "/opt/seanergys/state"
+
+
+def test_no_token_is_on_the_command_line_of_the_container(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(_prepare, "check_push_access", lambda resource, env: None)
+    monkeypatch.setattr(_prepare, "_container_runtime", lambda: "docker")
+    monkeypatch.setattr(_prepare, "_available_memory", lambda: 8 * _prepare.GIB)
+    monkeypatch.setattr(_prepare, "_stream", lambda args, env: calls.append((args, env)))
+    monkeypatch.setattr(_prepare, "_session", lambda *a: ({"target": config(tmp_path).resources["target"]}, {TOKEN: "secret"}))
+    _prepare.prepare_in_container(config(tmp_path), SecretStore(None), state_dir=tmp_path, jobs=2)
+    argv, env = calls[0]
+    assert "secret" not in " ".join(argv)
+    assert env[TOKEN] == "secret"
+    assert argv[argv.index("-e") + 1] == TOKEN
+    assert argv[argv.index("--memory") + 1] == argv[argv.index("--memory-swap") + 1] == str(int(8 * _prepare.GIB * 0.85))
+    assert (tmp_path / "buildcache-prepare/rocky10").is_dir()
+
+
+def test_prepare_needs_a_container_runtime(monkeypatch):
+    monkeypatch.setattr(_prepare.shutil, "which", lambda name: None)
+    with pytest.raises(RuntimeError, match="neither docker nor podman"):
+        _prepare._container_runtime()
+
+
 def test_the_shipped_toolchain_applies_to_a_config_without_one(tmp_path):
     path = tmp_path / "config.toml"
     path.write_text('[toolchain]\ncache = "elsewhere"\n', encoding="utf-8")

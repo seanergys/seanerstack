@@ -1,13 +1,22 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Build the SEANERGYS toolchain and push it to a build cache."""
+"""Build the SEANERGYS toolchain and push it to a build cache.
+
+Binaries match by hash, and the hash contains the operating system. A desktop
+therefore builds in the image that the services run on, not on the host. Inside
+that image, which is also where a CI job runs, Seanerstack calls itself with
+`--no-container`.
+"""
 from __future__ import annotations
 
 import base64
 from dataclasses import replace
+from importlib import metadata
 import json
 import os
 from pathlib import Path
 import re
+import shlex
+import shutil
 import subprocess
 import urllib.error
 import urllib.parse
@@ -19,6 +28,8 @@ from .auth import spack_resource_environment
 from .bootstrap import bootstrap
 from .buildcache import buildcaches, configure_buildcaches
 from .config import Config, Resource, Toolchain
+from .isolation import SPACK_GIT, SPACK_VERSION
+from .paths import source_checkout
 from .secrets import SecretStore
 
 
@@ -27,6 +38,19 @@ GIB = 1024**3
 # Rust with four jobs ran a desktop with 4 GiB free out of memory, and the kernel
 # then also killed what else was running there. Two jobs finished.
 MEMORY_PER_JOB = 2 * GIB
+
+# Keeps the desktop usable, and makes running out of memory end the build rather
+# than the services next to it.
+MEMORY_SHARE = 0.85
+
+# Survives between runs, so that an interrupted build only repeats its last package.
+# This is where seanerctl builds and where the services install: Spack cannot
+# relocate a binary to a longer path, so a longer one here fails on what the caches
+# already hold, and binaries built here could not reach the services.
+CONTAINER_STATE = "/opt/seanergys/state"
+CONTAINER_CONFIG = "/run/seanerstack/config.toml"
+CONTAINER_SOURCE = "/src/seanerstack"
+PIP_VARIABLES = ("PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL")
 
 
 def _toolchain(config: Config) -> tuple[Toolchain, Resource]:
@@ -169,4 +193,79 @@ def prepare_here(config: Config, secrets: SecretStore, *, command: list[str], en
     specs = _output([*command, "find", "--format", "/{hash}"], env).split()
     _stream([*command, "buildcache", "push", "--update-index", "--only", "package", target.name, *specs], env)
     print(f"the toolchain is in {target.url}")
+    return 0
+
+
+def container_script(toolchain: Toolchain, *, jobs: int, source: bool, uid: int, gid: int, version: str) -> str:
+    spack = f"{CONTAINER_STATE}/spack-{SPACK_VERSION}"
+    package = CONTAINER_SOURCE if source else f"seanerstack=={version}"
+    seanerstack = (
+        f"/opt/seanerstack/bin/seanerstack --config-file {CONTAINER_CONFIG} --state-dir {CONTAINER_STATE} "
+        f"--spack-executable {spack}/bin/spack buildcache prepare --no-container --jobs {jobs}"
+    )
+    return "\n".join(
+        [
+            "set -euo pipefail",
+            "# The container runs as root. Return what it wrote to the calling user.",
+            f"trap 'chown -R {uid}:{gid} {CONTAINER_STATE} || true' EXIT",
+            f"dnf install -y --setopt=install_weak_deps=False {shlex.join(toolchain.system_packages)}",
+            f"if [ ! -x {spack}/bin/spack ]; then",
+            f"  rm -rf {spack}.partial",
+            f"  git clone --depth 1 --branch {SPACK_VERSION} {SPACK_GIT} {spack}.partial",
+            f"  mv {spack}.partial {spack}",
+            "fi",
+            "python3 -m venv /opt/seanerstack",
+            f"/opt/seanerstack/bin/pip install --quiet {shlex.quote(package)}",
+            seanerstack,
+            "",
+        ]
+    )
+
+
+def _container_runtime() -> str:
+    for name in ("docker", "podman"):
+        path = shutil.which(name)
+        if path:
+            return path
+    raise RuntimeError("neither docker nor podman found; in the toolchain image, run with --no-container")
+
+
+def prepare_in_container(config: Config, secrets: SecretStore, *, state_dir: Path, jobs: int | None = None) -> int:
+    """Build the toolchain in its image, so that any desktop can do it."""
+    toolchain, target = _toolchain(config)
+    caches, credentials = _session(config, secrets, os.environ)
+    if target.name not in caches:
+        raise ValueError(f"no credentials for build cache {target.name!r}; provide --secrets-file FILE")
+    env = {**os.environ, **credentials}
+    check_push_access(target, env)
+
+    runtime = _container_runtime()
+    state = state_dir.expanduser().resolve() / "buildcache-prepare" / toolchain.operating_system
+    state.mkdir(parents=True, exist_ok=True)
+    checkout = source_checkout()
+    name = f"seanerstack-prepare-{os.getpid()}"
+    argv = [
+        runtime, "run", "--rm", "--name", name,
+        "-v", f"{state}:{CONTAINER_STATE}",
+        "-v", f"{config.path.resolve()}:{CONTAINER_CONFIG}:ro",
+    ]
+    memory = _available_memory()
+    if memory is not None:
+        limit = str(int(memory * MEMORY_SHARE))
+        argv += ["--memory", limit, "--memory-swap", limit]
+    if checkout is not None:
+        argv += ["-v", f"{checkout}:{CONTAINER_SOURCE}:ro"]
+    # -e NAME takes the value from this process, so no token is on a command line.
+    for variable in (*credentials, *(name for name in PIP_VARIABLES if name in env)):
+        argv += ["-e", variable]
+    script = container_script(
+        toolchain, jobs=jobs or default_jobs(), source=checkout is not None,
+        uid=os.getuid(), gid=os.getgid(), version=metadata.version("seanerstack"),
+    )
+    try:
+        _stream([*argv, toolchain.image, "/bin/bash", "-c", script], env)
+    except BaseException:
+        # The container outlives its client.
+        subprocess.run([runtime, "rm", "--force", name], check=False, capture_output=True, env=env)
+        raise
     return 0
