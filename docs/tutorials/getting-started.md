@@ -6,21 +6,26 @@ The procedure assumes Bash, Git, and a working system compiler are already provi
 
 The example package is `properdocs`.
 
-## 1. Configure pip for the SEANERGYS package registry
+## 1. Configure pipx for the SEANERGYS package registry
 
-Seanerstack is published to the SEANERGYS GitLab group's PyPI registry, which requires authentication even for read access. Create a GitLab personal, project, or group access token with at least the `read_api` scope, then point pip at the registry as an extra index:
+Seanerstack is published to the SEANERGYS GitLab group's PyPI registry, which requires authentication even for read access. Create a GitLab personal, project, or group access token with at least the `read_api` scope, then point the installer at the registry as an extra index. [pipx](https://pipx.pypa.io/) uses `uv` or `pip` as its installer backend depending on its version, and they read different variables, so set both:
 
 ```console
 export PIP_EXTRA_INDEX_URL="https://<token-name>:<token>@gitlab.seanergys.fz-juelich.de/api/v4/groups/158/-/packages/pypi/simple"
+export UV_EXTRA_INDEX_URL="$PIP_EXTRA_INDEX_URL"
 ```
 
-Persist it instead of exporting it in every shell by adding the same assignment to `pip.conf` (`extra-index-url`) or your shell profile.
+Persist it instead of exporting it in every shell by adding the same assignments to your shell profile.
 
 ## 2. Install the latest Seanerstack
 
 ```console
-pip install --upgrade seanerstack
+pipx install --python python3.12 seanerstack
 ```
+
+Seanerstack requires Python 3.12 or newer. Pass `--python` explicitly: without it, pipx uses the system `python3`, which may be older.
+
+Use pipx rather than a plain `pip install`. Without a virtual environment, pip silently falls back to a `--user` installation on hosts where you cannot write to the system site-packages, and Seanerstack cannot find its shared data in that layout. pipx installs into an isolated virtual environment and needs no root access. Inside a virtual environment that you manage yourself, `pip install --upgrade seanerstack` works as well.
 
 Its dependencies, including `keyloom` for the secrets file, come from PyPI. Seanerstack installs its curated Spack repository and environments under its installation prefix in `share/seanerstack`. The `seanerstack` command exposes their installed paths, so users do not need to locate that directory themselves.
 
