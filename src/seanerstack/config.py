@@ -41,9 +41,23 @@ class Resource:
 
 
 @dataclass(frozen=True)
+class Toolchain:
+    """What `seanerstack buildcache prepare` builds, and where it pushes it."""
+
+    compiler: str
+    packages: tuple[str, ...]
+    cache: str
+    image: str
+    operating_system: str
+    target: str
+    system_packages: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class Config:
     path: Path
     resources: dict[str, Resource]
+    toolchain: Toolchain | None = None
 
     def resource(self, name: str) -> Resource:
         try:
@@ -54,6 +68,24 @@ class Config:
 
 def default_config_path() -> Path:
     return share_path() / "config.toml"
+
+
+def _toolchain(data: dict, path: Path) -> Toolchain:
+    # A config.toml names only what it changes.
+    shipped = tomllib.loads(default_config_path().read_text(encoding="utf-8")).get("toolchain", {})
+    raw = {**shipped, **data.get("toolchain", {})}
+    try:
+        return Toolchain(
+            compiler=raw["compiler"],
+            packages=tuple(raw["packages"]),
+            cache=raw["cache"],
+            image=raw["image"],
+            operating_system=raw["operating_system"],
+            target=raw["target"],
+            system_packages=tuple(raw["system_packages"]),
+        )
+    except KeyError as error:
+        raise ValueError(f"{path}: [toolchain] requires {error.args[0]}") from error
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -90,4 +122,4 @@ def load_config(path: Path | None = None) -> Config:
         if resource.kind == "spack-buildcache" and resource.filesystem and resource.credentials:
             raise ValueError(f"{path}: resources.{name}: filesystem build caches take no credentials")
         resources[name] = resource
-    return Config(path=path, resources=resources)
+    return Config(path=path, resources=resources, toolchain=_toolchain(data, path))
