@@ -59,6 +59,8 @@ Seanerstack uses the compiler package supplied by Spack; it does not ship a GCC 
 
 If `config.toml` declares build caches that need credentials, pass `--secrets-file secrets.toml` (see [Create a secrets file](../how-to/create-a-secrets-file.md)); otherwise omit it, or add `--skip-buildcache-check`.
 
+With `--secrets-file`, Seanerstack asks for the keyloom vault password. When there is no terminal to answer the prompt (over `ssh host 'command'`, in a script or in CI), the command fails with `EOFError`; supply the password with `--secrets-password-file FILE` or `--secrets-password-stdin` instead (see [Supply the vault password without a prompt](../how-to/create-a-secrets-file.md#supply-the-vault-password-without-a-prompt)).
+
 ## 6. Activate the isolated Spack session
 
 Activate Seanerstack before using Spack directly:
