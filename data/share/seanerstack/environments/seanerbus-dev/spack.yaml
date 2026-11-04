@@ -2,6 +2,7 @@
 spack:
   specs:
     - seanerbus@main
+    - seanerbus-cpp@main
 
   # A source checkout is deliberately not committed here. After activating this
   # environment, bind one with:
