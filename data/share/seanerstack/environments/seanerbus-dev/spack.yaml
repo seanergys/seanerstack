@@ -3,6 +3,7 @@ spack:
   specs:
     - seanerbus@main
     - seanerbus-cpp@main
+    - seanerbus-python@main
 
   # A source checkout is deliberately not committed here. After activating this
   # environment, bind one with:
