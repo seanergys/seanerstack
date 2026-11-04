@@ -1,6 +1,7 @@
 # Copyright Spack Project Developers. See COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
+import os
 import socket
 import subprocess
 import time
@@ -18,20 +19,13 @@ class Seanerbus(CargoPackage):
     git = "https://gitlab.seanergys.fz-juelich.de/software/demobus.git"
     seanerstack_resource = "seanergys-gitlab"
 
-    # Cargo.toml declares path dependencies on deps/internal/internal_schemas
-    # and deps/internal/async, both inside the `deps` submodule, and Spack
-    # clones submodules only when asked. Without this the build fails on the
-    # unresolved path dependencies.
-    #
-    # This governs whether submodules are fetched, not how they are reached:
-    # upstream .gitmodules pins `deps` to an absolute git@ URL, which a parent
-    # cloned over HTTPS does not override.
-    submodules = True
-
     license("MIT")
 
     # The build script of internal_schemas runs the capnp compiler.
     depends_on("capnproto", type="build")
+    # Cargo.toml has path dependencies on deps/internal/internal_schemas and
+    # deps/internal/async, which upstream takes from seanerbus-rs as a submodule.
+    depends_on("seanerbus-rs", type="build")
 
     # Development follows the upstream default branch.
     version("main", branch="main")
@@ -39,6 +33,14 @@ class Seanerbus(CargoPackage):
     # There are no releases yet, so `seanerstack package update` only checks that
     # the branch exists. GitLab writes its /-/archive/ tarballs with `git archive`,
     # which leaves a submodule path empty, so a release has to come from Git too.
+
+    @run_before("build")
+    def link_dependencies(self):
+        with working_dir(self.stage.source_path):
+            # Git leaves the path of a submodule as an empty directory.
+            if os.path.isdir("deps"):
+                os.rmdir("deps")
+            os.symlink(self.spec["seanerbus-rs"].package.sources, "deps")
 
     def test_broker_accepts_a_connection(self):
         """start the broker and connect to it"""
