@@ -12,6 +12,29 @@ and release process.
 - `SEANERSTACK_BUILTIN_REPO_GIT` overrides the Git location the pinned
   builtin `spack-packages` repository is cloned from, for hosts without
   internet access. The commit pin still applies.
+- The `seanerbus-cpp` and `seanerbus-python` packages, with `py-pycapnp`, which
+  Spack does not have.
+- `seanerbus-msg` and `seanerbus-rs`, the schemas and the Rust crates that the
+  other seanerbus packages build from.
+- The seanerbus packages and `py-pycapnp` have a test for `spack test run`.
+
+### Changed
+
+- The `demobus` package is now `seanerbus`, and the `demobus-dev` environment is
+  now `seanerbus-dev`. The upstream repository keeps its name.
+- `seanerbus` installs the broker as `seanerbroker`, the name that upstream gave it
+  on 2026-11-03.
+- The seanerbus packages clone no submodules. They depend on `seanerbus-rs`,
+  `seanerbus-msg` and the `fmt` of Spack instead.
+
+### Fixed
+
+- `seanerbus` declares its build dependency on `capnproto`, without which a clean
+  build fails in the build script of `internal_schemas`.
+- `seanerstack package update` accepts a recipe without releases, which follows only
+  its branches, instead of failing to infer a tag convention.
+- `seanerstack validate --online` and `package update --all` leave out recipes
+  without a Git URL, such as `py-pycapnp`, instead of stopping at them.
 
 ## [0.1.3] - 2026-10-28
 
