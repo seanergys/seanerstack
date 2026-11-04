@@ -40,3 +40,11 @@ A recipe that mixes `tag=` and `sha256=` releases is rejected.
 GitLab generates `/-/archive/` tarballs on demand. They are byte-stable today, but a GitLab upgrade could change them and invalidate recorded checksums.
 
 If the existing recipe does not establish one unambiguous convention, synchronization fails rather than creating Seanerstack-specific synchronization metadata.
+
+## Recipes without releases
+
+A recipe with branches but no releases, such as `seanerbus` with only `version("main", branch="main")`, follows those branches. Synchronization checks that they still exist upstream, and takes no releases from the upstream tags, so it needs no convention.
+
+## Recipes without a Git URL
+
+Synchronization reads upstream through Git, so `validate --online` and `package update --all` leave out a recipe without a `git` URL, such as `py-pycapnp`, which fetches from PyPI, or one that extends a recipe of Spack and takes its versions from there. `package update` with the name of such a recipe reports that it has no Git URL.
