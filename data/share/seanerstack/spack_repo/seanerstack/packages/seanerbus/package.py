@@ -15,7 +15,6 @@ class Seanerbus(CargoPackage):
     """The demonstrator SeanerBUS req/res and pub/sub broker"""
 
     homepage = "https://gitlab.seanergys.fz-juelich.de/software/demobus"
-    url = "https://gitlab.seanergys.fz-juelich.de/software/demobus/-/archive/v0.2.1/demobus-v0.2.1.tar.gz"
     git = "https://gitlab.seanergys.fz-juelich.de/software/demobus.git"
     seanerstack_resource = "seanergys-gitlab"
 
