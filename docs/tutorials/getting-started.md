@@ -20,7 +20,7 @@ Persist it instead of exporting it in every shell by adding the same assignments
 ## 2. Install the latest Seanerstack
 
 ```console
-pipx install --python python3.12 seanerstack
+pipx install --python python3.12 --include-deps seanerstack
 ```
 
 Seanerstack requires Python 3.12 or newer. Pass `--python` explicitly: without it, pipx uses the system `python3`, which may be older.
@@ -32,12 +32,14 @@ If pipx is not available, for example on the login node of a cluster, install wi
 ```console
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
-uv tool install --python 3.12 seanerstack
+uv tool install --python 3.12 --with-executables-from keyloom seanerstack
 ```
 
 Update it with `uv tool upgrade seanerstack`.
 
-Its dependencies, including `keyloom` for the secrets file, come from PyPI. Seanerstack installs its curated Spack repository and environments under its installation prefix in `share/seanerstack`. The `seanerstack` command exposes their installed paths, so users do not need to locate that directory themselves.
+`--include-deps` (`--with-executables-from keyloom` for uv) also puts the `keyloom` command on the PATH, which you need for the secrets file. pipx and uv otherwise expose only the commands of the package itself.
+
+Its dependencies, including `keyloom`, come from PyPI. Seanerstack installs its curated Spack repository and environments under its installation prefix in `share/seanerstack`. The `seanerstack` command exposes their installed paths, so users do not need to locate that directory themselves.
 
 ## 3. Install Spack
 

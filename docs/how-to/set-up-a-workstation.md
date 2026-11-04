@@ -16,7 +16,7 @@ Persist it instead of exporting it in every shell by adding the same assignments
 ## 2. Install or update Seanerstack
 
 ```console
-pipx install --python python3.12 seanerstack
+pipx install --python python3.12 --include-deps seanerstack
 ```
 
 To update an existing installation, run `pipx upgrade seanerstack`.
@@ -30,12 +30,14 @@ If pipx is not available, for example on the login node of a cluster, install wi
 ```console
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
-uv tool install --python 3.12 seanerstack
+uv tool install --python 3.12 --with-executables-from keyloom seanerstack
 ```
 
 Update it with `uv tool upgrade seanerstack`.
 
-Its dependencies, including `keyloom` for the secrets file, come from PyPI.
+`--include-deps` (`--with-executables-from keyloom` for uv) also puts the `keyloom` command on the PATH, which you need for the secrets file. pipx and uv otherwise expose only the commands of the package itself.
+
+Its dependencies, including `keyloom`, come from PyPI.
 
 ## 3. Initialize Seanerstack
 
