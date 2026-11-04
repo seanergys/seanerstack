@@ -184,3 +184,29 @@ def test_a_recipe_without_releases_still_reports_a_missing_branch(monkeypatch, t
     result = sync.sync_package("demo", repository=repo, check=True)
 
     assert result.changed and result.missing_branches == ("main",)
+
+
+def test_recipes_without_a_git_url_are_left_out_of_synchronizing_all(monkeypatch, tmp_path):
+    repo = _repo(tmp_path)
+    extended = repo / "packages" / "extended"
+    extended.mkdir()
+    (extended / "package.py").write_text(
+        "from spack_repo.builtin.packages.extended.package import Extended as Builtin\n\n"
+        "class Extended(Builtin):\n    get_full_repo = True\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sync, "read_remote_refs", lambda remote: sync.RemoteRefs(tags={}, heads={"main": "123"}))
+
+    pypi = repo / "packages" / "from-pypi"
+    pypi.mkdir()
+    (pypi / "package.py").write_text(
+        'class FromPypi:\n    pypi = "from-pypi/from-pypi-1.0.tar.gz"\n    version("1.0", sha256="abc")\n',
+        encoding="utf-8",
+    )
+
+    results = sync.sync_many(["demo", "extended", "from-pypi"], repository=repo, check=True)
+
+    assert [result.package for result in results] == ["demo"]
+    for package in ("extended", "from-pypi"):
+        with pytest.raises(ValueError, match="no git URL"):
+            sync.sync_package(package, repository=repo)

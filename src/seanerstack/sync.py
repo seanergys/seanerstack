@@ -379,6 +379,9 @@ def sync_many(
     config: Config | None = None,
     secrets: SecretStore | None = None,
 ) -> list[SyncResult]:
+    # Synchronization reads upstream through Git. A recipe without a Git URL, such
+    # as one that extends a recipe of Spack or fetches from PyPI, is left out.
+    paths = package_paths(repository)
     return [
         sync_package(
             package,
@@ -389,4 +392,5 @@ def sync_many(
             secrets=secrets,
         )
         for package in packages
+        if package not in paths or parse_recipe(paths[package]).git is not None
     ]
