@@ -1,6 +1,10 @@
 # Copyright Spack Project Developers. See COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
+import socket
+import subprocess
+import time
+
 from spack_repo.builtin.build_systems.cargo import CargoPackage
 
 from spack.package import *
@@ -39,3 +43,22 @@ class Seanerbus(CargoPackage):
     # the Git-fetched version above carries those dependencies.
     version("0.2.1", sha256="3a5ce024c78f85ebdc9ca05bdbc6d3a445e782404173d4b9f04037f072cf2580")
     version("0.2", sha256="6e89c484e39542c3766197199bdc250f61b5db5a7c31d14c263f08bafe163762")
+
+    def test_broker_accepts_a_connection(self):
+        """start the broker and connect to it"""
+        with socket.socket() as free:
+            free.bind(("127.0.0.1", 0))
+            port = free.getsockname()[1]
+        broker = subprocess.Popen([self.prefix.bin.demobus, f"127.0.0.1:{port}"])
+        try:
+            for _ in range(100):
+                assert broker.poll() is None, "the broker exited"
+                try:
+                    socket.create_connection(("127.0.0.1", port), timeout=1).close()
+                    return
+                except OSError:
+                    time.sleep(0.1)
+            raise AssertionError(f"nothing accepts connections on port {port}")
+        finally:
+            broker.terminate()
+            broker.wait()
