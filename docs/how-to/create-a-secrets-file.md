@@ -1,6 +1,6 @@
 # Create a secrets file
 
-Credentials for the resources in `config.toml` are kept in a secrets file. Its secret values are encrypted with [keyloom](https://seanergys.github.io/keyloom); every other field stays readable, so the file can be reviewed without the vault password. The `keyloom` command is installed together with Seanerstack.
+Credentials for the resources in `config.toml` are kept in a secrets file. Its secret values are encrypted with [keyloom](https://seanergys.github.io/keyloom); every other field stays readable, so the file can be reviewed without the vault password. The `keyloom` command is installed together with Seanerstack when you install it as described in [Set up Spack for SEANERGYS](set-up-a-workstation.md) (`--include-deps` for pipx). Without that option, pipx and uv expose only the commands of the package itself, and `keyloom` has to be installed separately with `pipx install keyloom` or `uv tool install keyloom`.
 
 keyloom chooses the file format by extension: `.toml`, `.yaml`/`.yml`, or `.json`. The examples below use TOML.
 
