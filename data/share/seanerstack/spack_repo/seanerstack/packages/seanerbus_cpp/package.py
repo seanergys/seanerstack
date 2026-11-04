@@ -1,6 +1,8 @@
 # Copyright Spack Project Developers. See COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
+import os
+
 from spack_repo.builtin.build_systems.cmake import CMakePackage
 
 from spack.package import *
@@ -12,9 +14,6 @@ class SeanerbusCpp(CMakePackage):
     homepage = "https://gitlab.seanergys.fz-juelich.de/software/seanerbus-cpp"
     git = "https://gitlab.seanergys.fz-juelich.de/software/seanerbus-cpp.git"
     seanerstack_resource = "seanergys-gitlab"
-
-    # fmt and the message schemas are submodules, and CMake needs both.
-    submodules = True
 
     test_requires_compiler = True
 
@@ -29,10 +28,26 @@ class SeanerbusCpp(CMakePackage):
     depends_on("cmake@3.11:", type="build")
     depends_on("pkgconfig", type="build")
     depends_on("capnproto")
+    # Upstream takes fmt and the message schemas as submodules.
+    depends_on("fmt@12:")
+    depends_on("seanerbus-msg", type="build")
 
     with when("+python"):
         extends("python")
         depends_on("py-nanobind", type="build")
+
+    @run_before("cmake")
+    def link_dependencies(self):
+        with working_dir(self.stage.source_path):
+            # Git leaves the path of a submodule as an empty directory.
+            for path in ("schemas", join_path("lib", "fmt")):
+                if os.path.isdir(path):
+                    os.rmdir(path)
+            os.symlink(self.spec["seanerbus-msg"].package.schemas, "schemas")
+            # CMake adds lib/fmt as a subdirectory, which here finds the fmt of Spack.
+            mkdirp(join_path("lib", "fmt"))
+            with open(join_path("lib", "fmt", "CMakeLists.txt"), "w", encoding="utf-8") as cmake:
+                cmake.write("find_package(fmt CONFIG REQUIRED GLOBAL)\n")
 
     def cmake_args(self):
         return [self.define_from_variant("REQUIRE_PYTHON", "python")]
