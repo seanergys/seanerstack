@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 spack:
   specs:
-    - seanerbus@main
+    - seanerbroker@main
     - seanerbus-cpp@main
     - seanerbus-python@main
 
   # A source checkout is deliberately not committed here. After activating this
   # environment, bind one with:
-  #   spack develop --path /path/to/seanerbus seanerbus@main
+  #   spack develop --path /path/to/seanerbroker seanerbroker@main
   concretizer:
     unify: true

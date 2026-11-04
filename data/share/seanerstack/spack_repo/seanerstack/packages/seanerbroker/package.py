@@ -11,11 +11,11 @@ from spack_repo.builtin.build_systems.cargo import CargoPackage
 from spack.package import *
 
 
-class Seanerbus(CargoPackage):
+class Seanerbroker(CargoPackage):
     """The demonstrator SeanerBUS req/res and pub/sub broker"""
 
-    homepage = "https://gitlab.seanergys.fz-juelich.de/software/demobus"
-    git = "https://gitlab.seanergys.fz-juelich.de/software/demobus.git"
+    homepage = "https://gitlab.seanergys.fz-juelich.de/software/seanerbroker"
+    git = "https://gitlab.seanergys.fz-juelich.de/software/seanerbroker.git"
     seanerstack_resource = "seanergys-gitlab"
 
     license("MIT")

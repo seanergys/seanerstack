@@ -14,7 +14,7 @@ test:
     - uv run seanerstack validate
 
 # Builds the wheel of this commit, installs it into a fresh environment, and
-# runs tests/e2e against this GitLab instance. The job token reads the demobus
+# runs tests/e2e against this GitLab instance. The job token reads the seanerbroker
 # repository, and builds and pushes a small package into
 # test-e2e-buildcache-<test> in the project's container registry, separate
 # from the project build cache, before installing it back from there.
