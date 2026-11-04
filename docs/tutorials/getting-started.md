@@ -27,6 +27,16 @@ Seanerstack requires Python 3.12 or newer. Pass `--python` explicitly: without i
 
 Use pipx rather than a plain `pip install`. Without a virtual environment, pip silently falls back to a `--user` installation on hosts where you cannot write to the system site-packages, and Seanerstack cannot find its shared data in that layout. pipx installs into an isolated virtual environment and needs no root access. Inside a virtual environment that you manage yourself, `pip install --upgrade seanerstack` works as well.
 
+If pipx is not available, for example on the login node of a cluster, install with [uv](https://docs.astral.sh/uv/) instead. It reads `UV_EXTRA_INDEX_URL` from step 1 and downloads Python 3.12 itself when the system one is older:
+
+```console
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+uv tool install --python 3.12 seanerstack
+```
+
+Update it with `uv tool upgrade seanerstack`.
+
 Its dependencies, including `keyloom` for the secrets file, come from PyPI. Seanerstack installs its curated Spack repository and environments under its installation prefix in `share/seanerstack`. The `seanerstack` command exposes their installed paths, so users do not need to locate that directory themselves.
 
 ## 3. Install Spack
