@@ -23,3 +23,14 @@ class PyPycapnp(PythonPackage):
     depends_on("py-pkgconfig", type="build")
     depends_on("pkgconfig", type="build")
     depends_on("capnproto")
+
+    def test_message_round_trip(self):
+        """write a message and read it back, with a schema parsed at run time"""
+        with open("point.capnp", "w", encoding="utf-8") as schema:
+            schema.write("@0xd5a7c9e3f1b80412;\nstruct Point {\n  x @0 :Int32;\n}\n")
+        self.spec["python"].command(
+            "-c",
+            "import capnp; point = capnp.load('point.capnp').Point; "
+            "data = point.new_message(x=7).to_bytes(); "
+            "assert point.from_bytes(data).__enter__().x == 7",
+        )
