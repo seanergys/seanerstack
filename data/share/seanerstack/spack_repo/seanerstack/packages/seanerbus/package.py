@@ -6,7 +6,7 @@ from spack_repo.builtin.build_systems.cargo import CargoPackage
 from spack.package import *
 
 
-class Demobus(CargoPackage):
+class Seanerbus(CargoPackage):
     """The demonstrator SeanerBUS req/res and pub/sub broker"""
 
     homepage = "https://gitlab.seanergys.fz-juelich.de/software/demobus"
