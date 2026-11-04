@@ -16,6 +16,8 @@ class SeanerbusCpp(CMakePackage):
     # fmt and the message schemas are submodules, and CMake needs both.
     submodules = True
 
+    test_requires_compiler = True
+
     license("MIT")
 
     version("main", branch="main")
@@ -43,3 +45,36 @@ class SeanerbusCpp(CMakePackage):
         mkdirp(join_path(module, ".."))
         rename(join_path(self.prefix, "seanerbus_cpp_py"), module)
         install("src/seanerbus_cpp_py/__init__.py", module)
+
+    def test_link_a_program(self):
+        """compile a C program against the installed client, and run it"""
+        with open("entity.c", "w", encoding="utf-8") as source:
+            source.write(
+                "#include <seanerbus/c/seanerbus.h>\n"
+                "int main(void) {\n"
+                "    seanerbus_entity_t* entity = NULL;\n"
+                "    uint64_t upper = 0, lower = 0;\n"
+                "    if (seanerbus_entity_create_from_u64(1, 2, &entity, NULL) != SEANERBUS_STATUS_OK) return 1;\n"
+                "    if (seanerbus_entity_get_parts(entity, &upper, &lower, NULL) != SEANERBUS_STATUS_OK) return 2;\n"
+                "    seanerbus_entity_destroy(entity);\n"
+                "    return upper == 1 && lower == 2 ? 0 : 3;\n"
+                "}\n"
+            )
+        libraries = find_libraries(["libseanerbus_c", "libseanerbus"], self.prefix, shared=False, recursive=True)
+        libraries += find_libraries(["libcapnp", "libkj"], self.spec["capnproto"].prefix, recursive=True)
+        which(self.spec["c"].package.cc, required=True)(
+            "entity.c", "-o", "entity", f"-I{self.prefix.include}", *libraries.ld_flags.split(),
+            *(f"-Wl,-rpath,{path}" for path in libraries.directories), "-lstdc++",
+        )
+        which("./entity", required=True)()
+
+    def test_python_module(self):
+        """import the native module of the Python client"""
+        if "+python" not in self.spec:
+            raise SkipTest("seanerbus-cpp was built without +python")
+        self.spec["python"].command(
+            "-c",
+            "import seanerbus_cpp_py as bus; "
+            "entity = bus.Entity('15a1a4c6-e83b-4699-bbdb-448b26edf1cc'); "
+            "assert bus.Message(entity, 1, b'x').payload_type_as_int() == 1",
+        )
