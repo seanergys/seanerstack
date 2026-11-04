@@ -107,6 +107,14 @@ def _release_versions(recipe: Recipe) -> set[str]:
     }
 
 
+def _has_releases(recipe: Recipe) -> bool:
+    """Whether the recipe has a release, fetched by tag or as an archive."""
+    return any(
+        directive.name == "version" and directive.args and ({"tag", "sha256"} & directive.kwargs.keys())
+        for directive in recipe.directives
+    )
+
+
 def _tracked_branches(recipe: Recipe) -> dict[str, str]:
     return {
         str(directive.kwargs["branch"]): str(directive.args[0])
@@ -327,15 +335,18 @@ def sync_package(
             from .auth import git_auth
             auth = git_auth(resource, secrets)
     refs = read_remote_refs(recipe.git, auth=auth) if auth is not None else read_remote_refs(recipe.git)
-    convention = infer_tag_convention(recipe, tags=refs.tags)
     existing = _release_versions(recipe)
 
+    # A recipe without releases follows its branches only, so it takes no
+    # releases from the upstream tags and has no tag convention to infer.
     releases: list[tuple[str, str, str]] = []
-    for tag, commit in refs.tags.items():
-        version = convention.version_from_tag(tag)
-        if version is not None and version not in existing:
-            releases.append((version, tag, commit))
-    releases.sort(key=lambda item: _version_key(item[0]), reverse=True)
+    if _has_releases(recipe):
+        convention = infer_tag_convention(recipe, tags=refs.tags)
+        for tag, commit in refs.tags.items():
+            version = convention.version_from_tag(tag)
+            if version is not None and version not in existing:
+                releases.append((version, tag, commit))
+        releases.sort(key=lambda item: _version_key(item[0]), reverse=True)
 
     tracked_branches = _tracked_branches(recipe)
     missing_branches = tuple(sorted(branch for branch in tracked_branches if branch not in refs.heads))
