@@ -17,6 +17,7 @@ and release process.
 - `seanerbus-msg` and `seanerbus-rs`, the schemas and the Rust crates that the
   other seanerbus packages build from.
 - The seanerbus packages and `py-pycapnp` have a test for `spack test run`.
+- `seanerbus-cli`, the command-line client of the SeanerBUS.
 
 ### Changed
 
