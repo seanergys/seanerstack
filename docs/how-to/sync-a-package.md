@@ -15,7 +15,7 @@ The recipe itself is the source of synchronization metadata. Seanerstack reads t
 For a recipe with `url` and `sha256` releases, new releases are downloaded to compute their checksums. A private archive needs the recipe's `seanerstack_resource` and the secrets file described in [Create a secrets file](create-a-secrets-file.md):
 
 ```console
-seanerstack --secrets-file ./secrets.toml package update demobus
+seanerstack --secrets-file ./secrets.toml package update seanerbus
 ```
 
 To check synchronization in CI or before submitting a change without modifying files, use:

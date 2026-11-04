@@ -61,19 +61,19 @@ def test_secrets_file_holds_only_encrypted_tokens(commands: Commands, secrets_fi
     assert result.returncode == 0, result.stderr
 
 
-def test_package_update_reads_demobus_with_credentials(commands: Commands, secrets_file: Path, password_file: Path):
+def test_package_update_reads_seanerbus_with_credentials(commands: Commands, secrets_file: Path, password_file: Path):
     # --dry-run lists the remote refs but changes nothing, and new upstream
     # releases do not fail the test.
     result = commands.run(
         "seanerstack",
         "--secrets-file", secrets_file,
         "--secrets-password-file", password_file,
-        "package", "update", "demobus", "--dry-run",
+        "package", "update", "seanerbus", "--dry-run",
         env=_environment(),
     )
 
     assert result.returncode == 0, result.stderr
-    assert result.stdout.startswith("demobus: "), result.stdout
+    assert result.stdout.startswith("seanerbus: "), result.stdout
     assert not result.leaked
 
 
@@ -86,7 +86,7 @@ def test_package_update_fails_with_an_invalid_token(commands: Commands, password
         "seanerstack",
         "--secrets-file", invalid,
         "--secrets-password-file", password_file,
-        "package", "update", "demobus", "--dry-run",
+        "package", "update", "seanerbus", "--dry-run",
         env=_environment(),
     )
 
@@ -102,7 +102,7 @@ def test_wrong_vault_password_is_reported(commands: Commands, secrets_file: Path
         "seanerstack",
         "--secrets-file", secrets_file,
         "--secrets-password-file", wrong,
-        "package", "update", "demobus", "--dry-run",
+        "package", "update", "seanerbus", "--dry-run",
         env=_environment(),
     )
 
