@@ -26,6 +26,9 @@ class Seanerbus(CargoPackage):
 
     license("MIT")
 
+    # The build script of internal_schemas runs the capnp compiler.
+    depends_on("capnproto", type="build")
+
     # Development follows the upstream default branch.
     version("main", branch="main")
 
