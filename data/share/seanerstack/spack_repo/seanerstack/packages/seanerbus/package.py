@@ -45,7 +45,8 @@ class Seanerbus(CargoPackage):
         with socket.socket() as free:
             free.bind(("127.0.0.1", 0))
             port = free.getsockname()[1]
-        broker = subprocess.Popen([self.prefix.bin.demobus, f"127.0.0.1:{port}"])
+        # Upstream renamed the binary from demobus to seanerbroker on 2026-11-03.
+        broker = subprocess.Popen([self.prefix.bin.seanerbroker, f"127.0.0.1:{port}"])
         try:
             for _ in range(100):
                 assert broker.poll() is None, "the broker exited"
