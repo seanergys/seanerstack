@@ -355,3 +355,20 @@ def test_the_container_gets_its_input_by_copy_not_by_mount(monkeypatch, tmp_path
     assert start == ["docker", "start", "--attach", name]
     assert removed == [["docker", "rm", "--force", name]]
 
+
+def test_credentials_from_the_environment_reach_the_container(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(_prepare, "check_push_access", lambda resource, env: None)
+    monkeypatch.setattr(_prepare, "_container_runtime", lambda: "docker")
+    monkeypatch.setattr(_prepare, "_available_memory", lambda: None)
+    monkeypatch.setattr(_prepare, "_stream", lambda args, env: calls.append(args))
+    monkeypatch.setattr(_prepare.subprocess, "run", lambda *a, **k: None)
+    monkeypatch.setenv(USER, "gitlab-ci-token")
+    monkeypatch.setenv(TOKEN, "job-token")
+    (tmp_path / "config.toml").write_text("", encoding="utf-8")
+    _prepare.prepare_in_container(config(tmp_path), SecretStore(None), platform="rocky10", state_dir=tmp_path, jobs=1)
+    create = calls[0]
+    forwarded = [create[index + 1] for index, value in enumerate(create) if value == "-e"]
+    assert forwarded == [USER, TOKEN]
+    assert "job-token" not in " ".join(create)
+

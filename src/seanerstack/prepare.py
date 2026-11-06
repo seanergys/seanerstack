@@ -296,7 +296,14 @@ def prepare_in_container(
         limit = str(int(memory * MEMORY_SHARE))
         argv += ["--memory", limit, "--memory-swap", limit]
     # -e NAME takes the value from this process, so no token is on a command line.
-    for variable in (*credentials, *(name for name in PIP_VARIABLES if name in env)):
+    # The credentials of a cache come from the vault or, as in CI, from the
+    # environment, and the build inside needs them either way.
+    variables = dict.fromkeys(credentials)
+    for cache in caches.values():
+        if cache.credentials:
+            variables.update(dict.fromkeys(name for name in cache.credential_variables if name in env))
+    variables.update(dict.fromkeys(name for name in PIP_VARIABLES if name in env))
+    for variable in variables:
         argv += ["-e", variable]
     script = container_script(
         wanted, jobs=jobs or default_jobs(), source=checkout is not None,
