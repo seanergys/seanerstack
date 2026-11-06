@@ -35,6 +35,14 @@ dnf = [
   "python3", "python3-pip", "git", "tar", "gzip", "bzip2", "xz", "zstd", "unzip", "patch", "file",
   "which", "findutils", "diffutils", "gcc", "gcc-c++", "gcc-gfortran", "make",
 ]
+apt = [
+  "python3", "python3-venv", "python3-pip", "git", "ca-certificates", "tar", "gzip", "bzip2", "xz-utils",
+  "zstd", "unzip", "patch", "file", "findutils", "diffutils", "gcc", "g++", "gfortran", "make",
+]
+pacman = [
+  "python", "python-pip", "git", "tar", "gzip", "bzip2", "xz", "zstd", "unzip", "patch", "file",
+  "which", "findutils", "diffutils", "gcc", "gcc-fortran", "make",
+]
 
 [toolchain.platforms.rocky10]
 image = "docker.io/rockylinux/rockylinux:10"
@@ -59,6 +67,35 @@ package_manager = "dnf"
 image = "docker.io/library/fedora:44"
 operating_system = "fedora44"
 package_manager = "dnf"
+
+[toolchain.platforms.debian13]
+image = "docker.io/library/debian:13"
+operating_system = "debian13"
+package_manager = "apt"
+
+# Debian 14 is still testing, so its image and Spack go by its code name. When
+# it is released, this becomes debian:14 and debian14, and its binaries are
+# built again.
+[toolchain.platforms.debian14]
+image = "docker.io/library/debian:forky"
+operating_system = "debianforky"
+package_manager = "apt"
+
+[toolchain.platforms."ubuntu26.04"]
+image = "docker.io/library/ubuntu:26.04"
+operating_system = "ubuntu26.04"
+package_manager = "apt"
+
+[toolchain.platforms."ubuntu24.04"]
+image = "docker.io/library/ubuntu:24.04"
+operating_system = "ubuntu24.04"
+package_manager = "apt"
+
+# A rolling release has no version, so Spack names it plain arch.
+[toolchain.platforms.arch]
+image = "docker.io/library/archlinux:latest"
+operating_system = "arch"
+package_manager = "pacman"
 
 # Example S3-backed Spack binary build cache:
 # [resources.jsc-buildcache]

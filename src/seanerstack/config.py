@@ -40,7 +40,7 @@ class Resource:
         return (f"{self.env_prefix}_ACCESS_KEY_ID", f"{self.env_prefix}_SECRET_ACCESS_KEY")
 
 
-PACKAGE_MANAGERS = ("dnf",)
+PACKAGE_MANAGERS = ("dnf", "apt", "pacman")
 
 
 @dataclass(frozen=True)

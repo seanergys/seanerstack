@@ -204,6 +204,10 @@ def install_command(platform: Platform) -> str:
     packages = shlex.join(platform.system_packages)
     if platform.package_manager == "dnf":
         return f"dnf install -y --setopt=install_weak_deps=False {packages}"
+    if platform.package_manager == "apt":
+        return f"apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends {packages}"
+    if platform.package_manager == "pacman":
+        return f"pacman -Syu --noconfirm --needed {packages}"
     raise ValueError(f"unknown package manager {platform.package_manager!r}")
 
 
@@ -221,6 +225,10 @@ def container_script(platform: Platform, *, jobs: int, source: bool, uid: int, g
             "# The container runs as root. Return what it wrote to the calling user.",
             f"trap 'chown -R {uid}:{gid} {CONTAINER_STATE} || true' EXIT",
             install_command(platform),
+            # Spack names the operating system after /etc/os-release. An installed
+            # system links it to /usr/lib/os-release, but the archlinux image writes
+            # its own with the date of the image as version, which no machine has.
+            "if [ -e /usr/lib/os-release ]; then ln -sf ../usr/lib/os-release /etc/os-release; fi",
             f"if [ ! -x {spack}/bin/spack ]; then",
             f"  rm -rf {spack}.partial",
             f"  git clone --depth 1 --branch {SPACK_VERSION} {SPACK_GIT} {spack}.partial",

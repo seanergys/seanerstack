@@ -293,3 +293,31 @@ def test_all_builds_every_platform_one_after_the_other(monkeypatch, tmp_path):
 def test_all_needs_a_container(monkeypatch, tmp_path):
     with pytest.raises(ValueError, match="name it with --platform"):
         run_cli(monkeypatch, tmp_path, "--platform", "all", "--no-container")
+
+
+@pytest.mark.parametrize(
+    ("manager", "command"),
+    [
+        ("dnf", "dnf install -y --setopt=install_weak_deps=False git gcc"),
+        ("apt", "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git gcc"),
+        ("pacman", "pacman -Syu --noconfirm --needed git gcc"),
+    ],
+)
+def test_each_package_manager_installs_the_system_packages(manager, command):
+    assert _prepare.install_command(replace(ROCKY10, package_manager=manager)) == command
+
+
+def test_the_container_names_its_system_as_an_installed_one_does():
+    # The archlinux image has its own /etc/os-release, whose version is the image date.
+    script = _prepare.container_script(ROCKY10, jobs=1, source=False, uid=0, gid=0, version="1")
+    link = "ln -sf ../usr/lib/os-release /etc/os-release"
+    assert script.index(link) < script.index("buildcache prepare")
+
+
+def test_the_shipped_platforms():
+    platforms = load_config().toolchain.platforms
+    assert set(platforms) == {
+        "rocky10", "rocky9", "fedora45", "fedora44", "debian13", "debian14", "ubuntu26.04", "ubuntu24.04", "arch",
+    }
+    assert {platform.package_manager for platform in platforms.values()} == {"dnf", "apt", "pacman"}
+
