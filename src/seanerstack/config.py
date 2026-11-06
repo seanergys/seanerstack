@@ -40,6 +40,22 @@ class Resource:
         return (f"{self.env_prefix}_ACCESS_KEY_ID", f"{self.env_prefix}_SECRET_ACCESS_KEY")
 
 
+PACKAGE_MANAGERS = ("dnf",)
+
+
+@dataclass(frozen=True)
+class Platform:
+    """An operating system that `seanerstack buildcache prepare` builds the toolchain for."""
+
+    name: str
+    image: str
+    # As `spack arch --operating-system` names it, which is what the hashes contain.
+    operating_system: str
+    package_manager: str
+    system_packages: tuple[str, ...]
+    python: str = "python3"
+
+
 @dataclass(frozen=True)
 class Toolchain:
     """What `seanerstack buildcache prepare` builds, and where it pushes it."""
@@ -47,10 +63,14 @@ class Toolchain:
     compiler: str
     packages: tuple[str, ...]
     cache: str
-    image: str
-    operating_system: str
     target: str
-    system_packages: tuple[str, ...]
+    platforms: dict[str, Platform]
+
+    def platform(self, name: str) -> Platform:
+        try:
+            return self.platforms[name]
+        except KeyError as error:
+            raise ValueError(f"unknown toolchain platform {name!r}; known: {', '.join(self.platforms)}") from error
 
 
 @dataclass(frozen=True)
@@ -70,19 +90,43 @@ def default_config_path() -> Path:
     return share_path() / "config.toml"
 
 
+def _platform(name: str, raw: dict, system_packages: dict, path: Path) -> Platform:
+    where = f"{path}: toolchain.platforms.{name}"
+    try:
+        manager = raw["package_manager"]
+        platform = Platform(
+            name=name,
+            image=raw["image"],
+            operating_system=raw["operating_system"],
+            package_manager=manager,
+            # What the package manager needs everywhere, then what this platform adds.
+            system_packages=(*system_packages.get(manager, ()), *raw.get("system_packages", ())),
+            python=raw.get("python", "python3"),
+        )
+    except KeyError as error:
+        raise ValueError(f"{where} requires {error.args[0]}") from error
+    if manager not in PACKAGE_MANAGERS:
+        raise ValueError(f"{where}: package_manager must be one of {', '.join(PACKAGE_MANAGERS)}")
+    return platform
+
+
 def _toolchain(data: dict, path: Path) -> Toolchain:
-    # A config.toml names only what it changes.
+    # A config.toml names only what it changes, down to a single platform.
     shipped = tomllib.loads(default_config_path().read_text(encoding="utf-8")).get("toolchain", {})
-    raw = {**shipped, **data.get("toolchain", {})}
+    own = data.get("toolchain", {})
+    raw = {**shipped, **own}
+    for table in ("platforms", "system_packages"):
+        raw[table] = {**shipped.get(table, {}), **own.get(table, {})}
     try:
         return Toolchain(
             compiler=raw["compiler"],
             packages=tuple(raw["packages"]),
             cache=raw["cache"],
-            image=raw["image"],
-            operating_system=raw["operating_system"],
             target=raw["target"],
-            system_packages=tuple(raw["system_packages"]),
+            platforms={
+                name: _platform(name, platform, raw["system_packages"], path)
+                for name, platform in raw["platforms"].items()
+            },
         )
     except KeyError as error:
         raise ValueError(f"{path}: [toolchain] requires {error.args[0]}") from error

@@ -121,13 +121,18 @@ def build_parser() -> argparse.ArgumentParser:
     cache_sub.add_parser("check", help="Check access to configured build caches using session or vault credentials.")
     prepare_parser = cache_sub.add_parser(
         "prepare",
-        help="Build the toolchain and push it to the build cache of [toolchain] in config.toml.",
+        help="Build the toolchain for a platform and push it to the build cache of [toolchain] in config.toml.",
         description=(
-            "Build the compiler and the packages of [toolchain] in config.toml, and push them "
-            "to its build cache. What a cache already holds is reused, not rebuilt. Needs "
-            "write access to that cache, which is checked before anything is built. The build "
-            "runs in the image of [toolchain], so docker or podman is enough on a desktop."
+            "Build the compiler and the packages of [toolchain] in config.toml for one of its "
+            "platforms, or all of them, and push them to its build cache. What a cache already "
+            "holds is reused, not rebuilt. Needs write access to that cache, which is checked "
+            "before anything is built. The build runs in the image of the platform, so docker "
+            "or podman is enough on a desktop."
         ),
+    )
+    prepare_parser.add_argument(
+        "--platform", required=True, metavar="NAME",
+        help="a platform of [toolchain], such as rocky10, or all of them one after the other with 'all'",
     )
     prepare_parser.add_argument("--jobs", type=int, help="parallel jobs per package (default: what the free memory allows)")
     prepare_parser.add_argument("--no-container", action="store_true", help="build here, for a CI job that runs in the image of [toolchain]")
@@ -363,10 +368,19 @@ def _run_buildcache(args: argparse.Namespace) -> int:
         return 1 if failed else 0
     if args.buildcache_command == "prepare":
         if args.no_container:
+            if args.platform == "all":
+                raise ValueError("--no-container builds for the platform it runs on; name it with --platform")
             x, _, command, env = _spack_runtime(args)
-            return prepare_here(config, secrets, command=command, env=env, work=x.environments / "toolchain", jobs=args.jobs)
+            return prepare_here(
+                config, secrets, platform=args.platform, command=command, env=env,
+                work=x.environments / "toolchain", jobs=args.jobs,
+            )
         state_dir = args.state_dir or Path(os.environ.get("SEANERSTACK_STATE_DIR", "~/.cache/seanerstack"))
-        return prepare_in_container(config, secrets, state_dir=state_dir, jobs=args.jobs)
+        toolchain = config.toolchain
+        platforms = list(toolchain.platforms) if args.platform == "all" and toolchain else [args.platform]
+        for platform in platforms:
+            prepare_in_container(config, secrets, platform=platform, state_dir=state_dir, jobs=args.jobs)
+        return 0
     raise ValueError(f"unknown buildcache command: {args.buildcache_command}")
 
 

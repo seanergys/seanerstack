@@ -8,20 +8,26 @@ import threading
 import pytest
 import yaml
 
+from seanerstack import cli as _cli
 from seanerstack import prepare as _prepare
 from seanerstack.cli import build_parser
-from seanerstack.config import Config, Resource, Toolchain, load_config
+from seanerstack.config import Config, Platform, Resource, Toolchain, load_config
 from seanerstack.secrets import SecretStore
 
 
+ROCKY10 = Platform(
+    name="rocky10", image="rocky:10", operating_system="rocky10", package_manager="dnf", system_packages=("git", "gcc"),
+)
+ROCKY9 = Platform(
+    name="rocky9", image="rocky:9", operating_system="rocky9", package_manager="dnf",
+    system_packages=("git", "python3.12"), python="python3.12",
+)
 TOOLCHAIN = Toolchain(
     compiler="gcc@15",
     packages=("rust", "capnproto"),
     cache="target",
-    image="rocky:10",
-    operating_system="rocky10",
     target="x86_64_v3",
-    system_packages=("git", "gcc"),
+    platforms={"rocky10": ROCKY10, "rocky9": ROCKY9},
 )
 USER, TOKEN = "SEANERSTACK_RESOURCE_TARGET_USERNAME", "SEANERSTACK_RESOURCE_TARGET_PASSWORD"
 
@@ -51,9 +57,9 @@ class Spack:
         return type("Process", (), {"stdout": stdout, "returncode": 0})
 
 
-def run_here(tmp_path, **extra):
+def run_here(tmp_path, platform="rocky10", **extra):
     return _prepare.prepare_here(
-        config(tmp_path), SecretStore(None), command=["spack"], env={USER: "u", TOKEN: "t"},
+        config(tmp_path), SecretStore(None), platform=platform, command=["spack"], env={USER: "u", TOKEN: "t"},
         work=tmp_path / "toolchain", **extra,
     )
 
@@ -78,23 +84,31 @@ def test_prepare_never_pushes_to_a_cache_it_only_reads(monkeypatch, tmp_path):
     spack = Spack(monkeypatch)
     source = Resource(name="source", kind="spack-buildcache", url="file:///cache", autopush=True, signed=False)
     _prepare.prepare_here(
-        config(tmp_path, source=source), SecretStore(None), command=["spack"], env={USER: "u", TOKEN: "t"},
-        work=tmp_path / "toolchain",
+        config(tmp_path, source=source), SecretStore(None), platform="rocky10", command=["spack"],
+        env={USER: "u", TOKEN: "t"}, work=tmp_path / "toolchain",
     )
     assert spack.caches["source"].autopush is False
 
 
 def test_prepare_refuses_another_operating_system(monkeypatch, tmp_path):
-    spack = Spack(monkeypatch, system="ubuntu26.04")
-    with pytest.raises(RuntimeError, match="this is ubuntu26.04"):
-        run_here(tmp_path)
+    spack = Spack(monkeypatch, system="rocky10")
+    with pytest.raises(RuntimeError, match="this is rocky10, and binaries for rocky9"):
+        run_here(tmp_path, platform="rocky9")
     assert not any("install" in call for call in spack.calls)
+
+
+def test_prepare_names_the_platforms_it_knows(monkeypatch, tmp_path):
+    Spack(monkeypatch)
+    with pytest.raises(ValueError, match="unknown toolchain platform 'plan9'; known: rocky10, rocky9"):
+        run_here(tmp_path, platform="plan9")
 
 
 def test_prepare_needs_credentials_for_its_target(monkeypatch, tmp_path):
     Spack(monkeypatch)
     with pytest.raises(ValueError, match="no credentials for build cache 'target'"):
-        _prepare.prepare_here(config(tmp_path), SecretStore(None), command=["spack"], env={}, work=tmp_path / "w")
+        _prepare.prepare_here(
+            config(tmp_path), SecretStore(None), platform="rocky10", command=["spack"], env={}, work=tmp_path / "w",
+        )
 
 
 def test_jobs_follow_the_free_memory(monkeypatch):
@@ -109,12 +123,18 @@ def test_jobs_follow_the_free_memory(monkeypatch):
 
 def test_the_container_reaches_prepare_through_a_checkout_or_a_release():
     arguments = dict(jobs=2, uid=1000, gid=1000, version="1.2.3")
-    source = _prepare.container_script(TOOLCHAIN, source=True, **arguments)
+    source = _prepare.container_script(ROCKY10, source=True, **arguments)
     assert "pip install --quiet /src/seanerstack" in source
-    assert "buildcache prepare --no-container --jobs 2" in source
+    assert "buildcache prepare --no-container --platform rocky10 --jobs 2" in source
     assert "dnf install -y --setopt=install_weak_deps=False git gcc" in source
-    release = _prepare.container_script(TOOLCHAIN, source=False, **arguments)
+    assert "python3 -m venv /opt/seanerstack" in source
+    release = _prepare.container_script(ROCKY10, source=False, **arguments)
     assert "pip install --quiet seanerstack==1.2.3" in release
+
+
+def test_the_container_uses_the_python_of_its_platform():
+    script = _prepare.container_script(ROCKY9, jobs=1, source=False, uid=0, gid=0, version="1")
+    assert "python3.12 -m venv /opt/seanerstack" in script
 
 
 def test_the_container_state_is_where_the_binaries_of_the_caches_relocate_to():
@@ -128,13 +148,14 @@ def test_no_token_is_on_the_command_line_of_the_container(monkeypatch, tmp_path)
     monkeypatch.setattr(_prepare, "_available_memory", lambda: 8 * _prepare.GIB)
     monkeypatch.setattr(_prepare, "_stream", lambda args, env: calls.append((args, env)))
     monkeypatch.setattr(_prepare, "_session", lambda *a: ({"target": config(tmp_path).resources["target"]}, {TOKEN: "secret"}))
-    _prepare.prepare_in_container(config(tmp_path), SecretStore(None), state_dir=tmp_path, jobs=2)
+    _prepare.prepare_in_container(config(tmp_path), SecretStore(None), platform="rocky9", state_dir=tmp_path, jobs=2)
     argv, env = calls[0]
     assert "secret" not in " ".join(argv)
     assert env[TOKEN] == "secret"
     assert argv[argv.index("-e") + 1] == TOKEN
     assert argv[argv.index("--memory") + 1] == argv[argv.index("--memory-swap") + 1] == str(int(8 * _prepare.GIB * 0.85))
-    assert (tmp_path / "buildcache-prepare/rocky10").is_dir()
+    assert (tmp_path / "buildcache-prepare/rocky9").is_dir()
+    assert "rocky:9" in argv
 
 
 def test_prepare_needs_a_container_runtime(monkeypatch):
@@ -150,6 +171,35 @@ def test_the_shipped_toolchain_applies_to_a_config_without_one(tmp_path):
     assert toolchain.cache == "elsewhere"
     assert toolchain.compiler == "gcc@15"
     assert "rust" in toolchain.packages and "capnproto" in toolchain.packages
+    assert "rocky10" in toolchain.platforms
+
+
+def test_a_config_changes_one_platform_and_keeps_the_others(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[toolchain.platforms.rocky10]\nimage = "mirror.example.org/rocky:10"\n'
+        'operating_system = "rocky10"\npackage_manager = "dnf"\n',
+        encoding="utf-8",
+    )
+    platforms = load_config(path).toolchain.platforms
+    assert platforms["rocky10"].image == "mirror.example.org/rocky:10"
+    assert "rocky9" in platforms
+
+
+def test_a_platform_adds_to_the_packages_of_its_package_manager(tmp_path):
+    rocky9 = load_config().toolchain.platforms["rocky9"]
+    assert rocky9.python == "python3.12"
+    assert "git" in rocky9.system_packages and "python3.12" in rocky9.system_packages
+
+
+def test_a_platform_needs_a_known_package_manager(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text(
+        '[toolchain.platforms.solaris]\nimage = "solaris"\noperating_system = "solaris11"\npackage_manager = "pkg"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="toolchain.platforms.solaris: package_manager must be one of"):
+        load_config(path)
 
 
 def test_the_toolchain_cache_has_to_be_a_build_cache(tmp_path):
@@ -159,8 +209,15 @@ def test_the_toolchain_cache_has_to_be_a_build_cache(tmp_path):
 
 
 def test_prepare_parses():
-    args = build_parser().parse_args(["--config-file", "c", "--secrets-file", "s", "buildcache", "prepare", "--jobs", "2", "--no-container"])
-    assert (args.jobs, args.no_container) == (2, True)
+    args = build_parser().parse_args(
+        ["--config-file", "c", "--secrets-file", "s", "buildcache", "prepare", "--platform", "rocky9", "--jobs", "2", "--no-container"]
+    )
+    assert (args.platform, args.jobs, args.no_container) == ("rocky9", 2, True)
+
+
+def test_prepare_needs_a_platform():
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["buildcache", "prepare"])
 
 
 class Registry(BaseHTTPRequestHandler):
@@ -220,3 +277,19 @@ def test_a_token_that_may_only_read_fails_before_the_build(registry, monkeypatch
     monkeypatch.setattr(Registry, "writable", False)
     with pytest.raises(RuntimeError, match="write_registry"):
         _prepare.check_push_access(registry, {USER: "u", TOKEN: "t"})
+
+
+def run_cli(monkeypatch, tmp_path, *argv):
+    built = []
+    monkeypatch.setattr(_cli, "_runtime", lambda args: (config(tmp_path), SecretStore(None)))
+    monkeypatch.setattr(_cli, "prepare_in_container", lambda config, secrets, *, platform, **kwargs: built.append(platform))
+    return _cli._run_buildcache(build_parser().parse_args(["buildcache", "prepare", *argv])), built
+
+
+def test_all_builds_every_platform_one_after_the_other(monkeypatch, tmp_path):
+    assert run_cli(monkeypatch, tmp_path, "--platform", "all") == (0, ["rocky10", "rocky9"])
+
+
+def test_all_needs_a_container(monkeypatch, tmp_path):
+    with pytest.raises(ValueError, match="name it with --platform"):
+        run_cli(monkeypatch, tmp_path, "--platform", "all", "--no-container")
