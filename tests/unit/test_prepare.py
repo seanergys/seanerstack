@@ -124,7 +124,7 @@ def test_jobs_follow_the_free_memory(monkeypatch):
 def test_the_container_reaches_prepare_through_a_checkout_or_a_release():
     arguments = dict(jobs=2, uid=1000, gid=1000, version="1.2.3")
     source = _prepare.container_script(ROCKY10, source=True, **arguments)
-    assert "pip install --quiet /src/seanerstack" in source
+    assert "pip install --quiet /opt/seanerstack-input/source" in source
     assert "buildcache prepare --no-container --platform rocky10 --jobs 2" in source
     assert "dnf install -y --setopt=install_weak_deps=False git gcc" in source
     assert "python3 -m venv /opt/seanerstack" in source
@@ -147,7 +147,9 @@ def test_no_token_is_on_the_command_line_of_the_container(monkeypatch, tmp_path)
     monkeypatch.setattr(_prepare, "_container_runtime", lambda: "docker")
     monkeypatch.setattr(_prepare, "_available_memory", lambda: 8 * _prepare.GIB)
     monkeypatch.setattr(_prepare, "_stream", lambda args, env: calls.append((args, env)))
+    monkeypatch.setattr(_prepare.subprocess, "run", lambda *a, **k: None)
     monkeypatch.setattr(_prepare, "_session", lambda *a: ({"target": config(tmp_path).resources["target"]}, {TOKEN: "secret"}))
+    (tmp_path / "config.toml").write_text("", encoding="utf-8")
     _prepare.prepare_in_container(config(tmp_path), SecretStore(None), platform="rocky9", state_dir=tmp_path, jobs=2)
     argv, env = calls[0]
     assert "secret" not in " ".join(argv)
@@ -320,4 +322,36 @@ def test_the_shipped_platforms():
         "rocky10", "rocky9", "fedora45", "fedora44", "debian13", "debian14", "ubuntu26.04", "ubuntu24.04", "arch",
     }
     assert {platform.package_manager for platform in platforms.values()} == {"dnf", "apt", "pacman"}
+
+
+def test_the_container_gets_its_input_by_copy_not_by_mount(monkeypatch, tmp_path):
+    calls, removed, staged = [], [], {}
+
+    def stream(args, env):
+        calls.append(args)
+        if args[1] == "cp":
+            stage = Path(args[2])  # pathlib drops the trailing "/."
+            staged.update({str(path.relative_to(stage)): path.is_file() for path in stage.rglob("*")})
+
+    monkeypatch.setattr(_prepare, "check_push_access", lambda resource, env: None)
+    monkeypatch.setattr(_prepare, "_container_runtime", lambda: "docker")
+    monkeypatch.setattr(_prepare, "_available_memory", lambda: None)
+    monkeypatch.setattr(_prepare, "_stream", stream)
+    monkeypatch.setattr(_prepare.subprocess, "run", lambda args, **kwargs: removed.append(args))
+    monkeypatch.setattr(_prepare, "_session", lambda *a: ({"target": config(tmp_path).resources["target"]}, {}))
+    (tmp_path / "config.toml").write_text("[toolchain]\n", encoding="utf-8")
+    _prepare.prepare_in_container(config(tmp_path), SecretStore(None), platform="rocky10", state_dir=tmp_path, jobs=1)
+
+    create, copy, start = calls
+    assert create[:2] == ["docker", "create"]
+    mounts = [create[index + 1] for index, value in enumerate(create) if value == "-v"]
+    assert mounts == [f"{tmp_path.resolve()}/buildcache-prepare/rocky10:/opt/seanergys/state"]
+    name = create[create.index("--name") + 1]
+    assert copy[3] == f"{name}:/opt/seanerstack-input"
+    assert staged["config.toml"] is True
+    assert staged["source/pyproject.toml"] is True
+    assert staged["source/src/seanerstack/prepare.py"] is True
+    assert not any("__pycache__" in path for path in staged)
+    assert start == ["docker", "start", "--attach", name]
+    assert removed == [["docker", "rm", "--force", name]]
 

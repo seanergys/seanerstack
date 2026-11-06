@@ -18,6 +18,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -48,8 +49,13 @@ MEMORY_SHARE = 0.85
 # relocate a binary to a longer path, so a longer one here fails on what the caches
 # already hold, and binaries built here could not reach the services.
 CONTAINER_STATE = "/opt/seanergys/state"
-CONTAINER_CONFIG = "/run/seanerstack/config.toml"
-CONTAINER_SOURCE = "/src/seanerstack"
+# Copied in, not mounted: the daemon of Docker in Docker sees none of the files of
+# the CI job that talks to it.
+CONTAINER_INPUT = "/opt/seanerstack-input"
+CONTAINER_CONFIG = f"{CONTAINER_INPUT}/config.toml"
+CONTAINER_SOURCE = f"{CONTAINER_INPUT}/source"
+# What pip needs to install Seanerstack from a checkout.
+SOURCE_FILES = ("pyproject.toml", "README.md", "LICENSE", "src", "data")
 PIP_VARIABLES = ("PIP_INDEX_URL", "PIP_EXTRA_INDEX_URL")
 
 
@@ -250,6 +256,21 @@ def _container_runtime() -> str:
     raise RuntimeError("neither docker nor podman found; in the toolchain image, run with --no-container")
 
 
+def _stage_input(config: Config, checkout: Path | None, stage: Path) -> None:
+    """Gather what the container reads into `stage`, laid out as CONTAINER_INPUT."""
+    shutil.copyfile(config.path, stage / "config.toml")
+    if checkout is None:
+        return
+    ignore = shutil.ignore_patterns("__pycache__", "*.pyc")
+    for name in SOURCE_FILES:
+        source = checkout / name
+        if source.is_dir():
+            shutil.copytree(source, stage / "source" / name, ignore=ignore)
+        else:
+            (stage / "source").mkdir(exist_ok=True)
+            shutil.copyfile(source, stage / "source" / name)
+
+
 def prepare_in_container(
     config: Config, secrets: SecretStore, *, platform: str, state_dir: Path, jobs: int | None = None
 ) -> int:
@@ -267,17 +288,13 @@ def prepare_in_container(
     state.mkdir(parents=True, exist_ok=True)
     checkout = source_checkout()
     name = f"seanerstack-prepare-{os.getpid()}"
-    argv = [
-        runtime, "run", "--rm", "--name", name,
-        "-v", f"{state}:{CONTAINER_STATE}",
-        "-v", f"{config.path.resolve()}:{CONTAINER_CONFIG}:ro",
-    ]
+    # The state is mounted, so that the next run continues where this one stopped.
+    # Under Docker in Docker it lives with the daemon, and goes when the job ends.
+    argv = [runtime, "create", "--name", name, "-v", f"{state}:{CONTAINER_STATE}"]
     memory = _available_memory()
     if memory is not None:
         limit = str(int(memory * MEMORY_SHARE))
         argv += ["--memory", limit, "--memory-swap", limit]
-    if checkout is not None:
-        argv += ["-v", f"{checkout}:{CONTAINER_SOURCE}:ro"]
     # -e NAME takes the value from this process, so no token is on a command line.
     for variable in (*credentials, *(name for name in PIP_VARIABLES if name in env)):
         argv += ["-e", variable]
@@ -287,8 +304,11 @@ def prepare_in_container(
     )
     try:
         _stream([*argv, wanted.image, "/bin/bash", "-c", script], env)
-    except BaseException:
-        # The container outlives its client.
+        with tempfile.TemporaryDirectory(prefix="seanerstack-prepare-") as stage:
+            _stage_input(config, checkout, Path(stage))
+            _stream([runtime, "cp", f"{stage}/.", f"{name}:{CONTAINER_INPUT}"], env)
+        _stream([runtime, "start", "--attach", name], env)
+    finally:
+        # The container outlives its client, and is kept after it stops.
         subprocess.run([runtime, "rm", "--force", name], check=False, capture_output=True, env=env)
-        raise
     return 0
