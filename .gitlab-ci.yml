@@ -6,8 +6,25 @@ stages:
   - docs
   - publish
 
+# A merge request runs merge request pipelines, which become merged results
+# and merge train pipelines once the project enables them. A branch with an
+# open merge request runs no second pipeline for the same push. Other branches,
+# the default branch and tags run branch and tag pipelines.
+# docs/explanation/pipelines.md lists which job runs where.
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"'
+      when: never
+    - if: '$CI_COMMIT_BRANCH || $CI_COMMIT_TAG'
+
 test:
   stage: test
+  # Everywhere but in schedules, which are for the slow jobs.
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - when: on_success
   script:
     - uv sync --group dev
     - uv run pytest
@@ -20,6 +37,16 @@ test:
 # from the project build cache, before installing it back from there.
 e2e:
   stage: test
+  # Those repositories are named after the test, not the pipeline, so two e2e
+  # jobs at once, as in the pipelines of a merge train, would overwrite each
+  # other's index. They take turns instead.
+  resource_group: e2e-registry
+  # Merge requests, so that what reaches the default branch has passed it in
+  # the merge train, and the nightly schedule, which notices when Spack or this
+  # GitLab instance changes under an unchanged default branch.
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE =~ /^(schedule|web)$/'
   variables:
     SEANERSTACK_E2E_REQUIRED: "1"
     SEANERSTACK_E2E_USERNAME: "gitlab-ci-token"
@@ -40,6 +67,10 @@ e2e:
 
 docs:
   stage: docs
+  # A strict build fails on broken links before a merge; on the default branch,
+  # it is what `pages` publishes.
+  rules:
+    - if: '$CI_COMMIT_TAG == null && $CI_PIPELINE_SOURCE =~ /^(merge_request_event|push|web)$/'
   script:
     - uv sync --group docs
     - uv run properdocs build --strict
@@ -56,8 +87,9 @@ pages:
     - mv site public
   pages:
     publish: public
+  # Only where `docs` runs, which a schedule does not.
   rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE =~ /^(push|web)$/'
 
 publish:
   stage: publish
