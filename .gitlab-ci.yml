@@ -20,6 +20,10 @@ test:
 # from the project build cache, before installing it back from there.
 e2e:
   stage: test
+  # Those repositories are named after the test, not the pipeline, so two e2e
+  # jobs at once, as in the pipelines of a merge train, would overwrite each
+  # other's index. They take turns instead.
+  resource_group: e2e-registry
   variables:
     SEANERSTACK_E2E_REQUIRED: "1"
     SEANERSTACK_E2E_USERNAME: "gitlab-ci-token"
