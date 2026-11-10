@@ -30,10 +30,11 @@ class Pscom(CMakePackage):
     )
     variant("cuda", default=False, description="Compile with CUDA support")
     variant("openib", default=False, description="Compile with native IB Verbs support")
-    variant("ucp", default=False, description="Compile with UCX support")
+    variant("ucp", default=True, description="Compile with UCX support")
     variant("psm2", default=False, description="Compile with PSM2 support")
     variant("portals4", default=False, description="Compile with Portals4 support")
     variant("utest", default=False, description="Enable unit tests")
+    variant("rrcomm", default=False, description="Compile with RRComm Precon support")
 
     depends_on("cmake@3.10.0:", type="build")
     depends_on("rrcomm", when="+rrcomm")
