@@ -21,19 +21,81 @@ credentials = "seanergys-registry"
 signed = false
 
 # What `seanerstack buildcache prepare` builds and where it pushes it. Binaries
-# carry the operating system and CPU target in their hash, so the image and target
-# have to be the ones that the SEANERGYS services run on.
+# carry the operating system and CPU target in their hash, so the toolchain is
+# built once per platform, in that platform's image.
 [toolchain]
 compiler = "gcc@15"
 packages = ["rust", "capnproto"]
 cache = "seanerstack-buildcache"
-image = "docker.io/rockylinux/rockylinux:10"
-operating_system = "rocky10"
 target = "x86_64_v3"
-system_packages = [
+
+# What every platform with that package manager installs before Spack runs.
+[toolchain.system_packages]
+dnf = [
   "python3", "python3-pip", "git", "tar", "gzip", "bzip2", "xz", "zstd", "unzip", "patch", "file",
   "which", "findutils", "diffutils", "gcc", "gcc-c++", "gcc-gfortran", "make",
 ]
+apt = [
+  "python3", "python3-venv", "python3-pip", "git", "ca-certificates", "tar", "gzip", "bzip2", "xz-utils",
+  "zstd", "unzip", "patch", "file", "findutils", "diffutils", "gcc", "g++", "gfortran", "make",
+]
+pacman = [
+  "python", "python-pip", "git", "tar", "gzip", "bzip2", "xz", "zstd", "unzip", "patch", "file",
+  "which", "findutils", "diffutils", "gcc", "gcc-fortran", "make",
+]
+
+[toolchain.platforms.rocky10]
+image = "docker.io/rockylinux/rockylinux:10"
+operating_system = "rocky10"
+package_manager = "dnf"
+
+# Seanerstack needs Python 3.12, and the python3 of Rocky 9 is 3.9.
+[toolchain.platforms.rocky9]
+image = "docker.io/rockylinux/rockylinux:9"
+operating_system = "rocky9"
+package_manager = "dnf"
+python = "python3.12"
+system_packages = ["python3.12", "python3.12-pip"]
+
+# The last two Fedora releases.
+[toolchain.platforms.fedora45]
+image = "docker.io/library/fedora:45"
+operating_system = "fedora45"
+package_manager = "dnf"
+
+[toolchain.platforms.fedora44]
+image = "docker.io/library/fedora:44"
+operating_system = "fedora44"
+package_manager = "dnf"
+
+[toolchain.platforms.debian13]
+image = "docker.io/library/debian:13"
+operating_system = "debian13"
+package_manager = "apt"
+
+# Debian 14 is still testing, so its image and Spack go by its code name. When
+# it is released, this becomes debian:14 and debian14, and its binaries are
+# built again.
+[toolchain.platforms.debian14]
+image = "docker.io/library/debian:forky"
+operating_system = "debianforky"
+package_manager = "apt"
+
+[toolchain.platforms."ubuntu26.04"]
+image = "docker.io/library/ubuntu:26.04"
+operating_system = "ubuntu26.04"
+package_manager = "apt"
+
+[toolchain.platforms."ubuntu24.04"]
+image = "docker.io/library/ubuntu:24.04"
+operating_system = "ubuntu24.04"
+package_manager = "apt"
+
+# A rolling release has no version, so Spack names it plain arch.
+[toolchain.platforms.arch]
+image = "docker.io/library/archlinux:latest"
+operating_system = "arch"
+package_manager = "pacman"
 
 # Example S3-backed Spack binary build cache:
 # [resources.jsc-buildcache]
