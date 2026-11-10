@@ -24,8 +24,8 @@ establishes the `v{version}` convention. A new upstream `v1.6.8` can therefore b
 A recipe may fetch releases as archives instead of cloning Git:
 
 ```python
-url = "https://gitlab.seanergys.fz-juelich.de/software/demobus/-/archive/v0.2.1/demobus-v0.2.1.tar.gz"
-git = "https://gitlab.seanergys.fz-juelich.de/software/demobus.git"
+url = "https://gitlab.seanergys.fz-juelich.de/software/seanerbroker/-/archive/v0.2.1/seanerbroker-v0.2.1.tar.gz"
+git = "https://gitlab.seanergys.fz-juelich.de/software/seanerbroker.git"
 
 version("main", branch="main")
 version("0.2.1", sha256="3a5c...")
@@ -43,7 +43,7 @@ If the existing recipe does not establish one unambiguous convention, synchroniz
 
 ## Recipes without releases
 
-A recipe with branches but no releases, such as `seanerbus` with only `version("main", branch="main")`, follows those branches. Synchronization checks that they still exist upstream, and takes no releases from the upstream tags, so it needs no convention.
+A recipe with branches but no releases, such as `seanerbroker` with only `version("main", branch="main")`, follows those branches. Synchronization checks that they still exist upstream, and takes no releases from the upstream tags, so it needs no convention.
 
 ## Recipes without a Git URL
 

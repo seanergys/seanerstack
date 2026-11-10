@@ -51,11 +51,11 @@ uv run seanerstack --help
 The unit tests are in `tests/unit`. The end-to-end tests in `tests/e2e` install
 the wheel of the checkout into a fresh environment and run it against the
 SEANERGYS GitLab, with credentials from a keyloom secrets file. They read the
-demobus repository, and build a small package, push it to a test build cache,
+seanerbroker repository, and build a small package, push it to a test build cache,
 and install it back from there. Each build-cache test pushes to its own
 repository, `test-e2e-buildcache-<test>`, under the registry location given by
 `SEANERSTACK_E2E_REGISTRY`, never to the project build cache. They need Git,
-Spack, a C compiler, make, and a GitLab token that can read demobus and write to
+Spack, a C compiler, make, and a GitLab token that can read seanerbroker and write to
 that location; without a token they are skipped:
 
 ```console
