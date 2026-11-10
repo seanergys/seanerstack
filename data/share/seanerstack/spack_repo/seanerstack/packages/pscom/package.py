@@ -2,7 +2,7 @@
 
 from spack_repo.builtin.build_systems.cmake import CMakePackage
 
-from spack import *
+from spack.package import *
 
 
 class Pscom(CMakePackage):
