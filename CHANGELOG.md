@@ -25,8 +25,8 @@ and release process.
 
 - The `demobus` package is now `seanerbus`, and the `demobus-dev` environment is
   now `seanerbus-dev`. The upstream repository keeps its name.
-- `seanerbus` installs the broker as `seanerbroker`, the name that upstream gave it
-  on 2026-11-03.
+- `seanerbus` package is now a bundle packages which installs the broker as the
+  `seanerbroker` package, the name that upstream gave it on 2026-11-03.
 - The seanerbus packages clone no submodules. They depend on `seanerbus-rs`,
   `seanerbus-msg` and the `fmt` of Spack instead.
 
