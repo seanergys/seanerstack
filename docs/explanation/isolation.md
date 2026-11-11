@@ -23,7 +23,9 @@ user upstreams                   X                    +-- mirrors.yaml
                                                       +-- repos.yaml
 ```
 
-Seanerstack sets `SPACK_DISABLE_LOCAL_CONFIG` and supplies its private configuration explicitly to Spack. The generated configuration uses replacement sections where necessary so lower-precedence configuration is not merged into the Seanerstack view.
+Seanerstack points Spack's user configuration scope (`SPACK_USER_CONFIG_PATH`) at its private configuration directory and the system scope (`SPACK_SYSTEM_CONFIG_PATH`) at a directory that does not exist, and supplies its private configuration explicitly to Spack. The generated configuration uses replacement sections where necessary so lower-precedence configuration is not merged into the Seanerstack view.
+
+Seanerstack deliberately does not set `SPACK_DISABLE_LOCAL_CONFIG`, and activation unsets it. That variable switches the user scope off entirely, including `SPACK_USER_CONFIG_PATH`, which would leave no writable scope: `spack config add` and `spack compiler find` would write to the site scope inside the Spack checkout, where the replacement sections override them.
 
 ## State and store isolation
 
