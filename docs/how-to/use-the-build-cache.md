@@ -52,19 +52,54 @@ spack buildcache push --update-index seanerstack-buildcache
 
 ## Prepare the toolchain
 
-The compiler, Rust and `capnproto` take hours to compile, so everyone installs them from the cache. To put them there, run this on a desktop with `docker` or `podman`, and a token with `write_registry`:
+The compiler, Rust and `capnproto` take hours to compile, so everyone installs them from the cache. A binary matches only the operating system it was built on, so the toolchain is built once for each platform in `[toolchain]`:
+
+| Platform | Image | Spack's name for it |
+| --- | --- | --- |
+| `rocky10` | `rockylinux/rockylinux:10` | `rocky10` |
+| `rocky9` | `rockylinux/rockylinux:9` | `rocky9` |
+| `fedora45` | `fedora:45` | `fedora45` |
+| `fedora44` | `fedora:44` | `fedora44` |
+| `debian13` | `debian:13` | `debian13` |
+| `debian14` | `debian:forky` | `debianforky` |
+| `ubuntu26.04` | `ubuntu:26.04` | `ubuntu26.04` |
+| `ubuntu24.04` | `ubuntu:24.04` | `ubuntu24.04` |
+| `arch` | `archlinux:latest` | `arch` |
+
+Debian 14 is still testing, so Spack names it after its code name until it is released. Arch Linux is a rolling release without a version.
+
+To build for one platform, run this on a desktop with `docker` or `podman`, and a token with `write_registry`:
 
 ```console
-seanerstack --config-file config.toml --secrets-file credentials.toml buildcache prepare
+seanerstack --config-file config.toml --secrets-file credentials.toml buildcache prepare --platform rocky10
 ```
 
-Both files are optional as far as the defaults fit: the build cache comes from `[toolchain]` in `config.toml`, and its token from the secrets file. The token is checked before anything is built.
+`--platform all` builds every platform, one after the other. Both files are optional as far as the defaults fit: the build cache comes from `[toolchain]` in `config.toml`, and its token from the secrets file or from the variables `SEANERSTACK_RESOURCE_<NAME>_USERNAME` and `_PASSWORD`. The token is checked before anything is built.
 
-The build runs in the image of `[toolchain]`, because the operating system is part of every hash: binaries from a desktop's own system would never match those the services install. What the configured caches already hold is reused, every finished package is pushed at once, and the state stays under `~/.cache/seanerstack` or `--state-dir`, so running the command again continues where it stopped.
+The build runs in the image of the platform, because the operating system is part of every hash: binaries from a desktop's own system would never match those the services install. What the configured caches already hold is reused, every finished package is pushed at once, and the state stays under `~/.cache/seanerstack` or `--state-dir`, one directory per platform, so running the command again continues where it stopped.
 
-`--jobs` defaults to what the free memory allows, and the container gets at most 85 % of that memory. A CI job that already runs in the image uses `--no-container`.
+`--jobs` defaults to what the free memory allows, and the container gets at most 85 % of that memory. A CI job that already runs in the image of a platform uses `--no-container`.
 
 Run it again after changing the Spack version or the `spack-packages` pin, because binaries match only on an identical hash.
+
+### Add a platform
+
+A `config.toml` can add a platform, or change one, and keeps the others:
+
+```toml
+[toolchain.platforms.almalinux10]
+image = "docker.io/library/almalinux:10"
+operating_system = "almalinux10"
+package_manager = "dnf"
+```
+
+`operating_system` is what `spack arch --operating-system` prints in that image. `package_manager` is `dnf`, `apt` or `pacman`, and chooses the system packages of `[toolchain.system_packages]` that the image gets before Spack runs. A platform can add its own with `system_packages`, and name another Python with `python`, as Rocky 9 does for Python 3.12.
+
+### Build it every night
+
+The `toolchain` job of the CI pipeline runs `buildcache prepare` for every shipped platform, in parallel, on the `dind` runner. It runs in a pipeline schedule of the default branch, which a maintainer creates under **Build → Pipeline schedules**, for example with the interval `0 1 * * *`, or by hand from **Build → Pipelines → Run pipeline**. It pushes with the job token, which may write to the container registry of the project.
+
+A night in which nothing changed only checks that the cache holds everything. When the hashes change, for example with the Spack version or the `spack-packages` pin, it builds again, which for GCC and Rust takes hours, so the job may run for 12 hours. A unit test keeps the platforms of the job equal to those in the shipped `config.toml`.
 
 ## Use a filesystem build cache
 
