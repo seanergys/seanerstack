@@ -122,3 +122,12 @@ def test_run_init_skips_buildcache_check_and_validate_when_asked(monkeypatch, tm
     code = cli._run_init(_init_args(tmp_path, skip_buildcache_check=True, skip_validate=True))
 
     assert code == 0
+
+
+def test_version_names_seanerstack_and_its_pinned_spack(capsys):
+    import importlib.metadata
+    import pytest
+    with pytest.raises(SystemExit) as stop:
+        build_parser().parse_args(["--version"])
+    assert stop.value.code == 0
+    assert capsys.readouterr().out == f"seanerstack {importlib.metadata.version('seanerstack')} (Spack 1.2.2)\n"

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import os
 from pathlib import Path
 import subprocess
@@ -14,7 +15,7 @@ from .paths import environments_path, repository_path, share_path
 from .prepare import prepare_here, prepare_in_container
 from .secrets import SecretStore
 from .isolation import (
-    activation_script, deactivation_script, layout, prepare_isolation,
+    SPACK_VERSION, activation_script, deactivation_script, layout, prepare_isolation,
     resolve_real_spack, resolve_state_dir, spack_command, spack_env,
 )
 from .sync import package_paths, sync_many
@@ -49,6 +50,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="seanerstack",
         description="Maintain and use the curated SEANERGYS Spack stack.",
+    )
+    parser.add_argument(
+        "--version", action="version",
+        version=f"seanerstack {importlib.metadata.version('seanerstack')} (Spack {SPACK_VERSION.removeprefix('v')})",
     )
     _add_secret_options(parser)
     parser.add_argument("--state-dir", type=Path, help="private Seanerstack state directory (or SEANERSTACK_STATE_DIR; default: /opt/seanergys/state, which the binaries of the project build cache need)")
