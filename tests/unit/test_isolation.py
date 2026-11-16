@@ -2,6 +2,7 @@
 from pathlib import Path
 import re
 
+import pytest
 import yaml
 
 from seanerstack.config import Config, Resource
@@ -243,3 +244,51 @@ def test_the_state_directory_variable_overrides_the_default(monkeypatch, tmp_pat
 def test_the_toolchain_is_built_in_the_default_state_directory():
     import seanerstack.prepare
     assert seanerstack.prepare.CONTAINER_STATE == "/opt/seanergys/state"
+
+
+def _fake_spack_executable(path: Path, version: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"#!/bin/sh\necho '{version} (0123456789abcdef)'\n", encoding="utf-8")
+    path.chmod(0o755)
+    return path
+
+
+def test_the_pinned_spack_is_installed_into_the_state_directory(monkeypatch, tmp_path):
+    import seanerstack.isolation
+    clones = []
+
+    def fake_run(args, **kwargs):
+        clones.append(args)
+        _fake_spack_executable(Path(args[-1]) / "bin" / "spack", "1.2.2")
+
+    monkeypatch.delenv("SEANERSTACK_REAL_SPACK", raising=False)
+    monkeypatch.setattr(seanerstack.isolation.subprocess, "run", fake_run)
+    spack = seanerstack.isolation.resolve_real_spack(None, tmp_path)
+    assert spack == tmp_path / "spack-v1.2.2" / "bin" / "spack"
+    assert clones[0][-3:] == ["v1.2.2", "https://github.com/spack/spack.git", str(tmp_path / "spack-v1.2.2.partial")]
+
+    # The next command finds it and clones nothing.
+    assert seanerstack.isolation.resolve_real_spack(None, tmp_path) == spack
+    assert len(clones) == 1
+
+
+def test_another_spack_of_the_pinned_version_is_used(monkeypatch, tmp_path):
+    import seanerstack.isolation
+    monkeypatch.delenv("SEANERSTACK_REAL_SPACK", raising=False)
+    spack = _fake_spack_executable(tmp_path / "spack", "1.2.2")
+    assert seanerstack.isolation.resolve_real_spack(spack, tmp_path / "state") == spack.resolve()
+
+
+def test_another_spack_version_is_refused(monkeypatch, tmp_path):
+    import seanerstack.isolation
+    monkeypatch.delenv("SEANERSTACK_REAL_SPACK", raising=False)
+    spack = _fake_spack_executable(tmp_path / "spack", "1.3.0.dev0")
+    with pytest.raises(RuntimeError, match="is Spack 1.3.0.dev0, and Seanerstack needs Spack 1.2.2"):
+        seanerstack.isolation.resolve_real_spack(spack, tmp_path / "state")
+
+
+def test_the_spack_variable_is_held_to_the_pinned_version_too(monkeypatch, tmp_path):
+    import seanerstack.isolation
+    monkeypatch.setenv("SEANERSTACK_REAL_SPACK", str(_fake_spack_executable(tmp_path / "spack", "1.3.0.dev0")))
+    with pytest.raises(RuntimeError, match="is Spack 1.3.0.dev0"):
+        seanerstack.isolation.resolve_real_spack(None, tmp_path / "state")

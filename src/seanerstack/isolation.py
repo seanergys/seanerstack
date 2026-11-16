@@ -7,6 +7,7 @@ from pathlib import Path
 import shlex
 import shutil
 import stat
+import subprocess
 from typing import Mapping
 
 from .config import Config
@@ -81,18 +82,56 @@ def resolve_state_dir(value: Path | None) -> Path:
     return DEFAULT_STATE_DIR
 
 
-def resolve_real_spack(explicit: Path | None = None) -> Path:
-    if explicit is not None:
-        path = explicit.expanduser().resolve()
-    elif os.environ.get("SEANERSTACK_REAL_SPACK"):
-        path = Path(os.environ["SEANERSTACK_REAL_SPACK"]).expanduser().resolve()
-    else:
-        found = shutil.which("spack")
-        if not found:
-            raise RuntimeError("spack executable not found in PATH; provide --spack-executable FILE")
-        path = Path(found).resolve()
+def pinned_spack(state_dir: Path) -> Path:
+    """Where the pinned Spack lives in a state directory, installed or not."""
+    return state_dir / f"spack-{SPACK_VERSION}" / "bin" / "spack"
+
+
+def install_pinned_spack(state_dir: Path) -> Path:
+    """Clone the pinned Spack into the state directory, unless it is there already."""
+    executable = pinned_spack(state_dir)
+    if executable.is_file():
+        return executable
+    root = executable.parents[1]
+    # A clone that was interrupted is started again rather than used.
+    partial = root.with_name(root.name + ".partial")
+    shutil.rmtree(partial, ignore_errors=True)
+    root.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["git", "-c", "advice.detachedHead=false", "clone", "--quiet", "--depth", "1", "--branch", SPACK_VERSION, SPACK_GIT, str(partial)],
+        check=True,
+    )
+    partial.rename(root)
+    return executable
+
+
+def spack_version(executable: Path) -> str:
+    """The version a Spack executable reports, such as 1.2.2."""
+    result = subprocess.run([str(executable), "--version"], check=True, capture_output=True, text=True)
+    return result.stdout.split()[0]
+
+
+def resolve_real_spack(explicit: Path | None, state_dir: Path) -> Path:
+    """The Spack of the session: the pinned one, which is installed when missing.
+
+    Another Spack, given with --spack-executable or SEANERSTACK_REAL_SPACK, has
+    to be the pinned version. A different one writes specs and build-cache
+    indexes that the pinned one cannot read, and its hashes match no binary of
+    the project build cache.
+    """
+    if explicit is None and os.environ.get("SEANERSTACK_REAL_SPACK"):
+        explicit = Path(os.environ["SEANERSTACK_REAL_SPACK"])
+    if explicit is None:
+        return install_pinned_spack(state_dir)
+    path = explicit.expanduser().resolve()
     if not path.is_file():
         raise ValueError(f"Spack executable does not exist: {path}")
+    found, wanted = spack_version(path), SPACK_VERSION.removeprefix("v")
+    if found != wanted:
+        raise RuntimeError(
+            f"{path} is Spack {found}, and Seanerstack needs Spack {wanted}; "
+            "leave out --spack-executable and SEANERSTACK_REAL_SPACK to use the one it installs"
+        )
     return path
 
 

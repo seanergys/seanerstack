@@ -52,7 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_secret_options(parser)
     parser.add_argument("--state-dir", type=Path, help="private Seanerstack state directory (or SEANERSTACK_STATE_DIR; default: /opt/seanergys/state, which the binaries of the project build cache need)")
-    parser.add_argument("--spack-executable", type=Path, help="real Spack executable to use for the isolated session")
+    parser.add_argument("--spack-executable", type=Path, help="Spack executable to use instead of the one Seanerstack installs in the state directory; it has to be the same version")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     package_parser = subparsers.add_parser("package", help="Maintain curated Spack packages.")
@@ -211,7 +211,7 @@ def _run_package_update(args: argparse.Namespace) -> int:
 
 def _spack_runtime(args: argparse.Namespace):
     state_dir = resolve_state_dir(args.state_dir)
-    real_spack = resolve_real_spack(args.spack_executable)
+    real_spack = resolve_real_spack(args.spack_executable, state_dir)
     x = prepare_isolation(state_dir, real_spack)
     env = dict(__import__("os").environ)
     env.update(spack_env(x))
@@ -425,7 +425,7 @@ def main(argv: list[str] | None = None) -> None:
         elif args.command == "activate":
             config, secrets = _runtime(args)
             state_dir = resolve_state_dir(args.state_dir)
-            real_spack = resolve_real_spack(args.spack_executable)
+            real_spack = resolve_real_spack(args.spack_executable, state_dir)
             print(activation_script(state_dir=state_dir, real_spack=real_spack, config=config, secrets=secrets), end="")
             code = 0
         elif args.command == "deactivate":
