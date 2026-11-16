@@ -171,3 +171,52 @@ def test_bootstrap_dry_run_changes_nothing(monkeypatch):
     assert result.registered is False
     assert not any(call[-3:-1] == ["compiler", "find"] for call in calls)
     assert not any("require" in part for call in calls for part in call)
+
+
+def test_bootstrap_builds_the_compiler_rather_than_take_a_system_one(monkeypatch):
+    # A system compiler of the same version is registered as an external, and
+    # an external satisfying the spec would be taken instead of a build. An
+    # external has no dependencies, so asking for a C compiler rules it out.
+    calls = _fake_spack(monkeypatch)
+
+    bootstrap_module.bootstrap(
+        "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV
+    )
+
+    assert _install(calls) == [*COMMAND, "install", "gcc@15", "%c"]
+
+
+def test_bootstrap_leaves_only_the_installed_compiler_registered(monkeypatch):
+    # The system compiler that built it would satisfy the requirements too.
+    calls = _fake_spack(monkeypatch)
+
+    bootstrap_module.bootstrap(
+        "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV
+    )
+
+    remove = calls.index([*COMMAND, "compiler", "remove", "-a", "gcc"])
+    register = calls.index([*COMMAND, "compiler", "find", PREFIX])
+    require = calls.index([*COMMAND, "config", "add", "packages:c:require:gcc@15"])
+    assert remove < register < require
+
+
+def test_bootstrap_leaves_only_an_already_installed_compiler_registered(monkeypatch):
+    calls = _fake_spack(monkeypatch, installed=True)
+
+    bootstrap_module.bootstrap(
+        "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV
+    )
+
+    assert calls.index([*COMMAND, "compiler", "remove", "-a", "gcc"]) < calls.index(
+        [*COMMAND, "compiler", "find", PREFIX]
+    )
+
+
+def test_bootstrap_dry_run_removes_no_compiler(monkeypatch):
+    calls = _fake_spack(monkeypatch)
+
+    bootstrap_module.bootstrap(
+        "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV, dry_run=True
+    )
+
+    assert not any(call[len(COMMAND):len(COMMAND) + 2] == ["compiler", "remove"] for call in calls)
