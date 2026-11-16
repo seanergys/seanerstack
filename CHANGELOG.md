@@ -9,6 +9,11 @@ and release process.
 
 ### Added
 
+- `seanerstack toolchain bootstrap COMPILER --external PREFIX`, and the same
+  option of `init`, make a compiler already installed in PREFIX, such as the
+  GCC 16 of `/usr`, the project compiler without building one. COMPILER must
+  name the compiler there; a spec Spack would build from source is refused
+  before anything requires it.
 - `SEANERSTACK_BUILTIN_REPO_GIT` overrides the Git location the pinned
   builtin `spack-packages` repository is cloned from, for hosts without
   internet access. The commit pin still applies.

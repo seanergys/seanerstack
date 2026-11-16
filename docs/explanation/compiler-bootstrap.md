@@ -51,3 +51,23 @@ $ spack compiler find "$(spack location -i gcc@15)"
 ```
 
 An external node is a leaf: it carries no build dependencies, so the requirement has nothing left to contradict. Concretization then takes seconds and the whole stack, the compiler excepted, is built by gcc@15.
+
+## Using a compiler that is already installed
+
+A machine may already have the compiler the stack needs: GCC 16 from the distribution, or a GCC toolset in `/opt/rh`. `--external PREFIX` makes that compiler the project compiler instead of building one:
+
+```console
+$ seanerstack toolchain bootstrap gcc@16 --external /usr
+```
+
+This is the second half of the bootstrap on its own: `spack compiler find PREFIX` registers what the prefix holds as externals, and the same language requirements are written. Nothing is built.
+
+The compiler spec has to name a compiler in that prefix. Spack does not refuse a spec it has no external for: if `/usr` holds only GCC 15, `gcc@16` concretizes to a GCC 16 built from source, and the requirement would start that build at the next install. Seanerstack therefore asks Spack what the spec resolves to before writing any requirement, and stops unless it is the external in PREFIX:
+
+```text
+'gcc@16' does not name the compiler in /usr: Spack resolves it to gcc@16.2.0 built from source.
+```
+
+After the requirements, the probe checks that its compiler is that external too.
+
+An external compiler changes the hash of everything built with it, so a stack built with the GCC of `/usr` shares no binaries with one built with the Spack-installed gcc@15. `seanerstack buildcache prepare` keeps building its compiler for that reason: the project build cache is for machines bootstrapped the normal way, and an external compiler suits a workstation or a CI job that does not push to it.
