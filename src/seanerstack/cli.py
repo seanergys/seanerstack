@@ -90,6 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap_parser.add_argument("--probe", default=DEFAULT_PROBE, help=f"spec used to probe concretization (default: {DEFAULT_PROBE})")
     bootstrap_parser.add_argument("--probe-timeout", type=float, default=DEFAULT_PROBE_TIMEOUT, help=f"seconds to allow the probe before giving up (default: {DEFAULT_PROBE_TIMEOUT:g}); 0 waits indefinitely")
     bootstrap_parser.add_argument("--force", action="store_true", help="ask Spack to install the compiler even when it is already installed")
+    bootstrap_parser.add_argument("--external", metavar="PREFIX", help="use the compiler already in PREFIX, such as /usr or a gcc-toolset, instead of building COMPILER; COMPILER must name it, for example gcc@16")
     bootstrap_parser.add_argument("--dry-run", action="store_true", help="show the intended operation without changing Spack configuration")
 
     validate_parser = subparsers.add_parser(
@@ -157,6 +158,7 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument("--probe", default=DEFAULT_PROBE, help=f"spec used to probe concretization (default: {DEFAULT_PROBE})")
     init_parser.add_argument("--probe-timeout", type=float, default=DEFAULT_PROBE_TIMEOUT, help=f"seconds to allow the probe before giving up (default: {DEFAULT_PROBE_TIMEOUT:g}); 0 waits indefinitely")
     init_parser.add_argument("--force", action="store_true", help="ask Spack to install the compiler even when it is already installed")
+    init_parser.add_argument("--external", metavar="PREFIX", help="use the compiler already in PREFIX, such as /usr or a gcc-toolset, instead of building COMPILER; COMPILER must name it, for example gcc@16")
     init_parser.add_argument("--skip-buildcache-check", action="store_true", help="configure build-cache mirrors without verifying access")
     init_parser.add_argument("--skip-validate", action="store_true", help="skip the final validation pass")
 
@@ -215,6 +217,12 @@ def _spack_runtime(args: argparse.Namespace):
     env.update(spack_env(x))
     return x, real_spack, spack_command(x, real_spack), env
 
+def _probe_warning(result) -> str:
+    if result.external:
+        return f"warning: the probe is not compiled by the compiler in {result.external}"
+    return "warning: compiler name not visible in probe output"
+
+
 def _run_bootstrap(args: argparse.Namespace) -> int:
     languages = tuple(args.language) if args.language else DEFAULT_LANGUAGES
     _, _, command, env = _spack_runtime(args)
@@ -227,15 +235,19 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
         force=args.force,
         dry_run=args.dry_run,
         probe_timeout=args.probe_timeout or None,
+        external=args.external,
     )
     if args.dry_run:
-        print(f"would bootstrap {result.compiler}")
+        if result.external:
+            print(f"would use the {result.compiler} in {result.external}, building nothing")
+        else:
+            print(f"would bootstrap {result.compiler}")
         print(f"would require it for: {', '.join(result.languages)}")
         return 0
-    print(f"compiler: {result.compiler}")
+    print(f"compiler: {result.compiler}{f' in {result.external}' if result.external else ''}")
     print(f"registered as external: {'yes' if result.registered else 'no'}")
     print(f"languages: {', '.join(result.languages)}")
-    print(f"compiler probe ({result.probe}): {'ok' if result.probe_ok else 'warning: compiler name not visible in probe output'}")
+    print(f"compiler probe ({result.probe}): {'ok' if result.probe_ok else _probe_warning(result)}")
     return 0 if result.probe_ok else 1
 
 
@@ -252,11 +264,12 @@ def _run_init(args: argparse.Namespace) -> int:
         env=env,
         force=args.force,
         probe_timeout=args.probe_timeout or None,
+        external=args.external,
     )
-    print(f"compiler: {result.compiler}")
+    print(f"compiler: {result.compiler}{f' in {result.external}' if result.external else ''}")
     print(f"registered as external: {'yes' if result.registered else 'no'}")
     print(f"languages: {', '.join(result.languages)}")
-    print(f"compiler probe ({result.probe}): {'ok' if result.probe_ok else 'warning: compiler name not visible in probe output'}")
+    print(f"compiler probe ({result.probe}): {'ok' if result.probe_ok else _probe_warning(result)}")
     failed = not result.probe_ok
 
     configure_buildcaches(config, command=command, env=env)

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+import os
 import re
 import subprocess
 
@@ -20,6 +21,7 @@ class BootstrapResult:
     languages: tuple[str, ...]
     probe: str
     probe_ok: bool
+    external: str | None = None
 
 
 def _run(
@@ -78,6 +80,64 @@ def _register_compiler(command: list[str], prefix: str, env) -> None:
     _run([*command, "compiler", "find", prefix], env=env)
 
 
+def _spec_nodes(output: str) -> list:
+    """Return the nodes of `spack spec --json` output.
+
+    The spec is one line of JSON; on a fresh state directory Spack first
+    prints its own bootstrapping, such as `==> Installing clingo-bootstrap`,
+    on the same stream.
+    """
+    for line in reversed(output.splitlines()):
+        if line.startswith("{"):
+            return json.loads(line)["spec"]["nodes"]
+    raise RuntimeError("`spack spec --json` printed no spec")
+
+
+def _root_node(output: str):
+    """Return the root node of `spack spec --json` output."""
+    return _spec_nodes(output)[0]
+
+
+def _compiler_node(output: str, languages: tuple[str, ...]):
+    """Return the node of `spack spec --json` output that compiles the root.
+
+    That is the dependency of the root providing one of `languages`, or None.
+    """
+    nodes = _spec_nodes(output)
+    by_hash = {node.get("hash"): node for node in nodes}
+    for dependency in nodes[0].get("dependencies", []):
+        if set(dependency.get("parameters", {}).get("virtuals", [])) & set(languages):
+            return by_hash.get(dependency.get("hash"))
+    return None
+
+
+def _same_prefix(node, prefix: str) -> bool:
+    path = (node or {}).get("external", {}).get("path")
+    return path is not None and os.path.realpath(path) == os.path.realpath(prefix)
+
+
+def _check_external(command: list[str], compiler: str, prefix: str, env, timeout) -> None:
+    """Make sure COMPILER means the compiler in PREFIX before anything requires it.
+
+    Without a matching external, Spack does not refuse `gcc@16`: it plans to
+    build it from source, which a requirement would then start on the next
+    install. So the spec of the compiler itself has to be that external.
+    """
+    result = _run([*command, "spec", "--json", compiler], check=False, env=env, timeout=timeout)
+    node = None
+    if result.returncode == 0:
+        node = _root_node(result.stdout)
+    if not _same_prefix(node, prefix):
+        found = "nothing" if node is None else (
+            f"{node['name']}@{node['version']} "
+            + (f"in {node['external']['path']}" if "external" in node else "built from source")
+        )
+        raise RuntimeError(
+            f"{compiler!r} does not name the compiler in {prefix}: Spack resolves it to {found}. "
+            f"Check `spack compiler list` and the version of the compiler in {prefix}."
+        )
+
+
 def _compiler_name(compiler: str) -> str:
     match = re.match(r"([A-Za-z0-9_.+-]+)", compiler)
     if not match:
@@ -107,10 +167,27 @@ def bootstrap(
     force: bool = False,
     dry_run: bool = False,
     probe_timeout: float | None = DEFAULT_PROBE_TIMEOUT,
+    external: str | None = None,
 ) -> BootstrapResult:
+    """Make COMPILER the compiler of every SEANERGYS build.
+
+    Without `external`, Spack installs COMPILER unless it already has, and the
+    installation is registered as an external. With `external`, a compiler
+    already in that prefix, such as /usr or a gcc-toolset, is registered
+    instead and nothing is built; COMPILER must name it.
+    """
     command = command or ["spack"]
     if not languages:
         raise ValueError("at least one compiler language is required")
+    if external is not None:
+        if force:
+            raise ValueError("--force builds the compiler, and an external compiler is not built")
+        if not os.path.isdir(external):
+            raise ValueError(f"external compiler prefix is not a directory: {external}")
+        return _bootstrap_external(
+            compiler, external, languages=languages, probe=probe, command=command,
+            env=env, dry_run=dry_run, probe_timeout=probe_timeout,
+        )
 
     prefix = _compiler_prefix(command, compiler, env)
     already_installed = prefix is not None
@@ -158,4 +235,51 @@ def bootstrap(
         languages=languages,
         probe=probe,
         probe_ok=probe_ok,
+    )
+
+
+def _bootstrap_external(
+    compiler: str,
+    prefix: str,
+    *,
+    languages: tuple[str, ...],
+    probe: str,
+    command: list[str],
+    env,
+    dry_run: bool,
+    probe_timeout: float | None,
+) -> BootstrapResult:
+    """Register the compiler in PREFIX and require it, building nothing."""
+    if dry_run:
+        return BootstrapResult(
+            compiler=compiler, installed=False, registered=False, languages=languages,
+            probe=probe, probe_ok=False, external=prefix,
+        )
+
+    _register_compiler(command, prefix, env)
+    _check_external(command, compiler, prefix, env, probe_timeout)
+    for language in languages:
+        _set_language_requirement(command, language, compiler, env)
+
+    try:
+        probe_result = _run(
+            [*command, "spec", "--json", probe], check=False, env=env, timeout=probe_timeout
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(
+            f"Spack did not concretize compiler probe {probe!r} within {probe_timeout:g} seconds."
+        ) from error
+    if probe_result.returncode != 0:
+        message = probe_result.stderr.strip() or probe_result.stdout.strip()
+        raise RuntimeError(f"Spack could not concretize compiler probe {probe!r}:\n{message}")
+    node = _compiler_node(probe_result.stdout, languages)
+
+    return BootstrapResult(
+        compiler=compiler,
+        installed=False,
+        registered=True,
+        languages=languages,
+        probe=probe,
+        probe_ok=_same_prefix(node, prefix),
+        external=prefix,
     )

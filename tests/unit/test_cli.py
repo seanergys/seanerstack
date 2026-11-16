@@ -45,6 +45,7 @@ def _init_args(tmp_path: Path, **overrides) -> "cli.argparse.Namespace":
         probe="zlib",
         probe_timeout=300.0,
         force=False,
+        external=None,
         skip_buildcache_check=False,
         skip_validate=False,
     )
