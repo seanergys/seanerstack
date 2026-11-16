@@ -63,7 +63,47 @@ e2e:
       bzip2 ca-certificates file g++ gcc git libc6-dev make patch unzip xz-utils
     - git clone --depth 1 --branch "$SPACK_VERSION" https://github.com/spack/spack.git /opt/spack
   script:
-    - tests/e2e/run.sh
+    # e2e:external-compiler runs those, in images with the compilers.
+    - tests/e2e/run.sh -k "not external_compiler"
+
+# Bootstraps with the GCC of the distribution through --external /usr, in an
+# image whose distribution packages that GCC, builds a small package with it,
+# and checks that a GCC the image lacks is refused. It needs no token.
+e2e:external-compiler:
+  stage: test
+  image: docker.io/library/$IMAGE
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE =~ /^(schedule|web)$/'
+  parallel:
+    matrix:
+      # GCC 16 next to the default GCC 15, so the version has to choose.
+      - IMAGE: "ubuntu:26.04"
+        GCC: "16"
+        SEANERSTACK_E2E_EXTERNAL_COMPILER: "gcc@16"
+        SEANERSTACK_E2E_MISSING_COMPILER: "gcc@14"
+      # The newest GCC that Ubuntu 24.04 packages.
+      - IMAGE: "ubuntu:24.04"
+        GCC: "14"
+        SEANERSTACK_E2E_EXTERNAL_COMPILER: "gcc@14"
+        SEANERSTACK_E2E_MISSING_COMPILER: "gcc@15"
+  variables:
+    SEANERSTACK_E2E_REQUIRED: "1"
+    SEANERSTACK_E2E_SPACK: "/opt/spack/bin/spack"
+    SPACK_VERSION: "v1.2.2"
+    DEBIAN_FRONTEND: "noninteractive"
+  before_script:
+    - apt-get update
+    - >-
+      apt-get install -y --no-install-recommends
+      bzip2 ca-certificates file git libc6-dev make patch unzip xz-utils python3 python3-venv
+      "gcc-$GCC" "g++-$GCC" "gfortran-$GCC"
+    # uv, which run.sh uses, from PyPI into a virtual environment of its own.
+    - python3 -m venv /opt/uv && /opt/uv/bin/pip install --quiet uv
+    - export PATH="/opt/uv/bin:$PATH"
+    - git clone --depth 1 --branch "$SPACK_VERSION" https://github.com/spack/spack.git /opt/spack
+  script:
+    - tests/e2e/run.sh -k external_compiler
 
 docs:
   stage: docs
