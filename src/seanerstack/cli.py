@@ -86,7 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
             "language-provider requirements so subsequent environment concretization uses it."
         ),
     )
-    bootstrap_parser.add_argument("compiler", help="Spack compiler spec, for example gcc@15")
+    bootstrap_parser.add_argument("compiler", nargs="?", help="Spack compiler spec (default: the compiler of [toolchain] in config.toml)")
     bootstrap_parser.add_argument(
         "--language",
         action="append",
@@ -226,9 +226,15 @@ def _probe_warning(result) -> str:
 
 def _run_bootstrap(args: argparse.Namespace) -> int:
     languages = tuple(args.language) if args.language else DEFAULT_LANGUAGES
+    compiler = args.compiler
+    if compiler is None:
+        config, _ = _runtime(args)
+        if config.toolchain is None:
+            raise ValueError(f"{config.path}: [toolchain] is missing; name the compiler")
+        compiler = config.toolchain.compiler
     _, _, command, env = _spack_runtime(args)
     result = bootstrap(
-        args.compiler,
+        compiler,
         languages=languages,
         probe=args.probe,
         command=command,

@@ -148,3 +148,18 @@ def test_init_again_keeps_the_recorded_config(monkeypatch, tmp_path: Path):
     cli._run_init(_init_args(tmp_path, config_file=tmp_path / "site.toml"))
     cli._run_init(_init_args(tmp_path, config_file=None))
     assert seanerstack.isolation.read_record(x.state)["config_file"] == tmp_path / "site.toml"
+
+
+def test_toolchain_bootstrap_installs_the_compiler_of_the_config(monkeypatch, tmp_path: Path):
+    _init_world(monkeypatch, tmp_path)
+    installed = []
+    monkeypatch.setattr(
+        cli, "bootstrap",
+        lambda compiler, **kwargs: installed.append(compiler) or BootstrapResult(
+            compiler=compiler, installed=True, registered=True, languages=("c",), probe="zlib", probe_ok=True
+        ),
+    )
+    args = _init_args(tmp_path, compiler=None, dry_run=False)
+
+    assert cli._run_bootstrap(args) == 0
+    assert installed == ["gcc@15"]
