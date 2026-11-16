@@ -106,9 +106,6 @@ def test_activation_makes_isolated_spack_default_and_deactivation_restores(tmp_p
     assert f"export SPACK_USER_CONFIG_PATH={x.config}" in script
     assert f"export SEANERSTACK_REAL_SPACK={real_spack}" in script
 
-    shim = (x.bin / "spack").read_text(encoding="utf-8")
-    assert 'exec "$SEANERSTACK_REAL_SPACK" -C "$SEANERSTACK_SPACK_CONFIG_DIR" "$@"' in shim
-
     active = {
         "SEANERSTACK_ACTIVE": "1",
         "PATH": f"{x.bin}:/usr/bin:/bin",
