@@ -200,7 +200,13 @@ def prepare_here(
 
     # Also what came from another cache, so that this one is complete by itself.
     specs = _output([*command, "find", "--format", "/{hash}"], env).split()
-    _stream([*command, "buildcache", "push", "--update-index", "--only", "package", target.name, *specs], env)
+    _stream([*command, "buildcache", "push", "--only", "package", target.name, *specs], env)
+    # Concretization finds binaries through the index alone. Autopush has
+    # already pushed what was built, and `push --update-index` updates an OCI
+    # index only when it pushed something itself, so the new binaries would
+    # stay invisible. This also replaces an index that a newer Spack wrote
+    # and this one cannot read.
+    _stream([*command, "buildcache", "update-index", target.name], env)
     print(f"the toolchain for {wanted.name} is in {target.url}")
     return 0
 

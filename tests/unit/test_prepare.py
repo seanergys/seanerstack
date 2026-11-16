@@ -373,3 +373,13 @@ def test_credentials_from_the_environment_reach_the_container(monkeypatch, tmp_p
     assert forwarded == [USER, TOKEN]
     assert "job-token" not in " ".join(create)
 
+
+
+def test_prepare_always_updates_the_index_after_the_push(monkeypatch, tmp_path):
+    # Autopush has pushed everything already, and a push that skips every spec
+    # leaves the index of an OCI cache as it was.
+    spack = Spack(monkeypatch)
+    run_here(tmp_path)
+    (push,) = [call for call in spack.calls if call[1:3] == ["buildcache", "push"]]
+    assert "--update-index" not in push
+    assert spack.calls.index(push) < spack.calls.index(["spack", "buildcache", "update-index", "target"])
