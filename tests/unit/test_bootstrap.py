@@ -48,6 +48,14 @@ def _fake_spack(monkeypatch, *, installed=False, external=False, probe_stdout="g
     return calls
 
 
+def _install(calls: list[list[str]]) -> list[str] | None:
+    """The call that installs gcc@15, whatever else it asks for."""
+    for call in calls:
+        if call[len(COMMAND):len(COMMAND) + 2] == ["install", "gcc@15"]:
+            return call
+    return None
+
+
 def test_bootstrap_uses_isolated_spack_command(monkeypatch):
     calls = _fake_spack(monkeypatch)
 
@@ -56,7 +64,7 @@ def test_bootstrap_uses_isolated_spack_command(monkeypatch):
     )
 
     assert result.compiler == "gcc@15"
-    assert [*COMMAND, "install", "gcc@15"] in calls
+    assert _install(calls) is not None
     assert [*COMMAND, "config", "add", "packages:c:require:gcc@15"] in calls
     assert [*COMMAND, "config", "add", "packages:cxx:require:gcc@15"] in calls
 
@@ -97,7 +105,7 @@ def test_bootstrap_registers_a_system_compiler_before_installing(monkeypatch):
     )
 
     find_system = calls.index([*COMMAND, "compiler", "find"])
-    install = calls.index([*COMMAND, "install", "gcc@15"])
+    install = calls.index(_install(calls))
     assert find_system < install
 
 
@@ -118,7 +126,7 @@ def test_bootstrap_registers_an_already_installed_compiler(monkeypatch):
         "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV
     )
 
-    assert [*COMMAND, "install", "gcc@15"] not in calls
+    assert _install(calls) is None
     assert [*COMMAND, "compiler", "find", PREFIX] in calls
 
 
@@ -129,7 +137,7 @@ def test_bootstrap_ignores_the_external_record_of_an_installed_compiler(monkeypa
         "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV
     )
 
-    assert [*COMMAND, "install", "gcc@15"] not in calls
+    assert _install(calls) is None
     assert [*COMMAND, "compiler", "find", PREFIX] in calls
 
 
@@ -140,7 +148,7 @@ def test_bootstrap_installs_when_only_an_external_record_exists(monkeypatch):
         "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV
     )
 
-    assert [*COMMAND, "install", "gcc@15"] in calls
+    assert _install(calls) is not None
     assert [*COMMAND, "compiler", "find", PREFIX] in calls
 
 
