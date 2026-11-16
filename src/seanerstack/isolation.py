@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 import shlex
@@ -47,6 +48,10 @@ class SpackLayout:
     # The credentials of the configured resources, as the shell exports that
     # Spack reads them from. Written by `seanerstack init`, mode 0600.
     credentials_env: Path
+    # The same credentials as a secrets mapping, for Seanerstack itself.
+    credentials: Path
+    # What `seanerstack init` chose, so that no later command asks again.
+    record: Path
 
 
 def layout(state_dir: Path) -> SpackLayout:
@@ -63,6 +68,8 @@ def layout(state_dir: Path) -> SpackLayout:
         package_repos=root / "package_repos",
         bin=root / "bin",
         credentials_env=root / "credentials.sh",
+        credentials=state / "credentials.json",
+        record=state / "seanerstack.json",
     )
 
 
@@ -73,6 +80,51 @@ def resolve_state_dir(value: Path | None) -> Path:
     if raw:
         return Path(raw).expanduser().resolve()
     return DEFAULT_STATE_DIR
+
+
+def _write_private(path: Path, text: str) -> None:
+    """Write a file that only its owner can read, also while it is written."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = path.with_name(path.name + ".partial")
+    partial.unlink(missing_ok=True)
+    descriptor = os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        stream.write(text)
+    partial.replace(path)
+
+
+def store_credentials(x: SpackLayout, config: Config, secrets: SecretStore) -> list[str]:
+    """Keep the credentials that the resources of `config` name, readable only by the owner.
+
+    Seanerstack reads them back as a secrets file, and the spack wrapper as the
+    variables Spack takes them from. Returns the names of the stored credentials.
+    """
+    names = sorted({resource.credentials for resource in config.resources.values() if resource.credentials})
+    stored = {name: secrets.credentials(name) for name in names if secrets.path is not None and secrets.has_credentials(name)}
+    _write_private(x.credentials, json.dumps({"credentials": stored}, indent=2) + "\n")
+    holder = SecretStore.stored(x.credentials)
+    exports = {}
+    for resource in config.resources.values():
+        if resource.kind == "spack-buildcache" and resource.credentials in stored:
+            exports.update(spack_resource_environment(resource, holder))
+    _write_private(x.credentials_env, "".join(f"export {name}={shlex.quote(value)}\n" for name, value in exports.items()))
+    return sorted(stored)
+
+
+def write_record(x: SpackLayout, *, config_file: Path | None, spack_executable: Path | None) -> None:
+    """Remember what `seanerstack init` was given, for every later command."""
+    record = {
+        "config_file": str(config_file.expanduser().resolve()) if config_file else None,
+        "spack_executable": str(spack_executable.expanduser().resolve()) if spack_executable else None,
+    }
+    _write(x.record, json.dumps(record, indent=2) + "\n")
+
+
+def read_record(state_dir: Path) -> dict[str, Path | None]:
+    """What `seanerstack init` recorded in a state directory; nothing before init."""
+    path = layout(state_dir).record
+    raw = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    return {key: Path(raw[key]) if raw.get(key) else None for key in ("config_file", "spack_executable")}
 
 
 def pinned_spack(state_dir: Path) -> Path:

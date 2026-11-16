@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from getpass import getpass
+import json
 from pathlib import Path
 import sys
 from typing import Any
@@ -14,6 +15,16 @@ class SecretStore:
     password_file: Path | None = None
     password_stdin: bool = False
     _data: dict[str, Any] | None = None
+
+    @classmethod
+    def stored(cls, path: Path) -> "SecretStore":
+        """The credentials that `seanerstack init` stored in a state directory, if any."""
+        if not path.is_file():
+            return cls(None)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"{path}: stored credentials must be a mapping")
+        return cls(path, _data=data)
 
     def _password(self) -> str:
         if self.password_stdin:

@@ -133,3 +133,27 @@ def test_version_names_seanerstack_and_its_pinned_spack(capsys):
     import seanerstack.pins
     spack = seanerstack.pins.SPACK_VERSION.removeprefix("v")
     assert capsys.readouterr().out == f"seanerstack {importlib.metadata.version('seanerstack')} (Spack {spack})\n"
+
+
+def test_commands_take_the_config_and_credentials_that_init_recorded(monkeypatch, tmp_path: Path):
+    import seanerstack.isolation
+    x = seanerstack.isolation.prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    seanerstack.isolation.write_record(x, config_file=tmp_path / "site.toml", spack_executable=None)
+    x.credentials.write_text('{"credentials": {"registry": {"token": "glpat"}}}', encoding="utf-8")
+    monkeypatch.setattr(cli, "load_config", lambda path: Config(path=path, resources={}))
+
+    config, secrets = cli._runtime(_init_args(tmp_path, config_file=None))
+
+    assert config.path == tmp_path / "site.toml"
+    assert secrets.credentials("registry") == {"token": "glpat"}
+
+
+def test_a_secrets_file_given_wins_over_the_stored_credentials(monkeypatch, tmp_path: Path):
+    import seanerstack.isolation
+    x = seanerstack.isolation.prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    x.credentials.write_text('{"credentials": {}}', encoding="utf-8")
+    monkeypatch.setattr(cli, "load_config", lambda path: Config(path=path, resources={}))
+
+    _, secrets = cli._runtime(_init_args(tmp_path, secrets_file=tmp_path / "vault"))
+
+    assert secrets.path == tmp_path / "vault"

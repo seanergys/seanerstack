@@ -16,7 +16,7 @@ from .pins import SPACK_VERSION
 from .prepare import prepare_here, prepare_in_container
 from .secrets import SecretStore
 from .isolation import (
-    activation_script, deactivation_script, layout, prepare_isolation,
+    activation_script, deactivation_script, layout, prepare_isolation, read_record,
     resolve_real_spack, resolve_state_dir, spack_command, spack_env,
 )
 from .sync import package_paths, sync_many
@@ -175,12 +175,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _runtime(args: argparse.Namespace) -> tuple[Config, SecretStore]:
-    config = load_config(args.config_file)
-    secrets = SecretStore(
-        args.secrets_file,
-        password_file=args.secrets_password_file,
-        password_stdin=args.secrets_password_stdin,
-    )
+    """The configuration and credentials: those given, or else what init recorded."""
+    state_dir = resolve_state_dir(args.state_dir)
+    record = read_record(state_dir)
+    config = load_config(args.config_file or record["config_file"])
+    if args.secrets_file is not None:
+        secrets = SecretStore(
+            args.secrets_file,
+            password_file=args.secrets_password_file,
+            password_stdin=args.secrets_password_stdin,
+        )
+    else:
+        secrets = SecretStore.stored(layout(state_dir).credentials)
     return config, secrets
 
 
@@ -217,7 +223,7 @@ def _run_package_update(args: argparse.Namespace) -> int:
 
 def _spack_runtime(args: argparse.Namespace):
     state_dir = resolve_state_dir(args.state_dir)
-    real_spack = resolve_real_spack(args.spack_executable, state_dir)
+    real_spack = resolve_real_spack(args.spack_executable or read_record(state_dir)["spack_executable"], state_dir)
     x = prepare_isolation(state_dir, real_spack)
     env = dict(__import__("os").environ)
     env.update(spack_env(x))

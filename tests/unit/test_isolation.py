@@ -338,3 +338,39 @@ def test_the_spack_wrapper_loads_the_stored_credentials(tmp_path: Path):
     result = subprocess.run([str(x.bin / "spack")], check=True, capture_output=True, text=True, env={"PATH": "/usr/bin:/bin"})
 
     assert "token=s3cret" in result.stdout.splitlines()
+
+
+def _caches(*names: str) -> dict[str, Resource]:
+    return {
+        name: Resource(name=name, kind="spack-buildcache", url=f"oci://registry.example.org/{name}", credentials=name, signed=False)
+        for name in names
+    }
+
+
+def test_stored_credentials_are_readable_only_by_their_owner(tmp_path: Path):
+    import seanerstack.isolation
+    x = prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    secrets = SecretStore(tmp_path / "vault", _data={"credentials": {"present": {"token": "glpat"}}})
+
+    stored = seanerstack.isolation.store_credentials(x, Config(path=tmp_path / "config.toml", resources=_caches("present", "absent")), secrets)
+
+    assert stored == ["present"]
+    assert x.credentials.stat().st_mode & 0o777 == 0o600
+    assert x.credentials_env.stat().st_mode & 0o777 == 0o600
+    assert SecretStore.stored(x.credentials).credentials("present") == {"token": "glpat"}
+    exports = x.credentials_env.read_text(encoding="utf-8")
+    assert "export SEANERSTACK_RESOURCE_PRESENT_PASSWORD=glpat\n" in exports
+    assert "ABSENT" not in exports
+
+
+def test_no_stored_credentials_reads_as_no_secrets_file(tmp_path: Path):
+    assert SecretStore.stored(tmp_path / "credentials.json").path is None
+
+
+def test_the_record_remembers_what_init_was_given(tmp_path: Path):
+    import seanerstack.isolation
+    state = tmp_path / "state"
+    assert seanerstack.isolation.read_record(state) == {"config_file": None, "spack_executable": None}
+    x = prepare_isolation(state, tmp_path / "spack")
+    seanerstack.isolation.write_record(x, config_file=tmp_path / "config.toml", spack_executable=None)
+    assert seanerstack.isolation.read_record(state) == {"config_file": tmp_path / "config.toml", "spack_executable": None}
