@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_PROBE_TIMEOUT, bootstrap
+from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_PROBE_TIMEOUT, bootstrap, require_target
 from .buildcache import buildcaches, check_buildcaches, configure_buildcaches
 from .config import Config, load_config
 from .paths import environments_path, repository_path, share_path
@@ -17,10 +17,10 @@ from .prepare import prepare_here, prepare_in_container
 from .secrets import SecretStore
 from .isolation import (
     activation_script, deactivation_script, layout, prepare_isolation, read_record,
-    resolve_real_spack, resolve_state_dir, spack_command, spack_env,
+    resolve_real_spack, resolve_state_dir, spack_command, spack_env, store_credentials, write_record,
 )
 from .sync import package_paths, sync_many
-from .validate import validate
+from .validate import check_git_access, validate
 
 
 def _add_secret_options(parser: argparse.ArgumentParser) -> None:
@@ -144,29 +144,18 @@ def build_parser() -> argparse.ArgumentParser:
     prepare_parser.add_argument("--jobs", type=int, help="parallel jobs per package (default: what the free memory allows)")
     prepare_parser.add_argument("--no-container", action="store_true", help="build here, for a CI job that runs in the image of [toolchain]")
 
-    init_parser = subparsers.add_parser(
+    subparsers.add_parser(
         "init",
-        help="Bootstrap the compiler, configure build-cache/OCI registry access, and validate, in one step.",
+        help="Set up the state directory once, and check access to every resource.",
         description=(
-            "Prepare a complete Seanerstack setup in one command: bootstrap COMPILER "
-            "through Spack, configure the build caches declared in config.toml "
-            "(including OCI registry access, using --secrets-file), and validate "
-            "the result."
+            "Set up the state directory, by default /opt/seanergys/state, so that no later "
+            "command needs another option: the pinned Spack, the config.toml and the "
+            "credentials of --secrets-file (stored readable only by you), the build caches, "
+            "and the CPU target of [toolchain]. Then check that every build cache and Git "
+            "resource can be read. Run it again to change any of these. It installs no "
+            "compiler: `seanerstack toolchain bootstrap` does, once init has passed."
         ),
     )
-    init_parser.add_argument("compiler", help="Spack compiler spec, for example gcc@15")
-    init_parser.add_argument(
-        "--language",
-        action="append",
-        choices=("c", "cxx", "fortran"),
-        help="language provider to configure; repeat as needed (default: c, cxx, fortran)",
-    )
-    init_parser.add_argument("--probe", default=DEFAULT_PROBE, help=f"spec used to probe concretization (default: {DEFAULT_PROBE})")
-    init_parser.add_argument("--probe-timeout", type=float, default=DEFAULT_PROBE_TIMEOUT, help=f"seconds to allow the probe before giving up (default: {DEFAULT_PROBE_TIMEOUT:g}); 0 waits indefinitely")
-    init_parser.add_argument("--force", action="store_true", help="ask Spack to install the compiler even when it is already installed")
-    init_parser.add_argument("--external", metavar="PREFIX", help="use the compiler already in PREFIX, such as /usr or a gcc-toolset, instead of building COMPILER; COMPILER must name it, for example gcc@16")
-    init_parser.add_argument("--skip-buildcache-check", action="store_true", help="configure build-cache mirrors without verifying access")
-    init_parser.add_argument("--skip-validate", action="store_true", help="skip the final validation pass")
 
     subparsers.add_parser("activate", help="Emit shell code that activates an isolated Seanerstack Spack session.")
     subparsers.add_parser("deactivate", help="Emit shell code that restores the shell state saved by activation.")
@@ -264,54 +253,52 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
 
 
 def _run_init(args: argparse.Namespace) -> int:
-    config, secrets = _runtime(args)
-    languages = tuple(args.language) if args.language else DEFAULT_LANGUAGES
-    _, _, command, env = _spack_runtime(args)
+    state_dir = resolve_state_dir(args.state_dir)
+    record = read_record(state_dir)
+    config_file = args.config_file or record["config_file"]
+    config = load_config(config_file)
+    x, real_spack, command, env = _spack_runtime(args)
+    write_record(x, config_file=config_file, spack_executable=args.spack_executable or record["spack_executable"])
+    print(f"state: {x.state}")
+    print(f"spack: {real_spack}")
+    print(f"config: {config.path}")
 
-    result = bootstrap(
-        args.compiler,
-        languages=languages,
-        probe=args.probe,
-        command=command,
-        env=env,
-        force=args.force,
-        probe_timeout=args.probe_timeout or None,
-        external=args.external,
-    )
-    print(f"compiler: {result.compiler}{f' in {result.external}' if result.external else ''}")
-    print(f"registered as external: {'yes' if result.registered else 'no'}")
-    print(f"languages: {', '.join(result.languages)}")
-    print(f"compiler probe ({result.probe}): {'ok' if result.probe_ok else _probe_warning(result)}")
-    failed = not result.probe_ok
+    if args.secrets_file is not None:
+        secrets = SecretStore(
+            args.secrets_file,
+            password_file=args.secrets_password_file,
+            password_stdin=args.secrets_password_stdin,
+        )
+        stored = store_credentials(x, config, secrets)
+        print(f"credentials: stored {', '.join(stored) if stored else 'none'} in {x.credentials}")
+    else:
+        secrets = SecretStore.stored(x.credentials)
 
     configure_buildcaches(config, command=command, env=env)
-    print(f"build caches: configured {len(buildcaches(config))} resource(s)")
+    print(f"build caches: {', '.join(cache.name for cache in buildcaches(config)) or 'none'}")
+    if config.toolchain is not None:
+        require_target(command, config.toolchain.target, env)
+        print(f"target: {config.toolchain.target}")
 
-    if not args.skip_buildcache_check:
-        for name, ok, message in check_buildcaches(config, secrets, command=command, base_env=env):
-            print(f"[{'OK' if ok else 'ERROR'}] buildcache:{name}: {message or 'accessible'}")
+    failed = False
+    for kind, results in (
+        ("buildcache", check_buildcaches(config, secrets, command=command, base_env=env)),
+        ("git", check_git_access(config, secrets)),
+    ):
+        for name, ok, message in results:
+            print(f"[{'OK' if ok else 'ERROR'}] {kind}:{name}: {message or 'accessible'}")
             failed |= not ok
-
-    if not args.skip_validate:
-        findings = validate(
-            with_spack=True,
-            compiler=args.compiler,
-            languages=languages,
-            spack_command=command,
-            spack_env=env,
-            config=config,
-            secrets=secrets,
-        )
-        for finding in findings:
-            marker = {"ok": "OK", "warning": "WARN", "error": "ERROR"}[finding.level]
-            print(f"[{marker}] {finding.subject}: {finding.message}")
-            failed |= finding.level == "error"
-
-    if not failed:
+    if failed:
         print()
-        print("Setup complete. Activate with:")
-        print('  eval "$(seanerstack activate)"')
-    return 1 if failed else 0
+        print("Fix the access above, for example with --secrets-file, and run init again.")
+        return 1
+
+    print()
+    print("Setup complete. Put the Spack of this state on PATH once, for example in ~/.bashrc:")
+    print(f"    export PATH={x.bin}:$PATH")
+    print("Then install the compiler of [toolchain], from the build cache where it holds it:")
+    print("    seanerstack toolchain bootstrap")
+    return 0
 
 
 def _environment_packages(path) -> set[str]:

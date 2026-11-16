@@ -75,3 +75,76 @@ def test_a_secrets_file_given_wins_over_the_stored_credentials(monkeypatch, tmp_
     _, secrets = cli._runtime(_init_args(tmp_path, secrets_file=tmp_path / "vault"))
 
     assert secrets.path == tmp_path / "vault"
+
+
+def _init_world(monkeypatch, tmp_path: Path, *, buildcache_ok=True, git_ok=True):
+    """Stand in for Spack and the network around init, recording what it does."""
+    import seanerstack.isolation
+    from seanerstack.config import Resource, Toolchain
+    calls = []
+    x = seanerstack.isolation.prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    cache = Resource(name="cache", kind="spack-buildcache", url="oci://registry.example.org/cache", credentials="registry", signed=False)
+    toolchain = Toolchain(compiler="gcc@15", packages=(), cache="cache", target="x86_64_v3", platforms={})
+    monkeypatch.setattr(cli, "load_config", lambda path: Config(path=path or tmp_path / "shipped.toml", resources={"cache": cache}, toolchain=toolchain))
+    monkeypatch.setattr(cli, "_spack_runtime", lambda args: (x, tmp_path / "spack", ["spack"], {}))
+    monkeypatch.setattr(cli, "configure_buildcaches", lambda config, **kwargs: calls.append("configure"))
+    monkeypatch.setattr(cli, "require_target", lambda command, target, env: calls.append(f"target={target}"))
+    monkeypatch.setattr(cli, "check_buildcaches", lambda config, secrets, **kwargs: calls.append("check") or [("cache", buildcache_ok, "")])
+    monkeypatch.setattr(cli, "check_git_access", lambda config, secrets: calls.append("git") or [("gitlab", git_ok, "")])
+
+    def no_compiler(*args, **kwargs):
+        raise AssertionError("init installs no compiler")
+
+    monkeypatch.setattr(cli, "bootstrap", no_compiler)
+    return x, calls
+
+
+def test_init_takes_no_compiler():
+    import pytest
+    assert build_parser().parse_args(["init"]).command == "init"
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["init", "gcc@15"])
+
+
+def test_init_sets_up_the_state_and_checks_access_without_a_compiler(monkeypatch, tmp_path: Path, capsys):
+    import seanerstack.isolation
+    x, calls = _init_world(monkeypatch, tmp_path)
+
+    code = cli._run_init(_init_args(tmp_path))
+
+    assert code == 0
+    assert calls == ["configure", "target=x86_64_v3", "check", "git"]
+    assert seanerstack.isolation.read_record(x.state)["config_file"] == tmp_path / "config.toml"
+    out = capsys.readouterr().out
+    assert f"export PATH={x.bin}:$PATH" in out
+    assert "seanerstack toolchain bootstrap" in out
+
+
+def test_init_stores_the_credentials_of_the_secrets_file(monkeypatch, tmp_path: Path):
+    from seanerstack.secrets import SecretStore
+    x, _ = _init_world(monkeypatch, tmp_path)
+    vault = {"credentials": {"registry": {"token": "glpat"}, "unused": {"token": "other"}}}
+    monkeypatch.setattr(cli, "SecretStore", lambda path, **kwargs: SecretStore(path, _data=vault))
+
+    assert cli._run_init(_init_args(tmp_path, secrets_file=tmp_path / "vault")) == 0
+
+    assert SecretStore.stored(x.credentials).credentials("registry") == {"token": "glpat"}
+    assert not SecretStore.stored(x.credentials).has_credentials("unused")
+
+
+def test_init_fails_when_a_build_cache_cannot_be_read(monkeypatch, tmp_path: Path):
+    _init_world(monkeypatch, tmp_path, buildcache_ok=False)
+    assert cli._run_init(_init_args(tmp_path)) == 1
+
+
+def test_init_fails_when_a_git_resource_cannot_be_read(monkeypatch, tmp_path: Path):
+    _init_world(monkeypatch, tmp_path, git_ok=False)
+    assert cli._run_init(_init_args(tmp_path)) == 1
+
+
+def test_init_again_keeps_the_recorded_config(monkeypatch, tmp_path: Path):
+    import seanerstack.isolation
+    x, _ = _init_world(monkeypatch, tmp_path)
+    cli._run_init(_init_args(tmp_path, config_file=tmp_path / "site.toml"))
+    cli._run_init(_init_args(tmp_path, config_file=None))
+    assert seanerstack.isolation.read_record(x.state)["config_file"] == tmp_path / "site.toml"
