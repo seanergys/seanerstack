@@ -292,3 +292,49 @@ def test_the_spack_variable_is_held_to_the_pinned_version_too(monkeypatch, tmp_p
     monkeypatch.setenv("SEANERSTACK_REAL_SPACK", str(_fake_spack_executable(tmp_path / "spack", "1.3.0.dev0")))
     with pytest.raises(RuntimeError, match="is Spack 1.3.0.dev0"):
         seanerstack.isolation.resolve_real_spack(None, tmp_path / "state")
+
+
+def _recording_spack(path: Path) -> Path:
+    """A stand-in for Spack that prints its arguments and the variables it got."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "#!/bin/sh\n"
+        'echo "args=$*"\n'
+        'echo "user=${SPACK_USER_CONFIG_PATH:-}"\n'
+        'echo "cache=${SPACK_USER_CACHE_PATH:-}"\n'
+        'echo "disable=${SPACK_DISABLE_LOCAL_CONFIG-unset}"\n'
+        'echo "token=${SEANERSTACK_RESOURCE_CACHE_PASSWORD:-}"\n',
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+    return path
+
+
+def test_the_spack_wrapper_runs_the_state_without_activation(tmp_path: Path):
+    import subprocess
+    real_spack = _recording_spack(tmp_path / "real spack" / "bin" / "spack")
+    x = prepare_isolation(tmp_path / "state", real_spack)
+
+    result = subprocess.run(
+        [str(x.bin / "spack"), "find", "zlib"], check=True, capture_output=True, text=True,
+        env={"PATH": "/usr/bin:/bin", "SPACK_DISABLE_LOCAL_CONFIG": "true"},
+    )
+
+    assert result.stdout.splitlines() == [
+        f"args=-C {x.config} find zlib",
+        f"user={x.config}",
+        f"cache={x.cache}",
+        "disable=unset",
+        "token=",
+    ]
+
+
+def test_the_spack_wrapper_loads_the_stored_credentials(tmp_path: Path):
+    import subprocess
+    real_spack = _recording_spack(tmp_path / "spack")
+    x = prepare_isolation(tmp_path / "state", real_spack)
+    x.credentials_env.write_text("export SEANERSTACK_RESOURCE_CACHE_PASSWORD='s3cret'\n", encoding="utf-8")
+
+    result = subprocess.run([str(x.bin / "spack")], check=True, capture_output=True, text=True, env={"PATH": "/usr/bin:/bin"})
+
+    assert "token=s3cret" in result.stdout.splitlines()

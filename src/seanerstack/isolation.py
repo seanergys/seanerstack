@@ -44,6 +44,9 @@ class SpackLayout:
     environments: Path
     package_repos: Path
     bin: Path
+    # The credentials of the configured resources, as the shell exports that
+    # Spack reads them from. Written by `seanerstack init`, mode 0600.
+    credentials_env: Path
 
 
 def layout(state_dir: Path) -> SpackLayout:
@@ -59,6 +62,7 @@ def layout(state_dir: Path) -> SpackLayout:
         environments=root / "environments",
         package_repos=root / "package_repos",
         bin=root / "bin",
+        credentials_env=root / "credentials.sh",
     )
 
 
@@ -184,15 +188,17 @@ def prepare_isolation(state_dir: Path, real_spack: Path) -> SpackLayout:
         f"    destination: {x.package_repos / f'builtin-{BUILTIN_REPO_COMMIT[:12]}'}\n",
     )
 
+    # Runs Spack in this state from any shell, so that putting x.bin on PATH
+    # once is all a user does: no activation, no variables to set.
     shim = x.bin / "spack"
     _write(
         shim,
         "#!/bin/sh\n"
-        'if [ -z "${SEANERSTACK_REAL_SPACK:-}" ] || [ -z "${SEANERSTACK_SPACK_CONFIG_DIR:-}" ]; then\n'
-        '  echo "seanerstack: isolated spack launcher requires an activated Seanerstack environment" >&2\n'
-        "  exit 2\n"
-        "fi\n"
-        'exec "$SEANERSTACK_REAL_SPACK" -C "$SEANERSTACK_SPACK_CONFIG_DIR" "$@"\n',
+        f"# Spack in the Seanerstack state {x.state}, written by Seanerstack.\n"
+        + "".join(f"unset {name}\n" for name in UNSET_ON_ACTIVATION)
+        + "".join(f"export {name}={shlex.quote(value)}\n" for name, value in spack_env(x).items())
+        + f"if [ -r {shlex.quote(str(x.credentials_env))} ]; then . {shlex.quote(str(x.credentials_env))}; fi\n"
+        + f'exec {shlex.quote(str(real_spack))} -C {shlex.quote(str(x.config))} "$@"\n',
     )
     shim.chmod(shim.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return x
