@@ -51,7 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Maintain and use the curated SEANERGYS Spack stack.",
     )
     _add_secret_options(parser)
-    parser.add_argument("--state-dir", type=Path, help="private Seanerstack state directory (or SEANERSTACK_STATE_DIR)")
+    parser.add_argument("--state-dir", type=Path, help="private Seanerstack state directory (or SEANERSTACK_STATE_DIR; default: /opt/seanergys/state, which the binaries of the project build cache need)")
     parser.add_argument("--spack-executable", type=Path, help="real Spack executable to use for the isolated session")
     subparsers = parser.add_subparsers(dest="command", required=True)
 

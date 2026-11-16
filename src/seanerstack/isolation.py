@@ -31,6 +31,12 @@ BUILTIN_REPO_COMMIT = "91cfb5b973c311f742cd31061fe224d40f1fd830"
 SPACK_GIT = "https://github.com/spack/spack.git"
 SPACK_VERSION = "v1.2.2"
 
+# Every hash contains the install path of the compiler that built it, and Spack
+# cannot relocate a binary to a longer path, so a machine reuses the binaries of
+# the project build cache only with this state directory. It is where the
+# toolchain is built, where seanerctl builds, and where the services install.
+DEFAULT_STATE_DIR = Path("/opt/seanergys/state")
+
 # Spack tests for the presence of this variable, not its value, so an inherited
 # one has to be removed rather than overridden. It switches the user scope off,
 # and that scope is where the private configuration lives.
@@ -72,7 +78,7 @@ def resolve_state_dir(value: Path | None) -> Path:
     raw = os.environ.get("SEANERSTACK_STATE_DIR")
     if raw:
         return Path(raw).expanduser().resolve()
-    raise ValueError("Spack isolation requires --state-dir DIR or SEANERSTACK_STATE_DIR")
+    return DEFAULT_STATE_DIR
 
 
 def resolve_real_spack(explicit: Path | None = None) -> Path:

@@ -226,3 +226,20 @@ def test_existing_state_follows_a_new_pin(tmp_path: Path):
     repos = (x.config / "repos.yaml").read_text(encoding="utf-8")
     assert BUILTIN_REPO_COMMIT in repos
     assert "0" * 40 not in repos
+
+
+def test_the_state_directory_defaults_to_where_the_cached_binaries_were_built(monkeypatch):
+    import seanerstack.isolation
+    monkeypatch.delenv("SEANERSTACK_STATE_DIR", raising=False)
+    assert seanerstack.isolation.resolve_state_dir(None) == Path("/opt/seanergys/state")
+
+
+def test_the_state_directory_variable_overrides_the_default(monkeypatch, tmp_path):
+    import seanerstack.isolation
+    monkeypatch.setenv("SEANERSTACK_STATE_DIR", str(tmp_path))
+    assert seanerstack.isolation.resolve_state_dir(None) == tmp_path.resolve()
+
+
+def test_the_toolchain_is_built_in_the_default_state_directory():
+    import seanerstack.prepare
+    assert seanerstack.prepare.CONTAINER_STATE == "/opt/seanergys/state"
