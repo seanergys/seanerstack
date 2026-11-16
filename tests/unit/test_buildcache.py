@@ -190,3 +190,16 @@ def test_buildcache_check_of_filesystem_cache_does_not_open_the_vault(monkeypatc
 
     assert results == [("local", True, "")]
     assert not any(name.startswith("SEANERSTACK_RESOURCE_") for name in environments[0])
+
+
+def test_buildcache_check_fails_on_an_index_that_a_newer_spack_wrote(monkeypatch, tmp_path: Path):
+    warning = (
+        "==> Warning: you need a newer Spack version to read the buildcache index for the following v2 mirror: "
+        "'oci://registry.example.org/cache'. The expected DB version is '8', but '9' was found.\n"
+    )
+    monkeypatch.setattr(buildcache.subprocess, "run", lambda args, **kwargs: subprocess.CompletedProcess(args, 0, "", warning))
+
+    ((name, ok, message),) = buildcache.check_buildcaches(_s3_config(tmp_path), SecretStore(None), command=["spack"], base_env={})
+
+    assert (name, ok) == ("cache", False)
+    assert "update-index" in message

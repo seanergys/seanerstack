@@ -9,6 +9,10 @@ from .config import Config, Resource
 from .secrets import SecretStore
 
 
+# What Spack warns when the index of a build cache is newer than it can read.
+UNREADABLE_INDEX = "you need a newer Spack version to read the buildcache index"
+
+
 def buildcaches(config: Config) -> tuple[Resource, ...]:
     return tuple(resource for resource in config.resources.values() if resource.kind == "spack-buildcache")
 
@@ -64,5 +68,13 @@ def check_buildcaches(config: Config, secrets: SecretStore, *, command: list[str
             env=env,
         )
         message = process.stderr.strip() or process.stdout.strip()
-        results.append((resource.name, process.returncode == 0, message))
+        # Spack lists nothing and still succeeds when a newer Spack wrote the
+        # index, so nothing in that cache can be installed.
+        unreadable = UNREADABLE_INDEX in process.stdout + process.stderr
+        if unreadable:
+            message = (
+                "a newer Spack wrote the index of this cache, and the pinned one cannot read it; "
+                "rebuild it with `spack buildcache update-index` from the pinned Spack"
+            )
+        results.append((resource.name, process.returncode == 0 and not unreadable, message))
     return results
