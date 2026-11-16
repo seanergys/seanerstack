@@ -137,18 +137,22 @@ publish:dev:
 
 # Every night, the toolchain of [toolchain] in data/share/seanerstack/config.toml
 # for each of its platforms: `seanerstack buildcache prepare` builds what the
-# project build cache lacks, in the platform's image, and pushes it. A night in
-# which nothing changed only checks that the cache holds everything.
+# project build cache lacks and pushes it. A night in which nothing changed
+# only checks that the cache holds everything.
 #
 # It runs in a pipeline schedule of the default branch (Build > Pipeline
 # schedules), or by hand from Build > Pipelines > Run pipeline. The job token
 # may push to the container registry of this project, which holds the cache.
-# The dind runner provides the Docker daemon that runs the platform images.
+#
+# Each job runs in the image of its platform, the same image as in config.toml
+# (a unit test keeps them equal), and builds there with --no-container, so no
+# Docker daemon is needed. The steps are those prepare runs in a container.
 toolchain:
   stage: toolchain
   tags:
-    - dind
-  image: docker:27-cli
+    - docker
+    - seanerstack
+  image: $IMAGE
   # Building GCC and Rust from nothing takes hours; later nights reuse them.
   timeout: 12h
   rules:
@@ -158,24 +162,60 @@ toolchain:
       allow_failure: true
   parallel:
     matrix:
-      - PLATFORM:
-          - rocky10
-          - rocky9
-          - fedora45
-          - fedora44
-          - debian13
-          - debian14
-          - ubuntu26.04
-          - ubuntu24.04
-          - arch
+      - PLATFORM: rocky10
+        IMAGE: docker.io/rockylinux/rockylinux:10
+      # Seanerstack needs Python 3.12, and the python3 of Rocky 9 is 3.9.
+      - PLATFORM: rocky9
+        IMAGE: docker.io/rockylinux/rockylinux:9
+        PYTHON: python3.12
+      - PLATFORM: fedora45
+        IMAGE: docker.io/library/fedora:45
+      - PLATFORM: fedora44
+        IMAGE: docker.io/library/fedora:44
+      - PLATFORM: debian13
+        IMAGE: docker.io/library/debian:13
+      - PLATFORM: debian14
+        IMAGE: docker.io/library/debian:forky
+      - PLATFORM: ubuntu26.04
+        IMAGE: docker.io/library/ubuntu:26.04
+      - PLATFORM: ubuntu24.04
+        IMAGE: docker.io/library/ubuntu:24.04
+      - PLATFORM: arch
+        IMAGE: docker.io/library/archlinux:latest
   variables:
     SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME: "gitlab-ci-token"
     SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD: "$CI_JOB_TOKEN"
+    # Where seanerctl builds and the services install. Spack cannot relocate a
+    # binary to a longer path, so the cache is built here, as in the container.
+    STATE: /opt/seanergys/state
   before_script:
-    - apk add --no-cache python3
-    - python3 -m venv /opt/seanerstack
-    # Editable, so that prepare puts this checkout into the platform image
-    # rather than the release of the same version.
-    - /opt/seanerstack/bin/pip install --quiet --editable .
+    # Just enough Python for Seanerstack, which then installs the system
+    # packages of the platform from config.toml.
+    - PYTHON="${PYTHON:-python3}"
+    - |
+      if command -v dnf >/dev/null; then
+        dnf install -y --setopt=install_weak_deps=False "$PYTHON" "$PYTHON-pip"
+      elif command -v apt-get >/dev/null; then
+        apt-get update
+        DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3 python3-venv python3-pip
+      else
+        pacman -Syu --noconfirm --needed python python-pip
+      fi
+    - '"$PYTHON" -m venv /opt/seanerstack'
+    - /opt/seanerstack/bin/pip install --quiet .
+    - >-
+      eval "$(/opt/seanerstack/bin/python -c 'import sys, seanerstack.config, seanerstack.prepare;
+      print(seanerstack.prepare.install_command(seanerstack.config.load_config().toolchain.platform(sys.argv[1])))'
+      "$PLATFORM")"
+    # Spack names the operating system after /etc/os-release. An installed
+    # system links it to /usr/lib/os-release, but the archlinux image writes
+    # its own with the date of the image as version, which no machine has.
+    - if [ -e /usr/lib/os-release ]; then ln -sf ../usr/lib/os-release /etc/os-release; fi
+    - SPACK_VERSION="$(/opt/seanerstack/bin/python -c 'import seanerstack.isolation; print(seanerstack.isolation.SPACK_VERSION)')"
+    - SPACK_GIT="$(/opt/seanerstack/bin/python -c 'import seanerstack.isolation; print(seanerstack.isolation.SPACK_GIT)')"
+    - git clone --depth 1 --branch "$SPACK_VERSION" "$SPACK_GIT" "$STATE/spack-$SPACK_VERSION"
   script:
-    - /opt/seanerstack/bin/seanerstack buildcache prepare --platform "$PLATFORM"
+    - >-
+      /opt/seanerstack/bin/seanerstack --state-dir "$STATE"
+      --spack-executable "$STATE/spack-$SPACK_VERSION/bin/spack"
+      buildcache prepare --no-container --platform "$PLATFORM"
