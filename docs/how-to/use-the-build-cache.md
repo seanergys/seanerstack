@@ -97,9 +97,9 @@ package_manager = "dnf"
 
 ### Build it every night
 
-The `toolchain` job of the CI pipeline runs `buildcache prepare` for every shipped platform, in parallel, on the `dind` runner. It runs in a pipeline schedule of the default branch, which a maintainer creates under **Build → Pipeline schedules**, for example with the interval `0 1 * * *`, or by hand from **Build → Pipelines → Run pipeline**. It pushes with the job token, which may write to the container registry of the project.
+The `toolchain` job of the CI pipeline runs `buildcache prepare --no-container` for every shipped platform, in parallel, on runners tagged `docker` and `seanerstack`. Each job runs in the image of its platform, so it needs no Docker daemon: it installs Python and the system packages of `[toolchain]`, clones Spack, and builds under `/opt/seanergys/state`, as `buildcache prepare` does in a container. It runs in a pipeline schedule of the default branch, which a maintainer creates under **Build → Pipeline schedules**, for example with the interval `0 1 * * *`, or by hand from **Build → Pipelines → Run pipeline**. It pushes with the job token, which may write to the container registry of the project.
 
-A night in which nothing changed only checks that the cache holds everything. When the hashes change, for example with the Spack version or the `spack-packages` pin, it builds again, which for GCC and Rust takes hours, so the job may run for 12 hours. A unit test keeps the platforms of the job equal to those in the shipped `config.toml`.
+A night in which nothing changed only checks that the cache holds everything. When the hashes change, for example with the Spack version or the `spack-packages` pin, it builds again, which for GCC and Rust takes hours, so the job may run for 12 hours. A unit test keeps the platforms of the job, their images and their Python equal to those in the shipped `config.toml`, so a platform added there also needs an entry in the job's matrix.
 
 ## Use a filesystem build cache
 
