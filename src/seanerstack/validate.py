@@ -10,11 +10,12 @@ import tempfile
 
 import yaml
 
+from .auth import git_auth
 from .bootstrap import DEFAULT_LANGUAGES
 from .config import Config
 from .secrets import SecretStore
 from .paths import environments_path, repository_path
-from .sync import package_paths, sync_many
+from .sync import package_paths, read_remote_refs, sync_many
 
 
 @dataclass(frozen=True)
@@ -154,6 +155,40 @@ def _validate_resources(repository: Path, config: Config) -> list[Finding]:
         else:
             findings.append(Finding("ok", f"resource:{name}", f"uses {resource.name}"))
     return findings
+
+
+def check_git_access(
+    config: Config, secrets: SecretStore, *, repository: Path | None = None
+) -> list[tuple[str, bool, str]]:
+    """Whether each Git resource can be read, tried on one recipe that uses it.
+
+    @param config: the resources
+    @param secrets: their credentials
+    @param repository: the recipes (default: the shipped repository)
+    @return: one (resource, readable, message) for each Git resource of `config` that a recipe uses
+    """
+    from .recipe import parse_recipe
+    results: list[tuple[str, bool, str]] = []
+    checked: set[str] = set()
+    for path in package_paths(repository or repository_path()).values():
+        recipe = parse_recipe(path)
+        name = recipe.seanerstack_resource
+        if not name or name in checked or not recipe.git:
+            continue
+        # A config that does not declare the resource does not use its recipes.
+        resource = config.resources.get(name)
+        if resource is None or resource.kind != "git":
+            continue
+        checked.add(name)
+        try:
+            read_remote_refs(recipe.git, auth=git_auth(resource, secrets))
+        except subprocess.CalledProcessError as error:
+            results.append((name, False, (error.stderr or "").strip() or f"cannot read {recipe.git}"))
+        except (RuntimeError, ValueError) as error:
+            results.append((name, False, str(error)))
+        else:
+            results.append((name, True, f"reads {recipe.git}"))
+    return results
 
 
 def validate(
