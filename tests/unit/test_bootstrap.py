@@ -161,6 +161,17 @@ def test_bootstrap_reports_a_probe_that_never_finishes(monkeypatch):
         )
 
 
+def test_the_target_requirement_replaces_an_earlier_one(monkeypatch):
+    calls = _fake_spack(monkeypatch)
+
+    bootstrap_module.require_target(COMMAND, "x86_64_v3", ENV)
+
+    assert calls == [
+        [*COMMAND, "config", "remove", "packages:all:require"],
+        [*COMMAND, "config", "add", "packages:all:require:target=x86_64_v3"],
+    ]
+
+
 def test_bootstrap_dry_run_changes_nothing(monkeypatch):
     calls = _fake_spack(monkeypatch)
 

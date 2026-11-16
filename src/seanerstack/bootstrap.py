@@ -181,6 +181,16 @@ def _set_language_requirement(command: list[str], language: str, compiler: str, 
     )
 
 
+def require_target(command: list[str], target: str, env) -> None:
+    """Build every package for `target`, such as x86_64_v3, not for the host's CPU.
+
+    The target is part of every hash. Without the requirement, each machine
+    builds for its own processor, and no hash matches another machine's.
+    """
+    _run([*command, "config", "remove", "packages:all:require"], check=False, env=env)
+    _run([*command, "config", "add", f"packages:all:require:target={target}"], env=env)
+
+
 def bootstrap(
     compiler: str,
     *,
