@@ -12,10 +12,11 @@ from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_PROBE_TIMEOUT, 
 from .buildcache import buildcaches, check_buildcaches, configure_buildcaches
 from .config import Config, load_config
 from .paths import environments_path, repository_path, share_path
+from .pins import SPACK_VERSION
 from .prepare import prepare_here, prepare_in_container
 from .secrets import SecretStore
 from .isolation import (
-    SPACK_VERSION, activation_script, deactivation_script, layout, prepare_isolation,
+    activation_script, deactivation_script, layout, prepare_isolation,
     resolve_real_spack, resolve_state_dir, spack_command, spack_env,
 )
 from .sync import package_paths, sync_many

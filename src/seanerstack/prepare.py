@@ -29,7 +29,8 @@ from .auth import spack_resource_environment
 from .bootstrap import bootstrap
 from .buildcache import buildcaches, configure_buildcaches
 from .config import Config, Platform, Resource, Toolchain
-from .isolation import DEFAULT_STATE_DIR, SPACK_GIT, SPACK_VERSION
+from .isolation import DEFAULT_STATE_DIR
+from .pins import SPACK_GIT, SPACK_VERSION
 from .paths import source_checkout
 from .secrets import SecretStore
 

@@ -12,25 +12,14 @@ from typing import Mapping
 
 from .config import Config
 from .paths import repository_path
+from .pins import BUILTIN_REPO_COMMIT, BUILTIN_REPO_GIT, SPACK_GIT, SPACK_VERSION
 from .auth import spack_resource_environment
 from .secrets import SecretStore
 
 
-# Spack declares this in its own defaults; the private scope has to repeat it
-# because it replaces those defaults rather than merging with them.
-BUILTIN_REPO_GIT = "https://github.com/spack/spack-packages.git"
-
 # Hosts without internet access point this at a mirror or a local clone. The
 # pinned commit still applies, so build-cache hashes stay the same.
 BUILTIN_REPO_GIT_ENV = "SEANERSTACK_BUILTIN_REPO_GIT"
-
-# Binary build-cache hashes depend on the recipes, so every session has to load
-# the same builtin commit: spack-packages v2026.10.0, package API v2.2, which
-# Spack 1.2 supports. Bump it together with SPACK_VERSION and the Spack version
-# used in CI.
-BUILTIN_REPO_COMMIT = "91cfb5b973c311f742cd31061fe224d40f1fd830"
-SPACK_GIT = "https://github.com/spack/spack.git"
-SPACK_VERSION = "v1.2.2"
 
 # Every hash contains the install path of the compiler that built it, and Spack
 # cannot relocate a binary to a longer path, so a machine reuses the binaries of
