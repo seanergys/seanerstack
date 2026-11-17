@@ -276,6 +276,29 @@ def test_bootstrap_gives_spack_the_stored_credentials_of_the_build_cache(monkeyp
     assert len(environments) == 2
 
 
+def test_bootstrap_checks_the_build_caches_before_it_builds(monkeypatch, tmp_path: Path):
+    calls = _bootstrap_world(monkeypatch, tmp_path)
+    monkeypatch.setattr(cli, "require_cache_access", lambda command, env: calls.append(("access", command)))
+
+    cli._run_bootstrap(_bootstrap_args(tmp_path))
+
+    assert calls.index(("access", ["spack"])) < calls.index(("bootstrap", "gcc@15", None, None))
+
+
+def test_bootstrap_builds_nothing_when_a_build_cache_refuses(monkeypatch, tmp_path: Path):
+    import pytest
+    calls = _bootstrap_world(monkeypatch, tmp_path)
+
+    def refused(command, env):
+        raise RuntimeError("cache: refuses the request: HTTP Error 401")
+
+    monkeypatch.setattr(cli, "require_cache_access", refused)
+
+    with pytest.raises(RuntimeError, match="HTTP Error 401"):
+        cli._run_bootstrap(_bootstrap_args(tmp_path))
+    assert not [call for call in calls if call[0] in ("bootstrap", "install")]
+
+
 def test_bootstrap_takes_the_packages_compiler_and_target_given(monkeypatch, tmp_path: Path):
     calls = _bootstrap_world(monkeypatch, tmp_path)
 

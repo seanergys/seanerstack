@@ -234,3 +234,19 @@ def test_update_index_of_another_cache_is_spacks_own(monkeypatch, tmp_path: Path
     buildcache.update_index(cache, command=["spack"], env={})
 
     assert calls == [["spack", "buildcache", "update-index", "cache"]]
+
+
+def test_a_build_cache_that_refuses_the_request_is_an_error_that_names_it(monkeypatch):
+    calls = []
+    answer = subprocess.CompletedProcess([], 1, "registry: oci://registry.example.org/registry refuses the request: HTTP Error 401\n", "")
+    monkeypatch.setattr(buildcache.subprocess, "run", lambda args, **kwargs: calls.append((args, kwargs["env"])) or answer)
+
+    with pytest.raises(RuntimeError, match="registry: oci://registry.example.org/registry refuses the request: HTTP Error 401"):
+        buildcache.require_cache_access(["spack"], {"A": "1"})
+    assert calls == [(["spack", "python", str(buildcache.CACHE_ACCESS_SCRIPT)], {"A": "1"})]
+
+
+def test_build_caches_that_answer_pass_the_access_check(monkeypatch):
+    monkeypatch.setattr(buildcache.subprocess, "run", lambda args, **kwargs: subprocess.CompletedProcess(args, 0, "", ""))
+
+    buildcache.require_cache_access(["spack"], {})
