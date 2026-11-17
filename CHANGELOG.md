@@ -74,6 +74,9 @@ and release process.
 
 ### Fixed
 
+- `toolchain bootstrap` gives Spack the stored credentials of the build caches.
+  Without them it asked a private cache anonymously, was refused, and built the
+  compiler and Rust from source although the cache held them.
 - `buildcache check` and `init` fail on a build cache whose index a newer Spack
   wrote, which the pinned Spack cannot read, instead of reporting it as fine.
 - `seanerbus` declares its build dependency on `capnproto`, without which a clean
