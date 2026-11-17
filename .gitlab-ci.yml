@@ -369,6 +369,23 @@ toolchain:
     # its own with the date of the image as version, which no machine has.
     - if [ -e /usr/lib/os-release ]; then ln -sf ../usr/lib/os-release /etc/os-release; fi
   script:
+    # Explain what was built even when a package failed.
     - >-
+      status=0;
       /opt/seanerstack/bin/seanerstack --state-dir "$STATE"
-      buildcache prepare --no-container --platform "$PLATFORM"
+      buildcache prepare --no-container --platform "$PLATFORM" || status=$?
+    # Why a night built instead of reusing: each spec of the toolchain against
+    # the cached specs of its name and version, which include the other
+    # platforms and earlier nights. It runs after prepare, which sets the
+    # target and the compiler that the specs concretize with, and never fails
+    # the job.
+    - >-
+      SPECS="$(/opt/seanerstack/bin/python -c 'import seanerstack.config;
+      toolchain = seanerstack.config.load_config().toolchain;
+      print(toolchain.compiler, *toolchain.packages)')"
+    - |
+      for spec in $SPECS; do
+        echo "== seanerstack buildcache explain $spec"
+        /opt/seanerstack/bin/seanerstack --state-dir "$STATE" buildcache explain "$spec" || true
+      done
+    - exit "$status"
