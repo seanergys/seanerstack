@@ -11,14 +11,16 @@ theme:
     logo: custom/seanergys
   favicon: custom/seanergys-colour
   features:
+    - content.code.copy
+    - content.tabs.link
+    - navigation.indexes
+    - navigation.sections
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.top
-    - navigation.sections
-    - navigation.expand
     - search.highlight
-    - content.code.copy
-    - content.tabs.link
+    - search.suggest
+    - toc.follow
   custom_dir: docs/overrides
   topbar_style: primary
   palette:
