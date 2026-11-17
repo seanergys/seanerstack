@@ -246,6 +246,8 @@ def container_script(platform: Platform, *, jobs: int, source: bool, uid: int, g
             f"  mv {spack}.partial {spack}",
             "fi",
             f"{platform.python} -m venv /opt/seanerstack",
+            "# Spack runs with the Python of the platform, not with whichever python3 the image has.",
+            f'export SPACK_PYTHON="$(command -v {platform.python})"',
             f"/opt/seanerstack/bin/pip install --quiet {shlex.quote(package)}",
             seanerstack,
             "",

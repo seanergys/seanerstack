@@ -372,6 +372,9 @@ toolchain:
         pacman -Syu --noconfirm --needed python python-pip
       fi
     - '"$PYTHON" -m venv /opt/seanerstack'
+    # Spack runs with the Python of the platform, not with whichever python3
+    # the image has.
+    - export SPACK_PYTHON="$(command -v "$PYTHON")"
     - /opt/seanerstack/bin/pip install --quiet .
     - >-
       eval "$(/opt/seanerstack/bin/python -c 'import sys, seanerstack.config, seanerstack.prepare;
