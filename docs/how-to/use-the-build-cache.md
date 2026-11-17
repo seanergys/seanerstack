@@ -80,6 +80,8 @@ The build runs in the image of the platform, because the operating system is par
 
 `--jobs` defaults to what the free memory allows, and the container gets at most 85 % of that memory. A CI job that already runs in the image of a platform uses `--no-container`.
 
+When the build ends, the index of the cache is rebuilt: every package went to the cache as soon as it was built, and only the rebuilt index lets concretization on other machines find them.
+
 Run it again after changing the Spack version or the `spack-packages` pin, because binaries match only on an identical hash.
 
 ### Add a platform

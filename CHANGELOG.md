@@ -43,6 +43,12 @@ and release process.
   its branches, instead of failing to infer a tag convention.
 - `seanerstack validate --online` and `package update --all` leave out recipes
   without a Git URL, such as `py-pycapnp`, instead of stopping at them.
+- `buildcache prepare` rebuilds the index of the build cache after pushing.
+  Autopush had already pushed every package, and a push that skips everything
+  leaves an OCI index unchanged, so the new binaries were invisible.
+- `toolchain bootstrap` builds the compiler even when the system compiler has a
+  matching version, which Spack took instead, and leaves only the built one
+  registered.
 
 ## [0.1.3] - 2026-10-28
 

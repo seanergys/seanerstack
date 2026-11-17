@@ -15,6 +15,11 @@ COMMAND = ["/opt/spack/bin/spack", "-C", "/state/spack/config"]
 ENV = {"SPACK_DISABLE_LOCAL_CONFIG": "true"}
 
 
+
+def _installs(calls: list[list[str]], spec: str) -> bool:
+    """Whether a call installs `spec`, whatever else it asks for."""
+    return any(call[len(COMMAND):len(COMMAND) + 2] == ["install", spec] for call in calls)
+
 def _node(name, version, *, hash, external=None, dependencies=()):
     node = {"name": name, "version": version, "hash": hash, "dependencies": list(dependencies)}
     if external is not None:
@@ -200,11 +205,11 @@ def test_without_an_external_prefix_the_compiler_is_built(monkeypatch, command):
     built = "/state/spack/opt/gcc-15.3.0-abcdef"
     monkeypatch.setattr(
         bootstrap_module, "_compiler_prefix",
-        lambda command, compiler, env: built if [*COMMAND, "install", "gcc@15"] in calls else None,
+        lambda command, compiler, env: built if _installs(calls, "gcc@15") else None,
     )
 
     result = bootstrap_module.bootstrap("gcc@15", command=COMMAND, env=ENV, external=args.external)
 
-    assert [*COMMAND, "install", "gcc@15"] in calls
+    assert _installs(calls, "gcc@15")
     assert [*COMMAND, "compiler", "find", built] in calls
     assert result.external is None

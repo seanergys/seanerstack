@@ -138,6 +138,30 @@ def _check_external(command: list[str], compiler: str, prefix: str, env, timeout
         )
 
 
+def _install_compiler(command: list[str], compiler: str, env) -> None:
+    """Build the compiler, even where the system compiler has the same version.
+
+    The system compiler is registered as an external, and an external that
+    satisfies the spec is taken instead of a build: on Ubuntu 26.04,
+    `install gcc@15` takes the system GCC 15.2.0 and installs nothing. An
+    external is a leaf, so asking for a C compiler as a dependency rules it
+    out, while the system compiler can still be that dependency.
+    """
+    _run_streaming([*command, "install", compiler, "%c"], env=env)
+
+
+def _replace_registered_compilers(command: list[str], compiler: str, prefix: str, env) -> None:
+    """Make the installed compiler the only registered compiler of its name.
+
+    The system compiler that built it stays registered, and the language
+    requirements would accept it too where its version matches, so packages
+    could be built with it instead. A name without registered compilers makes
+    `compiler remove` fail, which is fine.
+    """
+    _run([*command, "compiler", "remove", "-a", _compiler_name(compiler)], check=False, env=env)
+    _register_compiler(command, prefix, env)
+
+
 def _compiler_name(compiler: str) -> str:
     match = re.match(r"([A-Za-z0-9_.+-]+)", compiler)
     if not match:
@@ -193,7 +217,7 @@ def bootstrap(
     already_installed = prefix is not None
     if (force or not already_installed) and not dry_run:
         _ensure_system_compiler(command, env)
-        _run_streaming([*command, "install", compiler], env=env)
+        _install_compiler(command, compiler, env)
         prefix = _compiler_prefix(command, compiler, env)
 
     registered = False
@@ -203,7 +227,7 @@ def bootstrap(
                 f"Spack reports no installation prefix for {compiler!r}; "
                 "cannot register it as a compiler"
             )
-        _register_compiler(command, prefix, env)
+        _replace_registered_compilers(command, compiler, prefix, env)
         registered = True
         for language in languages:
             _set_language_requirement(command, language, compiler, env)

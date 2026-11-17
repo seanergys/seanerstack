@@ -70,7 +70,8 @@ def test_prepare_builds_the_toolchain_and_then_pushes_it(monkeypatch, tmp_path):
     assert ["spack", "config", "add", "packages:all:require:target=x86_64_v3"] in spack.calls
     assert yaml.safe_load((tmp_path / "toolchain/spack.yaml").read_text())["spack"]["specs"] == ["rust", "capnproto"]
     install = ["spack", "-e", str(tmp_path / "toolchain"), "install", "--jobs", "3"]
-    push = ["spack", "buildcache", "push", "--update-index", "--only", "package", "target", "/aaa", "/bbb"]
+    (push,) = [call for call in spack.calls if call[1:3] == ["buildcache", "push"]]
+    assert push[-3:] == ["target", "/aaa", "/bbb"]
     assert spack.calls.index(install) < spack.calls.index(push)
 
 
@@ -372,3 +373,13 @@ def test_credentials_from_the_environment_reach_the_container(monkeypatch, tmp_p
     assert forwarded == [USER, TOKEN]
     assert "job-token" not in " ".join(create)
 
+
+
+def test_prepare_always_updates_the_index_after_the_push(monkeypatch, tmp_path):
+    # Autopush has pushed everything already, and a push that skips every spec
+    # leaves the index of an OCI cache as it was.
+    spack = Spack(monkeypatch)
+    run_here(tmp_path)
+    (push,) = [call for call in spack.calls if call[1:3] == ["buildcache", "push"]]
+    assert "--update-index" not in push
+    assert spack.calls.index(push) < spack.calls.index(["spack", "buildcache", "update-index", "target"])
