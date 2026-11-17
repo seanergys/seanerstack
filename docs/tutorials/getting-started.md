@@ -72,15 +72,15 @@ The secrets file holds the token for the SEANERGYS GitLab and its container regi
 export PATH=/opt/seanergys/state/spack/bin:$PATH
 ```
 
-From this point, plain `spack` uses the Seanerstack configuration, state and credentials, in this shell and every later one. Existing `~/.spack` or system Spack configuration is not part of it.
+From this point, plain `spack` uses the Seanerstack configuration, state and credentials, in this shell and every later one. Existing `~/.spack` or system Spack configuration is not part of it. To use the state in the current shell only, run `eval "$(seanerstack activate)"` instead.
 
-## 6. Install the compiler
+## 6. Install the toolchain
 
 ```console
 seanerstack toolchain bootstrap
 ```
 
-It installs the compiler of `[toolchain]`, from the project build cache where the cache holds it, and makes it the compiler of every later build. Seanerstack uses the compiler package supplied by Spack; it does not ship a GCC recipe of its own.
+It installs the compiler of `[toolchain]` and makes it the compiler of every later build, then installs rust and capnproto with it. Each comes from the project build cache where the cache holds it, so GCC and Rust, which take hours to build, are not built here. Seanerstack uses the compiler package supplied by Spack; it does not ship a GCC recipe of its own.
 
 ## 7. Obtain the package checkout
 

@@ -54,15 +54,15 @@ An external node is a leaf: it carries no build dependencies, so the requirement
 
 ## Using a compiler that is already installed
 
-A machine may already have the compiler the stack needs: GCC 16 from the distribution, or a GCC toolset in `/opt/rh`. `--external PREFIX` makes that compiler the project compiler instead of building one:
+A machine may already have the compiler the stack needs: GCC 16 from the distribution, or a GCC toolset in `/opt/rh`. `seanerstack init` finds it, on `PATH` or below a prefix given with `--find`, and `--external` makes it the project compiler instead of building one:
 
 ```console
-$ seanerstack toolchain bootstrap gcc@16 --external /usr
+$ seanerstack toolchain bootstrap --external gcc@16
 ```
 
-This is the second half of the bootstrap on its own: `spack compiler find PREFIX` registers what the prefix holds as externals, and the same language requirements are written. Nothing is built.
+This is the second half of the bootstrap on its own: `spack compiler find PREFIX` registers what the prefix that `init` found the compiler in holds as externals, and the same language requirements are written. Nothing is built.
 
-The compiler spec has to name a compiler in that prefix. Spack does not refuse a spec it has no external for: if `/usr` holds only GCC 15, `gcc@16` concretizes to a GCC 16 built from source, and the requirement would start that build at the next install. Seanerstack therefore asks Spack what the spec resolves to before writing any requirement, and stops unless it is the external in PREFIX:
+The compiler spec has to resolve to that installation. Spack does not refuse a spec it has no external for: a spec that matched GCC 15 only would concretize to a GCC built from source, and the requirement would start that build at the next install. Seanerstack therefore asks Spack what the spec resolves to before writing any requirement, and stops unless it is the external in the prefix:
 
 ```text
 'gcc@16' does not name the compiler in /usr: Spack resolves it to gcc@16.2.0 built from source.
@@ -76,4 +76,13 @@ An external compiler changes the hash of everything built with it, so a stack bu
 
 The system compiler is registered as an external before the build, because building the new compiler needs a C compiler. An external that satisfies the requested spec would then be taken instead of a build: on Ubuntu 26.04, whose system GCC is 15.2.0, `spack install gcc@15` installs nothing. Seanerstack therefore installs `gcc@15 %c`. An external is a leaf without dependencies, so asking for a C compiler as a dependency rules it out, while the system compiler can still be that C compiler. The compiler is built whatever version the system has, the same version included.
 
-Afterwards, every registered compiler of that name is removed before the installed one is registered, so that only the installed compiler satisfies the language requirements. Otherwise a system compiler of a matching version could build packages instead.
+Afterwards, every registered compiler that the spec matches, such as a system gcc 15.2.0 for `gcc@15`, is removed before the installed one is registered, so that only the installed compiler satisfies the language requirements. Otherwise a system compiler of a matching version could build packages instead. Other compilers, such as a system gcc 16 or clang, stay registered.
+
+## Choosing the compilers
+
+`seanerstack init` registers every compiler it finds, on `PATH` and below the prefixes given with `--find`, and prints them. `seanerstack toolchain bootstrap` chooses among them by name, never by path:
+
+- `--source-compiler gcc@14` builds the toolchain compiler with the gcc 14 that `init` found, as `gcc@15 %c,cxx=gcc@14.2.1`; by default Spack chooses.
+- `--external gcc@16` uses the gcc 16 that `init` found as the toolchain compiler instead of building one.
+
+A name that matches none of them, or more than one, is refused with the list of what `init` found. Packages work the same way: `init` detects them without registering them, because a registered external would replace every build of the package, and `--external rust` registers the one it found and stops Spack from building rust. Anything external makes the hashes of what depends on it local to the machine.

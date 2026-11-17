@@ -38,6 +38,10 @@ spack install --use-buildcache only
 
 A binary matches only when the concretized hash matches, which requires the same Spack version, the same Seanerstack and builtin package recipes, the same compiler at the same install path, operating system, and target microarchitecture as the build that pushed it. `seanerstack init` takes care of all of these but the operating system: it uses the pinned Spack, the default state directory `/opt/seanergys/state`, and the target of `[toolchain]`.
 
+!!! warning "Externals take you off the project build cache"
+
+    `seanerstack toolchain bootstrap --external gcc@16` or `--external rust` uses a compiler or package installed on your machine instead of the one the project builds. Every hash that depends on it then contains your machine's installation, so nothing built with it matches the project build cache, and Spack builds the rest of the stack from source. Do this only when you need that compiler or package. To build each package only once even so, keep your builds in a [filesystem build cache](#use-a-filesystem-build-cache) with `autopush = true`.
+
 ## Push to the cache
 
 With a token that has write access, push an installed environment and refresh the index:

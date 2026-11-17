@@ -10,7 +10,14 @@ Use this procedure whenever you want ordinary `spack` commands to use Seanerstac
 export PATH=/opt/seanergys/state/spack/bin:$PATH
 ```
 
-Add the line to your shell profile, such as `~/.bashrc`, to make it permanent. The wrapper carries the state's settings itself, so no activation and no further variables are needed in any shell.
+Add the line to your shell profile, such as `~/.bashrc`, to make it permanent. The wrapper carries the state's settings itself, so no further variables are needed in any shell.
+
+To use the state in one shell only, activate it instead. Activation also exports the state's Spack variables and the stored registry credentials, and `deactivate` restores the shell:
+
+```console
+eval "$(seanerstack activate)"
+eval "$(seanerstack deactivate)"
+```
 
 Use Spack normally:
 

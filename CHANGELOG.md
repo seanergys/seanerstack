@@ -9,11 +9,10 @@ and release process.
 
 ### Added
 
-- `seanerstack toolchain bootstrap COMPILER --external PREFIX`, and the same
-  option of `init`, make a compiler already installed in PREFIX, such as the
-  GCC 16 of `/usr`, the project compiler without building one. COMPILER must
-  name the compiler there; a spec Spack would build from source is refused
-  before anything requires it.
+- `seanerstack toolchain bootstrap --external gcc@16` makes a compiler that
+  `init` found, such as the GCC 16 of `/usr`, the project compiler without
+  building one. Seanerstack checks that the spec resolves to that installation
+  before anything requires it, and that the probe is compiled by it.
 - `SEANERSTACK_BUILTIN_REPO_GIT` overrides the Git location the pinned
   builtin `spack-packages` repository is cloned from, for hosts without
   internet access. The commit pin still applies.
@@ -51,14 +50,18 @@ and release process.
   directory in which the toolchain of the project build cache is built, because
   the install path of the compiler is part of every hash.
 - `seanerstack init` takes no compiler. It sets up the state, configures the
-  build caches and the CPU target of `[toolchain]`, and checks access;
-  `seanerstack toolchain bootstrap` then installs the compiler, which by default
-  is the one of `[toolchain]`.
-
-### Removed
-
-- `seanerstack activate` and `seanerstack deactivate`. Put the state's `spack`
-  wrapper on `PATH` instead.
+  build caches and the CPU target of `[toolchain]`, finds the compilers and the
+  toolchain's packages installed on the machine and prints them, and checks
+  access. `--find PREFIX` adds an installation off `PATH`, such as a
+  gcc-toolset.
+- `seanerstack toolchain bootstrap` installs the whole toolchain: the compiler,
+  then its packages, rust and capnproto by default, or those given as arguments.
+  `--compiler`, `--source-compiler`, `--target` and `--os` choose the compiler to
+  build, the one that builds it, the CPU target and the operating system to
+  expect; `--external` uses a compiler or package that `init` found instead of
+  building it.
+- `seanerstack activate` takes the credentials from the state, so it asks for no
+  vault password.
 
 ### Fixed
 
