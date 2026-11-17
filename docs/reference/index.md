@@ -1,11 +1,11 @@
 # Reference
 
-Reference documentation is generated from Seanerstack's actual user-facing artifacts:
+The reference states every command, environment and package completely. It is generated from the command-line parser, the environment manifests and the package recipes of the installed Seanerstack, so it matches the version it was built from.
 
-- the `seanerstack` command-line parser;
-- the native Spack package recipes;
-- the native Spack environment manifests.
+| Page | Content | Use it when |
+| --- | --- | --- |
+| [Command line](command-line.md) | Every `seanerstack` command with its options. | You need the exact name or meaning of an option. |
+| [Environments](environments.md) | The Spack environments that Seanerstack ships, with their manifests. | You choose an environment for a package checkout. |
+| [Packages](packages/index.md) | The recipes of the Seanerstack Spack repository, with versions, variants and dependencies. | You look up what a package builds from and depends on. |
 
-The reference section records the complete interface, including lower-level command options. The tutorial and how-to guides intentionally use only the single procedures adopted by SEANERGYS for normal project work.
-
-Seanerstack's internal Python API is not part of the project documentation surface.
+The tutorial and the how-to guides use one procedure for each task. Options beyond that procedure are described here.
