@@ -130,6 +130,41 @@ e2e:external-compiler:
   script:
     - tests/e2e/run.sh tests/e2e/test_external_compiler.py
 
+# The job token, for Git and the registry, in /tmp/secrets.toml as users write
+# a secrets file, encrypted with /tmp/vault-password, which only has to
+# outlive the job. Needs keyloom on PATH. GitLab flattens the nested list where
+# a job's script names it.
+.job-token-secrets: &job-token-secrets
+  - umask 077
+  - echo "$CI_JOB_ID" > /tmp/vault-password
+  - |
+    cat > /tmp/secrets.toml <<EOF
+    [credentials.seanergys-gitlab]
+    username = "gitlab-ci-token"
+    token = { __keyloom__ = "secret", value = "$CI_JOB_TOKEN" }
+
+    [credentials.seanergys-registry]
+    username = "gitlab-ci-token"
+    token = { __keyloom__ = "secret", value = "$CI_JOB_TOKEN" }
+    EOF
+  - keyloom encrypt /tmp/secrets.toml --password-file /tmp/vault-password
+
+# Whether this pipeline can clone every private recipe, as build:rocky10 has
+# to. The job token reads a project only if that project allows this one under
+# Settings > CI/CD > Job token permissions, and only with the access of the
+# user who started the pipeline, so a failure names the project to fix. Also in
+# the schedule, which notices when a project withdraws the permission.
+access:
+  stage: test
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends git ca-certificates
+    - uv sync
+    - export PATH="$PWD/.venv/bin:$PATH"
+    - *job-token-secrets
+  script:
+    - seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password validate --access
+
 # Every recipe of the repository, built on Rocky Linux 10 the way a user's
 # machine builds it: `seanerstack init` and `seanerstack toolchain bootstrap`,
 # then one environment with the default spec of each recipe, unify: false so
@@ -164,21 +199,7 @@ build:rocky10:
       eval "$(python -c 'import sys, seanerstack.config, seanerstack.prepare;
       print(seanerstack.prepare.install_command(seanerstack.config.load_config().toolchain.platform(sys.argv[1])))'
       "$PLATFORM")"
-    # The job token, for Git and the registry, in a secrets file as users write
-    # one. The vault password only has to outlive this job.
-    - umask 077
-    - echo "$CI_JOB_ID" > /tmp/vault-password
-    - |
-      cat > /tmp/secrets.toml <<EOF
-      [credentials.seanergys-gitlab]
-      username = "gitlab-ci-token"
-      token = { __keyloom__ = "secret", value = "$CI_JOB_TOKEN" }
-
-      [credentials.seanergys-registry]
-      username = "gitlab-ci-token"
-      token = { __keyloom__ = "secret", value = "$CI_JOB_TOKEN" }
-      EOF
-    - keyloom encrypt /tmp/secrets.toml --password-file /tmp/vault-password
+    - *job-token-secrets
   script:
     - seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password init
     - export PATH="/opt/seanergys/state/spack/bin:$PATH"
