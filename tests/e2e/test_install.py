@@ -23,3 +23,11 @@ def test_secrets_file_holds_only_encrypted_tokens(commands: Commands, secrets_fi
     assert commands.token not in secrets_file.read_text(encoding="utf-8")
     result = commands.run("keyloom", "check", "--verify", "--password-file", password_file, secrets_file)
     assert result.returncode == 0, result.stderr
+
+
+def test_version_names_the_pinned_spack(commands: Commands):
+    result = commands.run("seanerstack", "--version", env=environment())
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.startswith("seanerstack "), result.stdout
+    assert result.stdout.rstrip().endswith("(Spack 1.2.2)"), result.stdout
