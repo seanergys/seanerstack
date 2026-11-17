@@ -1,46 +1,60 @@
 # Work on a package
 
-Use this procedure for normal development on a SEANERGYS package checkout. It assumes the Seanerstack state and the project compiler have already been prepared, and that the state's `spack` is on `PATH` (see [Set up Spack for SEANERGYS](set-up-a-workstation.md)).
+Use this procedure to build a SEANERGYS package from a local checkout. It assumes that the state is set up, the toolchain is installed and the state's `spack` is on `PATH`, as after the [tutorial](../tutorials/getting-started.md).
 
-The `spack` wrapper of the state applies the isolation in every shell; nothing has to be activated for Seanerstack itself.
+The example package is `properdocs`. Every command on this page comes from `tests/how-to/work-on-a-package.sh`, which the `how-to:work-on-a-package` job of the CI pipeline runs from start to end, so the procedure is tested with every change.
 
-The example uses `properdocs`.
+## 1. Get the checkout
 
-## Activate the package environment
+Clone the package and change into the checkout. `$SOURCES` is the directory where you keep your sources:
 
-From the package checkout, activate the environment shipped by Seanerstack. The state's `spack` has no Spack shell integration, so use the shell code that Spack prints:
-
-```console
-eval "$(spack env activate --sh "$(seanerstack paths env --package properdocs)")"
+```bash
+--8<-- "tests/how-to/work-on-a-package.sh:checkout"
 ```
 
-## Bind the checkout
+## 2. Activate the package environment
 
-```console
-spack develop --path "$PWD" properdocs@master
+Seanerstack ships a Spack environment for the development of each package, and `seanerstack paths env` prints where it is. The state's `spack` has no shell integration, so activate the environment through the shell code that Spack prints:
+
+```bash
+--8<-- "tests/how-to/work-on-a-package.sh:activate"
 ```
 
-## Install the environment
+## 3. Bind the checkout
 
-```console
-spack concretize -f
-spack install
+Tell Spack that `properdocs@master` is built from the checkout:
+
+```bash
+--8<-- "tests/how-to/work-on-a-package.sh:develop"
 ```
 
-These are normal Spack operations. The state's `spack` wrapper supplies the isolation boundary; it does not replace the Spack CLI.
+The path of a checkout differs between machines, so it is recorded on your machine and not in Seanerstack.
 
-When dependencies or recipes change, rerun:
+## 4. Build and install
 
-```console
-spack concretize -f
-spack install
+```bash
+--8<-- "tests/how-to/work-on-a-package.sh:install"
 ```
 
-When the shell no longer needs the environment, leave it:
+Spack takes the dependencies from the build cache and builds `properdocs` from the checkout. After a change to the sources, the recipe or the dependencies, run the two commands again.
 
-```console
-eval "$(spack env deactivate --sh)"
+The installed package names the checkout it was built from:
+
+```bash
+--8<-- "tests/how-to/work-on-a-package.sh:check"
 ```
+
+```text
+properdocs@master dev_path=/home/you/src/properdocs
+```
+
+## 5. Leave the environment
+
+```bash
+--8<-- "tests/how-to/work-on-a-package.sh:deactivate"
+```
+
+In a later shell, change into the checkout and repeat step 2; the binding and the installation are still there.
 
 ## Add the package to seanergys-meta
 
