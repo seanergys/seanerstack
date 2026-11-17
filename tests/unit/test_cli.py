@@ -94,6 +94,8 @@ def _init_world(monkeypatch, tmp_path: Path, *, buildcache_ok=True, git_ok=True)
     monkeypatch.setattr(cli, "_spack_runtime", lambda args: (x, tmp_path / "spack", ["spack"], {}))
     monkeypatch.setattr(cli, "configure_buildcaches", lambda config, **kwargs: calls.append("configure"))
     monkeypatch.setattr(cli, "require_target", lambda command, target, env: calls.append(f"target={target}"))
+    # The build caches answer; the tests of the access check cover a refusal.
+    monkeypatch.setattr(cli, "require_cache_access", lambda command, env: None, raising=False)
     monkeypatch.setattr(cli, "check_buildcaches", lambda config, secrets, **kwargs: calls.append("check") or [("cache", buildcache_ok, "")])
     monkeypatch.setattr(cli, "check_git_access", lambda config, secrets: calls.append("git") or [("gitlab", git_ok, "")])
     # Nothing installed on the machine; the tests of discovery cover finding it.
