@@ -213,3 +213,24 @@ def test_buildcache_check_reports_missing_credentials_as_a_failed_cache(monkeypa
 
     assert results == [("registry", False, "resource requires credentials; provide --secrets-file FILE")]
     assert calls == []
+
+
+def test_update_index_of_an_oci_cache_leaves_out_what_spack_cannot_read(monkeypatch, tmp_path: Path):
+    calls = []
+    monkeypatch.setattr(buildcache.subprocess, "run", lambda args, **kwargs: calls.append(args))
+    (registry,) = _registry_config(tmp_path).resources.values()
+
+    buildcache.update_index(registry, command=["spack"], env={})
+
+    assert calls == [["spack", "python", str(buildcache.UPDATE_INDEX_SCRIPT), "registry"]]
+    assert buildcache.UPDATE_INDEX_SCRIPT.is_file()
+
+
+def test_update_index_of_another_cache_is_spacks_own(monkeypatch, tmp_path: Path):
+    calls = []
+    monkeypatch.setattr(buildcache.subprocess, "run", lambda args, **kwargs: calls.append(args))
+    (cache,) = _s3_config(tmp_path).resources.values()
+
+    buildcache.update_index(cache, command=["spack"], env={})
+
+    assert calls == [["spack", "buildcache", "update-index", "cache"]]

@@ -3,6 +3,7 @@ image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 stages:
   - test
+  - build
   - docs
   - publish
   - toolchain
@@ -31,20 +32,14 @@ test:
     - uv run pytest
     - uv run seanerstack validate
 
-# Builds the wheel of this commit, installs it into a fresh environment, and
-# runs tests/e2e against this GitLab instance. The job token reads the seanerbroker
-# repository, and builds and pushes a small package into
-# test-e2e-buildcache-<test> in the project's container registry, separate
-# from the project build cache, before installing it back from there.
-e2e:
+# The end-to-end tests: each job builds the wheel of this commit, installs it
+# into a fresh environment, and runs one file of tests/e2e against this GitLab
+# instance, with the job token. They run in merge requests, so that what
+# reaches the default branch has passed them in the merge train, and in the
+# nightly schedule, which notices when Spack or this GitLab instance changes
+# under an unchanged default branch.
+.e2e:
   stage: test
-  # Those repositories are named after the test, not the pipeline, so two e2e
-  # jobs at once, as in the pipelines of a merge train, would overwrite each
-  # other's index. They take turns instead.
-  resource_group: e2e-registry
-  # Merge requests, so that what reaches the default branch has passed it in
-  # the merge train, and the nightly schedule, which notices when Spack or this
-  # GitLab instance changes under an unchanged default branch.
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE =~ /^(schedule|web)$/'
@@ -52,20 +47,46 @@ e2e:
     SEANERSTACK_E2E_REQUIRED: "1"
     SEANERSTACK_E2E_USERNAME: "gitlab-ci-token"
     SEANERSTACK_E2E_TOKEN: "$CI_JOB_TOKEN"
-    SEANERSTACK_E2E_SPACK: "/opt/spack/bin/spack"
     SEANERSTACK_E2E_REGISTRY: "oci://$CI_REGISTRY_IMAGE"
-    SPACK_VERSION: "v1.2.2"
   before_script:
     - apt-get update
     # Git for Spack and the tests; a compiler, make and archivers for Spack to
-    # build the test package.
+    # build the test package. Seanerstack installs the pinned Spack itself.
     - >-
       apt-get install -y --no-install-recommends
       bzip2 ca-certificates file g++ gcc git libc6-dev make patch unzip xz-utils
-    - git clone --depth 1 --branch "$SPACK_VERSION" https://github.com/spack/spack.git /opt/spack
+
+# The installed wheel, the secrets file and --version.
+e2e:install:
+  extends: .e2e
   script:
-    # e2e:external-compiler runs those, in images with the compilers.
-    - tests/e2e/run.sh -k "not external_compiler"
+    - tests/e2e/run.sh tests/e2e/test_install.py
+
+# Git access with the credentials of a secrets file: valid, invalid, and
+# behind a wrong vault password.
+e2e:credentials:
+  extends: .e2e
+  script:
+    - tests/e2e/run.sh tests/e2e/test_credentials.py
+
+# What init sets up and checks, and the state's spack without activation.
+# These only read the registry.
+e2e:init:
+  extends: .e2e
+  script:
+    - tests/e2e/run.sh tests/e2e/test_init.py
+
+# Builds a small package, pushes it into test-e2e-buildcache-<test> in the
+# project's container registry, separate from the project build cache, and
+# installs it back from there.
+e2e:buildcache:
+  extends: .e2e
+  # That repository is named after the test, not the pipeline, so two of these
+  # jobs at once, as in the pipelines of a merge train, would overwrite each
+  # other's index. They take turns instead.
+  resource_group: e2e-registry
+  script:
+    - tests/e2e/run.sh tests/e2e/test_buildcache.py
 
 # In an image whose distribution packages a GCC, init finds it, and toolchain
 # bootstrap --external chooses it by name and builds a small package with it;
@@ -90,8 +111,6 @@ e2e:external-compiler:
         SEANERSTACK_E2E_MISSING_COMPILER: "gcc@15"
   variables:
     SEANERSTACK_E2E_REQUIRED: "1"
-    SEANERSTACK_E2E_SPACK: "/opt/spack/bin/spack"
-    SPACK_VERSION: "v1.2.2"
     DEBIAN_FRONTEND: "noninteractive"
   before_script:
     - apt-get update
@@ -102,9 +121,107 @@ e2e:external-compiler:
     # uv, which run.sh uses, from PyPI into a virtual environment of its own.
     - python3 -m venv /opt/uv && /opt/uv/bin/pip install --quiet uv
     - export PATH="/opt/uv/bin:$PATH"
-    - git clone --depth 1 --branch "$SPACK_VERSION" https://github.com/spack/spack.git /opt/spack
   script:
-    - tests/e2e/run.sh -k external_compiler
+    - tests/e2e/run.sh tests/e2e/test_external_compiler.py
+
+# The job token, for Git and the registry, in /tmp/secrets.toml as users write
+# a secrets file, encrypted with /tmp/vault-password, which only has to
+# outlive the job. Needs keyloom on PATH. GitLab flattens the nested list where
+# a job's script names it.
+.job-token-secrets: &job-token-secrets
+  - umask 077
+  - echo "$CI_JOB_ID" > /tmp/vault-password
+  - |
+    cat > /tmp/secrets.toml <<EOF
+    [credentials.seanergys-gitlab]
+    username = "gitlab-ci-token"
+    token = { __keyloom__ = "secret", value = "$CI_JOB_TOKEN" }
+
+    [credentials.seanergys-registry]
+    username = "gitlab-ci-token"
+    token = { __keyloom__ = "secret", value = "$CI_JOB_TOKEN" }
+    EOF
+  - keyloom encrypt /tmp/secrets.toml --password-file /tmp/vault-password
+
+# Whether this pipeline can clone every private recipe, as build:rocky10 has
+# to. The job token reads a project only if that project allows this one under
+# Settings > CI/CD > Job token permissions, and only with the access of the
+# user who started the pipeline, so a failure names the project to fix. Also in
+# the schedule, which notices when a project withdraws the permission.
+access:
+  stage: test
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends git ca-certificates
+    - uv sync
+    - export PATH="$PWD/.venv/bin:$PATH"
+    - *job-token-secrets
+  script:
+    - seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password validate --access
+
+# seanergys-meta, built on Rocky Linux 10 the way a user's machine builds it:
+# `seanerstack init` and `seanerstack toolchain bootstrap`, then an environment
+# with that one package, which depends on every recipe that builds with the
+# project toolchain. A recipe that does not build yet stays out of
+# seanergys-meta, and joins it once it does. What the project build cache holds
+# is installed from it, so a pipeline builds only what a change touches. The
+# default branch pushes what it built, and rebuilds the index, for the
+# pipelines after it; merge requests only read, so that no unreviewed recipe
+# reaches the shared cache. Pushes of two pipelines at once are safe, and an
+# index that misses the other's binaries is complete again after the next
+# rebuild, which also leaves out binaries the pinned Spack cannot read.
+build:rocky10:
+  stage: build
+  tags:
+    - docker
+    - seanerstack
+  image: docker.io/rockylinux/rockylinux:10
+  # The first pipeline after a toolchain change builds everything.
+  timeout: 12h
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - when: on_success
+  variables:
+    PLATFORM: rocky10
+    ENVIRONMENT: /opt/seanergys-meta
+  before_script:
+    - dnf install -y --setopt=install_weak_deps=False python3 python3-pip
+    - python3 -m venv /opt/seanerstack
+    - /opt/seanerstack/bin/pip install --quiet .
+    - export PATH="/opt/seanerstack/bin:$PATH"
+    - >-
+      eval "$(python -c 'import sys, seanerstack.config, seanerstack.prepare;
+      print(seanerstack.prepare.install_command(seanerstack.config.load_config().toolchain.platform(sys.argv[1])))'
+      "$PLATFORM")"
+    - *job-token-secrets
+  script:
+    # The default branch repairs an index that init cannot read, such as one a
+    # newer Spack wrote; merge requests only report it.
+    - |
+      if ! seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password init; then
+        [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ] || exit 1
+        seanerstack buildcache update-index
+        seanerstack init
+      fi
+    - export PATH="/opt/seanergys/state/spack/bin:$PATH"
+    - seanerstack toolchain bootstrap
+    # Spack clones the private recipes with Git itself.
+    - >-
+      git config --global
+      url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.seanergys.fz-juelich.de/".insteadOf
+      "https://gitlab.seanergys.fz-juelich.de/"
+    - spack env create --without-view -d "$ENVIRONMENT"
+    - spack -e "$ENVIRONMENT" add seanergys-meta
+    - spack -e "$ENVIRONMENT" concretize
+    # Push what was built even when another package failed.
+    - status=0; spack -e "$ENVIRONMENT" install || status=$?
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        spack buildcache push --only package seanerstack-buildcache $(spack find --format '/{hash}')
+        seanerstack buildcache update-index
+      fi
+    - exit "$status"
 
 docs:
   stage: docs
@@ -251,11 +368,7 @@ toolchain:
     # system links it to /usr/lib/os-release, but the archlinux image writes
     # its own with the date of the image as version, which no machine has.
     - if [ -e /usr/lib/os-release ]; then ln -sf ../usr/lib/os-release /etc/os-release; fi
-    - SPACK_VERSION="$(/opt/seanerstack/bin/python -c 'import seanerstack.isolation; print(seanerstack.isolation.SPACK_VERSION)')"
-    - SPACK_GIT="$(/opt/seanerstack/bin/python -c 'import seanerstack.isolation; print(seanerstack.isolation.SPACK_GIT)')"
-    - git clone --depth 1 --branch "$SPACK_VERSION" "$SPACK_GIT" "$STATE/spack-$SPACK_VERSION"
   script:
     - >-
       /opt/seanerstack/bin/seanerstack --state-dir "$STATE"
-      --spack-executable "$STATE/spack-$SPACK_VERSION/bin/spack"
       buildcache prepare --no-container --platform "$PLATFORM"

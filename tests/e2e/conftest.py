@@ -12,7 +12,9 @@ Environment:
   CI_JOB_TOKEN in CI, a personal access token otherwise.
 - SEANERSTACK_E2E_USERNAME: user name for the token (default: oauth2;
   gitlab-ci-token for a job token).
-- SEANERSTACK_E2E_SPACK: Spack executable (default: spack on PATH).
+- SEANERSTACK_E2E_SPACK: Spack executable to pass with --spack-executable; it
+  has to be the pinned version (default: none, and Seanerstack installs the
+  pinned Spack into each test's state directory).
 - SEANERSTACK_E2E_REGISTRY: oci:// location under which each build-cache
   test pushes to its own repository, test-e2e-buildcache-<test>, such as
   oci://$CI_REGISTRY_IMAGE. The token needs write access to it.
@@ -30,7 +32,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import sys
 
@@ -38,6 +39,28 @@ import pytest
 
 PASSWORD = "e2e vault password"
 REDACTED = "<token>"
+
+
+REPOSITORY = Path(__file__).resolve().parents[2]
+REGISTRY_VARIABLES = (
+    "SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME",
+    "SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD",
+)
+# Small, and with no dependencies beyond the compiler runtime.
+E2E_SPEC = "zlib"
+
+
+def environment() -> dict[str, str]:
+    """The test environment, without any Seanerstack variables of the caller."""
+    env = {key: value for key, value in os.environ.items() if not key.startswith("SEANERSTACK_")}
+    # Git must use the askpass helper of Seanerstack, not stored credentials.
+    env.update({"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"})
+    return env
+
+
+def files_containing(root: Path, text: str) -> list[Path]:
+    needle = text.encode("utf-8")
+    return [path for path in root.rglob("*") if path.is_file() and needle in path.read_bytes()]
 
 
 def _unavailable(reason: str) -> None:
@@ -105,11 +128,15 @@ def commands() -> Commands:
 
 
 @pytest.fixture(scope="session")
-def spack() -> Path:
-    configured = os.environ.get("SEANERSTACK_E2E_SPACK") or shutil.which("spack")
-    if not configured:
-        _unavailable("no Spack executable; set SEANERSTACK_E2E_SPACK")
-    return Path(configured).resolve()
+def spack() -> Path | None:
+    """The Spack of SEANERSTACK_E2E_SPACK, or None to let Seanerstack install its own."""
+    configured = os.environ.get("SEANERSTACK_E2E_SPACK")
+    return Path(configured).resolve() if configured else None
+
+
+def spack_options(spack: Path | None) -> list[str | Path]:
+    """The options that name the Spack of the tests, if there is one."""
+    return ["--spack-executable", spack] if spack else []
 
 
 @pytest.fixture

@@ -7,8 +7,10 @@ Every change reaches the default branch through a merge request and a merge trai
 | Job | Merge request | Branch without merge request | Default branch | Tag | Schedule |
 | --- | :---: | :---: | :---: | :---: | :---: |
 | `test` | ✔ | ✔ | ✔ | ✔ | |
-| `e2e` | ✔ | | | | ✔ |
+| `e2e:install`, `e2e:credentials`, `e2e:init`, `e2e:buildcache` | ✔ | | | | ✔ |
 | `e2e:external-compiler` | ✔ | | | | ✔ |
+| `access` | ✔ | ✔ | ✔ | ✔ | ✔ |
+| `build:rocky10` | ✔ | ✔ | ✔ | ✔ | |
 | `docs` | ✔ | ✔ | ✔ | | |
 | `pages` | | | ✔ | | |
 | `publish:dev` | | | ✔ | | |
@@ -18,11 +20,15 @@ Every change reaches the default branch through a merge request and a merge trai
 - **Branch** pipelines give quick feedback on a branch before its merge request opens. A branch with an open merge request runs only the merge request pipeline.
 - **Default branch** pipelines publish the documentation and a [development build](releases.md#development-builds). `test` runs first as a cheap check.
 - **Tag** pipelines publish a [release](releases.md#release-process) after `test`.
-- **Schedules** run `e2e` against the default branch every night. It notices when Spack or the GitLab instance changes while the default branch stays the same. A pipeline run by hand on the default branch, from **Build → Pipelines → Run pipeline**, runs `e2e` as well.
+- **Schedules** run the `e2e:*` jobs against the default branch every night. It notices when Spack or the GitLab instance changes while the default branch stays the same. A pipeline run by hand on the default branch, from **Build → Pipelines → Run pipeline**, runs them as well.
 
 `e2e:external-compiler` runs `init` and `toolchain bootstrap --external` in Ubuntu 26.04 with its GCC 16 packages and in Ubuntu 24.04 with its GCC 14 packages, choosing the GCC that `init` found by name, builds a small package with that compiler, and checks that a GCC the image does not have is refused. It needs no token or registry.
 
-`e2e` pushes into registry repositories named after each test, so `e2e` jobs take turns through the `e2e-registry` resource group. Merge train pipelines run side by side and would otherwise overwrite each other's build-cache index.
+Each `e2e:*` job runs one file of `tests/e2e`, so the areas run in parallel and a failure names its area. `e2e:buildcache` pushes into registry repositories named after each test, so those jobs take turns through the `e2e-registry` resource group. Merge train pipelines run side by side and would otherwise overwrite each other's build-cache index. The other `e2e:*` jobs only read the registry and need no turn.
+
+## Building every package
+
+`build:rocky10` builds `seanergys-meta` on Rocky Linux 10, in every pipeline but the schedule, the way a user's machine does: `seanerstack init`, `seanerstack toolchain bootstrap`, then an environment with that one package. `seanergys-meta` depends on every recipe that builds with the project toolchain; a recipe that does not build yet stays out of it, and joins it once it does (see [Work on a package](../how-to/work-on-a-package.md#add-the-package-to-seanergys-meta)). It installs what the project build cache holds, so a pipeline builds only what its change touches. Only the default branch pushes what it built and rebuilds the index with `seanerstack buildcache update-index`, which leaves out binaries the pinned Spack cannot read; merge requests read the cache but put nothing into it. When `init` finds the index unreadable, the default branch rebuilds it and runs `init` again, and a merge request fails until the default branch has done so. The private recipes are cloned with the job token, so each project they come from has to allow this project's job token under **Settings → CI/CD → Job token permissions**. The `access` job runs `seanerstack validate --access` with the job token in every pipeline, the schedule included, and names each recipe whose project does not allow it.
 
 ## Project settings
 

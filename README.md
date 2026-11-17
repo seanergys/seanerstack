@@ -61,12 +61,12 @@ seanerbroker repository, and build a small package, push it to a test build cach
 and install it back from there. Each build-cache test pushes to its own
 repository, `test-e2e-buildcache-<test>`, under the registry location given by
 `SEANERSTACK_E2E_REGISTRY`, never to the project build cache. They need Git,
-Spack, a C compiler, make, and a GitLab token that can read seanerbroker and write to
-that location; without a token they are skipped:
+a C compiler, make, and a GitLab token that can read seanerbroker and write to
+that location; without a token they are skipped. Seanerstack installs its pinned
+Spack for each test, unless `SEANERSTACK_E2E_SPACK` names one of the same version:
 
 ```console
 export SEANERSTACK_E2E_TOKEN=<GitLab personal access token>
-export SEANERSTACK_E2E_SPACK=/path/to/spack/bin/spack
 export SEANERSTACK_E2E_REGISTRY=oci://registry.seanergys.fz-juelich.de/<namespace>/<project>
 tests/e2e/run.sh
 ```
