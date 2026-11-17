@@ -1,48 +1,44 @@
 # Seanerstack
 
-Seanerstack defines and maintains the isolated Spack setup used by SEANERGYS.
+Seanerstack provides the Spack setup that SEANERGYS software is built with. It ships the project's Spack package recipes and environments, installs a pinned Spack into one state directory, and keeps that state apart from every other Spack configuration on the machine. Every workstation and CI job therefore computes the same hashes and takes its binaries from the project build cache.
 
-It ships the project's curated Spack package recipes and environments, prepares Spack to use the project compiler, and provides maintenance checks for that curated content. It also establishes a private configuration and state boundary so an existing user or system Spack setup cannot silently affect SEANERGYS builds.
-
-The boundary is intentional:
-
-```text
-Seanerstack
-    curates content and establishes isolated Spack state
-        |
-        v
-Spack
-    concretizes, installs, develops, and deploys software
-```
-
-Seanerstack does not introduce another package manager, environment format, compiler model, or replacement syntax for normal Spack commands.
-
-## What Seanerstack provides
-
-Seanerstack provides:
-
-- the Spack package recipes curated by SEANERGYS;
-- the Spack environments curated for development and, as they are added, deployment;
-- `init` for setting up the state directory once, with the pinned Spack, the configuration, the credentials, the build caches and the CPU target, and for checking access to every resource;
-- `toolchain bootstrap` for installing the compiler of `[toolchain]` and making it the compiler used for SEANERGYS builds;
-- `package update` for keeping curated recipes aligned with their upstream Git repositories;
-- `validate` for checking the curated stack;
-- `buildcache` for configuring binary mirrors as named resources;
-- a `spack` wrapper in the state directory, which runs native Spack with the isolated configuration, state and credentials from any shell;
-- path commands that expose the installed recipes and environments.
-
-Once `seanerstack init` and `seanerstack toolchain bootstrap` have set up the state and its `spack` is on `PATH`, a normal development session looks like:
+Spack remains the tool that builds. Seanerstack sets the state up once, and from then on plain `spack` commands install and develop the software:
 
 ```console
-eval "$(spack env activate --sh "$(seanerstack paths env --package <package>)")"
-spack develop --path /path/to/checkout <package>@develop
-spack concretize -f
-spack install
+seanerstack --secrets-file secrets.toml init
+seanerstack toolchain bootstrap
+spack install seanergys-meta
 ```
+
+`seanergys-meta` is the package that brings in the SEANERGYS software stack.
 
 ## How these docs are organized
 
-- **Tutorials** start from a clean system and establish the complete supported SEANERGYS setup step by step.
-- **How-to guides** cover distinct project tasks with one canonical procedure each.
-- **Explanation** describes why the project is structured this way, including the isolation model.
-- **Reference** is generated from the CLI, package recipes, and environments.
+The documentation follows four kinds of pages, each with one purpose.
+
+| Section | Purpose | Start here when |
+| --- | --- | --- |
+| [Tutorials](tutorials/index.md) | Learning by doing, from a new machine to the installed SEANERGYS stack. | You have not used Seanerstack before. |
+| [How-to guides](how-to/index.md) | One procedure for each task, such as working on a package checkout. | You know what you want to do. |
+| [Explanation](explanation/index.md) | Why Seanerstack works the way it does, and what was decided. | You want to understand or change the design. |
+| [Reference](reference/index.md) | Every command, environment and package recipe, generated from the installed Seanerstack. | You need the exact name or meaning of an option. |
+
+## What Seanerstack provides
+
+| Part | Responsibility |
+| --- | --- |
+| Package recipes | The Spack recipes of the SEANERGYS software, in a Spack repository of their own. |
+| Environments | A Spack environment for the development of each package. |
+| `seanerstack init` | Sets up the state directory once: the pinned Spack, the configuration, the credentials, the build caches and the CPU target. |
+| `seanerstack toolchain bootstrap` | Installs the project compiler and the toolchain packages, from the build cache where it holds them. |
+| The state's `spack` | Runs Spack with the state's configuration and credentials from any shell. |
+| `seanerstack buildcache` | Checks, explains and fills the project build cache. |
+| `seanerstack package update` and `seanerstack validate` | Keep the recipes aligned with their upstream repositories and check the stack. |
+
+## Components
+
+| Component | Responsibility |
+| --- | --- |
+| Seanerstack | Provides the recipes, the environments and the isolated Spack state. |
+| Spack | Concretizes, builds and installs the software in that state. |
+| keyloom | Encrypts the secrets file that holds the GitLab and registry tokens. |
