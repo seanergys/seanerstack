@@ -73,3 +73,22 @@ def test_the_nightly_toolchain_job_asks_only_for_the_python_of_its_platform():
     # Not every Python has a pip package of its own, and venv needs none.
     (install,) = [step for step in _toolchain_job()["before_script"] if "dnf install" in step]
     assert 'dnf install -y --setopt=install_weak_deps=False "$PYTHON"\n' in install
+
+
+HOW_TO = Path(__file__).parents[2] / "tests" / "how-to" / "work-on-a-package.sh"
+
+
+def test_the_how_to_job_runs_the_script_of_the_guide_in_a_state_set_up_like_a_users():
+    ci = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+    job = ci["how-to:work-on-a-package"]
+    assert job["before_script"] == ci["build:rocky10"]["before_script"]
+    assert [step.split()[0] for step in job["script"]] == ["seanerstack", "export", "seanerstack", "tests/how-to/work-on-a-package.sh"]
+    assert HOW_TO.stat().st_mode & 0o111
+
+
+def test_the_guide_shows_every_section_of_the_script_that_tests_it():
+    guide = (Path(__file__).parents[2] / "docs" / "how-to" / "work-on-a-package.md").read_text(encoding="utf-8")
+    sections = [line.split("[start:")[1].rstrip("]") for line in HOW_TO.read_text(encoding="utf-8").splitlines() if "[start:" in line]
+    assert sections == ["checkout", "activate", "develop", "install", "check", "deactivate"]
+    for section in sections:
+        assert f'--8<-- "tests/how-to/work-on-a-package.sh:{section}"' in guide
