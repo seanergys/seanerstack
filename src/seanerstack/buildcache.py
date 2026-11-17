@@ -9,6 +9,10 @@ from .config import Config, Resource
 from .secrets import SecretStore
 
 
+# What Spack warns when the index of a build cache is newer than it can read.
+UNREADABLE_INDEX = "you need a newer Spack version to read the buildcache index"
+
+
 def buildcaches(config: Config) -> tuple[Resource, ...]:
     return tuple(resource for resource in config.resources.values() if resource.kind == "spack-buildcache")
 
@@ -55,7 +59,12 @@ def check_buildcaches(config: Config, secrets: SecretStore, *, command: list[str
         env = dict(os.environ if base_env is None else base_env)
         # An activated session already carries the credentials; only then is the vault skipped.
         if not all(name in env for name in resource.credential_variables):
-            env.update(spack_resource_environment(resource, secrets))
+            try:
+                env.update(spack_resource_environment(resource, secrets))
+            except ValueError as error:
+                # Missing credentials fail this cache, not the whole check.
+                results.append((resource.name, False, str(error)))
+                continue
         process = subprocess.run(
             [*command, "buildcache", "list", "--allarch"],
             check=False,
@@ -64,5 +73,13 @@ def check_buildcaches(config: Config, secrets: SecretStore, *, command: list[str
             env=env,
         )
         message = process.stderr.strip() or process.stdout.strip()
-        results.append((resource.name, process.returncode == 0, message))
+        # Spack lists nothing and still succeeds when a newer Spack wrote the
+        # index, so nothing in that cache can be installed.
+        unreadable = UNREADABLE_INDEX in process.stdout + process.stderr
+        if unreadable:
+            message = (
+                "a newer Spack wrote the index of this cache, and the pinned one cannot read it; "
+                "rebuild it with `spack buildcache update-index` from the pinned Spack"
+            )
+        results.append((resource.name, process.returncode == 0 and not unreadable, message))
     return results

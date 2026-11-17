@@ -48,6 +48,12 @@ def _fake_spack(monkeypatch, *, installed=False, external=False, probe_stdout="g
     return calls
 
 
+def _remove(calls: list[list[str]]) -> list[str]:
+    """The call that removes registered compilers before the installed one is registered."""
+    (call,) = [call for call in calls if call[len(COMMAND):len(COMMAND) + 3] == ["compiler", "remove", "-a"]]
+    return call
+
+
 def _install(calls: list[list[str]]) -> list[str] | None:
     """The call that installs gcc@15, whatever else it asks for."""
     for call in calls:
@@ -161,6 +167,17 @@ def test_bootstrap_reports_a_probe_that_never_finishes(monkeypatch):
         )
 
 
+def test_the_target_requirement_replaces_an_earlier_one(monkeypatch):
+    calls = _fake_spack(monkeypatch)
+
+    bootstrap_module.require_target(COMMAND, "x86_64_v3", ENV)
+
+    assert calls == [
+        [*COMMAND, "config", "remove", "packages:all:require"],
+        [*COMMAND, "config", "add", "packages:all:require:target=x86_64_v3"],
+    ]
+
+
 def test_bootstrap_dry_run_changes_nothing(monkeypatch):
     calls = _fake_spack(monkeypatch)
 
@@ -194,7 +211,7 @@ def test_bootstrap_leaves_only_the_installed_compiler_registered(monkeypatch):
         "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV
     )
 
-    remove = calls.index([*COMMAND, "compiler", "remove", "-a", "gcc"])
+    remove = calls.index(_remove(calls))
     register = calls.index([*COMMAND, "compiler", "find", PREFIX])
     require = calls.index([*COMMAND, "config", "add", "packages:c:require:gcc@15"])
     assert remove < register < require
@@ -207,7 +224,7 @@ def test_bootstrap_leaves_only_an_already_installed_compiler_registered(monkeypa
         "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV
     )
 
-    assert calls.index([*COMMAND, "compiler", "remove", "-a", "gcc"]) < calls.index(
+    assert calls.index(_remove(calls)) < calls.index(
         [*COMMAND, "compiler", "find", PREFIX]
     )
 
@@ -220,3 +237,49 @@ def test_bootstrap_dry_run_removes_no_compiler(monkeypatch):
     )
 
     assert not any(call[len(COMMAND):len(COMMAND) + 2] == ["compiler", "remove"] for call in calls)
+
+
+def test_bootstrap_builds_the_compiler_with_the_source_compiler(monkeypatch):
+    calls = _fake_spack(monkeypatch)
+
+    bootstrap_module.bootstrap(
+        "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV, source_compiler="gcc@14.2.1"
+    )
+
+    assert _install(calls) == [*COMMAND, "install", "gcc@15", "%c,cxx=gcc@14.2.1"]
+
+
+def test_bootstrap_removes_only_the_compilers_its_spec_matches(monkeypatch):
+    # gcc@16 or clang, found by init, stay for --source-compiler.
+    calls = _fake_spack(monkeypatch)
+
+    bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV)
+
+    assert _remove(calls) == [*COMMAND, "compiler", "remove", "-a", "gcc@15"]
+
+
+def test_an_external_compiler_takes_no_source_compiler(monkeypatch):
+    _fake_spack(monkeypatch)
+    with pytest.raises(ValueError, match="takes no source compiler"):
+        bootstrap_module.bootstrap(
+            "gcc@16", languages=("c",), probe="zlib", command=COMMAND, env=ENV, external="/usr", source_compiler="gcc@14"
+        )
+
+
+def test_an_external_package_is_registered_and_never_built(monkeypatch, tmp_path):
+    calls = _fake_spack(monkeypatch)
+    (tmp_path / "bin").mkdir()
+
+    bootstrap_module.use_external_package(COMMAND, "rust", str(tmp_path), ENV)
+
+    assert calls == [
+        [*COMMAND, "external", "find", "--path", str(tmp_path / "bin"), "rust"],
+        [*COMMAND, "config", "add", "packages:rust:buildable:false"],
+    ]
+
+
+def test_the_toolchain_packages_are_installed_together(monkeypatch):
+    calls = _fake_spack(monkeypatch)
+    bootstrap_module.install_packages(COMMAND, ["rust", "capnproto"], ENV)
+    bootstrap_module.install_packages(COMMAND, [], ENV)
+    assert calls == [[*COMMAND, "install", "rust", "capnproto"]]

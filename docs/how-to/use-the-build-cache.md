@@ -12,23 +12,21 @@ username = "oauth2"
 token = { __keyloom__ = "secret", value = "__keyloom__secret__" }
 ```
 
-Activation with that file exports the token into the session:
+Give the file to `init`, which stores the token in the state directory, readable only by you, configures the cache, and checks that it can be read:
 
 ```console
-export SEANERSTACK_STATE_DIR=/path/to/seanerstack-state
-eval "$(seanerstack --secrets-file ./secrets.toml activate)"
+seanerstack --secrets-file ./secrets.toml init
 ```
 
-Without a secrets file, export `SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME` and `SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD` yourself.
+Spack's mirror configuration names only the variables that hold the token. The state's `spack` wrapper loads them from the stored credentials for every command, and Seanerstack's own commands read the stored credentials too, so no later command needs the secrets file again. Variables that are already set, as in CI, take precedence: `SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME` and `SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD`.
 
-## Configure and check the cache
+## Check the cache
 
 ```console
-seanerstack buildcache configure
 seanerstack buildcache check
 ```
 
-`configure` adds the cache as a binary mirror to the isolated configuration. Spack stores only the variable names, never the token.
+The check fails when the cache cannot be read, and also when its index was written by a newer Spack than the pinned one: Spack then only warns and lists nothing, so nothing in the cache could be installed. Rebuild such an index with `spack buildcache update-index seanerstack-buildcache` from the pinned Spack.
 
 ## Install from the cache
 
@@ -38,14 +36,18 @@ A plain `spack install` takes a binary whenever the cache holds the exact spec i
 spack install --use-buildcache only
 ```
 
-A binary matches only when the concretized hash matches, which requires the same Spack version, the same Seanerstack and builtin package recipes, the same compiler configuration, operating system, and target microarchitecture as the build that pushed it.
+A binary matches only when the concretized hash matches, which requires the same Spack version, the same Seanerstack and builtin package recipes, the same compiler at the same install path, operating system, and target microarchitecture as the build that pushed it. `seanerstack init` takes care of all of these but the operating system: it uses the pinned Spack, the default state directory `/opt/seanergys/state`, and the target of `[toolchain]`.
+
+!!! warning "Externals take you off the project build cache"
+
+    `seanerstack toolchain bootstrap --external gcc@16` or `--external rust` uses a compiler or package installed on your machine instead of the one the project builds. Every hash that depends on it then contains your machine's installation, so nothing built with it matches the project build cache, and Spack builds the rest of the stack from source. Do this only when you need that compiler or package. To build each package only once even so, keep your builds in a [filesystem build cache](#use-a-filesystem-build-cache) with `autopush = true`.
 
 ## Push to the cache
 
 With a token that has write access, push an installed environment and refresh the index:
 
 ```console
-spack env activate "$(seanerstack paths env --package <package>)"
+eval "$(spack env activate --sh "$(seanerstack paths env --package <package>)")"
 spack install
 spack buildcache push --update-index seanerstack-buildcache
 ```
@@ -76,7 +78,7 @@ seanerstack --config-file config.toml --secrets-file credentials.toml buildcache
 
 `--platform all` builds every platform, one after the other. Both files are optional as far as the defaults fit: the build cache comes from `[toolchain]` in `config.toml`, and its token from the secrets file or from the variables `SEANERSTACK_RESOURCE_<NAME>_USERNAME` and `_PASSWORD`. The token is checked before anything is built.
 
-The build runs in the image of the platform, because the operating system is part of every hash: binaries from a desktop's own system would never match those the services install. What the configured caches already hold is reused, every finished package is pushed at once, and the state stays under `~/.cache/seanerstack` or `--state-dir`, one directory per platform, so running the command again continues where it stopped.
+The build runs in the image of the platform, because the operating system is part of every hash: binaries from a desktop's own system would never match those the services install. What the configured caches already hold is reused, every finished package is pushed at once, and the state stays under `~/.cache/seanerstack`, or the directory of `--state-dir` or `SEANERSTACK_STATE_DIR`, one directory per platform, so running the command again continues where it stopped. Inside the image, the build uses `/opt/seanergys/state`, the default state directory, so that its binaries match every machine set up with `seanerstack init`.
 
 `--jobs` defaults to what the free memory allows, and the container gets at most 85 % of that memory. A CI job that already runs in the image of a platform uses `--no-container`.
 

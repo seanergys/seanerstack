@@ -67,9 +67,9 @@ e2e:
     # e2e:external-compiler runs those, in images with the compilers.
     - tests/e2e/run.sh -k "not external_compiler"
 
-# Bootstraps with the GCC of the distribution through --external /usr, in an
-# image whose distribution packages that GCC, builds a small package with it,
-# and checks that a GCC the image lacks is refused. It needs no token.
+# In an image whose distribution packages a GCC, init finds it, and toolchain
+# bootstrap --external chooses it by name and builds a small package with it;
+# a GCC the image lacks is refused. It needs no token.
 e2e:external-compiler:
   stage: test
   image: docker.io/library/$IMAGE

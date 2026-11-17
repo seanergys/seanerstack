@@ -23,20 +23,18 @@ Seanerstack provides:
 
 - the Spack package recipes curated by SEANERGYS;
 - the Spack environments curated for development and, as they are added, deployment;
-- `init` for bootstrapping the compiler, configuring build-cache/OCI registry access, and validating the result, in one step;
-- `toolchain bootstrap` for making a Spack-installed compiler the compiler used for SEANERGYS builds;
+- `init` for setting up the state directory once, with the pinned Spack, the configuration, the credentials, the build caches and the CPU target, and for checking access to every resource;
+- `toolchain bootstrap` for installing the compiler of `[toolchain]` and making it the compiler used for SEANERGYS builds;
 - `package update` for keeping curated recipes aligned with their upstream Git repositories;
 - `validate` for checking the curated stack;
 - `buildcache` for configuring binary mirrors as named resources;
-- `activate` and `deactivate` for using native Spack with isolated configuration and state;
+- a `spack` wrapper in the state directory, which runs native Spack with the isolated configuration, state and credentials from any shell;
 - path commands that expose the installed recipes and environments.
 
-A normal development session looks like:
+Once `seanerstack init` and `seanerstack toolchain bootstrap` have set up the state and its `spack` is on `PATH`, a normal development session looks like:
 
 ```console
-export SEANERSTACK_STATE_DIR=/path/to/seanerstack-state
-eval "$(seanerstack activate)"
-spack env activate "$(seanerstack paths env --package <package>)"
+eval "$(spack env activate --sh "$(seanerstack paths env --package <package>)")"
 spack develop --path /path/to/checkout <package>@develop
 spack concretize -f
 spack install

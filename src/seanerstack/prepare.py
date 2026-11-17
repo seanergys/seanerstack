@@ -26,10 +26,11 @@ import urllib.request
 import yaml
 
 from .auth import spack_resource_environment
-from .bootstrap import bootstrap
+from .bootstrap import bootstrap, require_target
 from .buildcache import buildcaches, configure_buildcaches
 from .config import Config, Platform, Resource, Toolchain
-from .isolation import SPACK_GIT, SPACK_VERSION
+from .isolation import DEFAULT_STATE_DIR
+from .pins import SPACK_GIT, SPACK_VERSION
 from .paths import source_checkout
 from .secrets import SecretStore
 
@@ -44,11 +45,10 @@ MEMORY_PER_JOB = 2 * GIB
 # than the services next to it.
 MEMORY_SHARE = 0.85
 
-# Survives between runs, so that an interrupted build only repeats its last package.
-# This is where seanerctl builds and where the services install: Spack cannot
-# relocate a binary to a longer path, so a longer one here fails on what the caches
-# already hold, and binaries built here could not reach the services.
-CONTAINER_STATE = "/opt/seanergys/state"
+# Survives between runs, so that an interrupted build only repeats its last
+# package. The default state directory, so that the binaries match those of every
+# machine set up with `seanerstack init`.
+CONTAINER_STATE = str(DEFAULT_STATE_DIR)
 # Copied in, not mounted: the daemon of Docker in Docker sees none of the files of
 # the CI job that talks to it.
 CONTAINER_INPUT = "/opt/seanerstack-input"
@@ -184,8 +184,7 @@ def prepare_here(
     # Every finished package goes out at once, so a failure hours in keeps them.
     resources = {name: replace(cache, autopush=name == target.name) for name, cache in caches.items()}
     configure_buildcaches(replace(config, resources=resources), command=command, env=env)
-    subprocess.run([*command, "config", "remove", "packages:all:require"], check=False, capture_output=True, env=env)
-    _output([*command, "config", "add", f"packages:all:require:target={toolchain.target}"], env)
+    require_target(command, toolchain.target, env)
     result = bootstrap(toolchain.compiler, command=command, env=env)
     if not result.probe_ok:
         raise RuntimeError(f"Spack does not use {toolchain.compiler}")

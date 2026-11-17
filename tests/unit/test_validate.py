@@ -45,3 +45,72 @@ def test_spack_validation_reaches_spack(tmp_path, monkeypatch):
 
     assert calls, "Spack was never invoked"
     assert all(finding.level == "ok" for finding in findings), findings
+
+
+def _git_recipes(tmp_path):
+    repo = tmp_path / "repo"
+    for name in ("one", "two", "public"):
+        package = repo / "packages" / name
+        package.mkdir(parents=True)
+        resource = '    seanerstack_resource = "gitlab"\n' if name != "public" else ""
+        package.joinpath("package.py").write_text(
+            f'class {name.title()}:\n    git = "https://git.example.org/{name}.git"\n{resource}', encoding="utf-8"
+        )
+    return repo
+
+
+def _gitlab_config(tmp_path):
+    from seanerstack.config import Config, Resource
+    gitlab = Resource(name="gitlab", kind="git", url="https://git.example.org/", credentials="token")
+    return Config(path=tmp_path / "config.toml", resources={"gitlab": gitlab})
+
+
+def test_git_access_is_tried_once_for_each_resource(tmp_path, monkeypatch):
+    import seanerstack.validate as validate_module
+    from seanerstack.secrets import SecretStore
+    reads = []
+    monkeypatch.setattr(validate_module, "read_remote_refs", lambda remote, auth: reads.append((remote, auth.password)))
+    secrets = SecretStore(tmp_path / "vault", _data={"credentials": {"token": {"token": "glpat"}}})
+
+    results = validate_module.check_git_access(_gitlab_config(tmp_path), secrets, repository=_git_recipes(tmp_path))
+
+    assert [(name, ok) for name, ok, _ in results] == [("gitlab", True)]
+    assert len(reads) == 1 and reads[0][1] == "glpat"
+
+
+def test_git_access_reports_what_git_said(tmp_path, monkeypatch):
+    import seanerstack.validate as validate_module
+    from seanerstack.secrets import SecretStore
+
+    def denied(remote, auth):
+        raise subprocess.CalledProcessError(128, ["git"], stderr="fatal: Authentication failed\n")
+
+    monkeypatch.setattr(validate_module, "read_remote_refs", denied)
+    secrets = SecretStore(tmp_path / "vault", _data={"credentials": {"token": {"token": "wrong"}}})
+
+    results = validate_module.check_git_access(_gitlab_config(tmp_path), secrets, repository=_git_recipes(tmp_path))
+
+    assert results == [("gitlab", False, "fatal: Authentication failed")]
+
+
+def test_git_access_without_credentials_says_so(tmp_path):
+    import seanerstack.validate as validate_module
+    from seanerstack.secrets import SecretStore
+
+    results = validate_module.check_git_access(_gitlab_config(tmp_path), SecretStore(None), repository=_git_recipes(tmp_path))
+
+    assert results[0][:2] == ("gitlab", False)
+    assert "--secrets-file" in results[0][2]
+
+
+def test_git_access_leaves_out_resources_the_config_does_not_declare(tmp_path, monkeypatch):
+    import seanerstack.validate as validate_module
+    from seanerstack.config import Config
+    from seanerstack.secrets import SecretStore
+    monkeypatch.setattr(validate_module, "read_remote_refs", lambda remote, auth: None)
+
+    results = validate_module.check_git_access(
+        Config(path=tmp_path / "config.toml", resources={}), SecretStore(None), repository=_git_recipes(tmp_path)
+    )
+
+    assert results == []

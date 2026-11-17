@@ -14,12 +14,10 @@ The repository is installed into Seanerstack's private Spack configuration autom
 
 Seanerstack also ships the Spack environments adopted by the project. An environment can represent a development context or, when deployment environments are introduced, a deployment context.
 
-First activate the isolated Seanerstack Spack session, then locate and activate the environment using Spack:
+With the state's `spack` on `PATH`, locate the environment with Seanerstack and activate it with Spack:
 
 ```console
-export SEANERSTACK_STATE_DIR=/path/to/seanerstack-state
-eval "$(seanerstack activate)"
-spack env activate "$(seanerstack paths env --package properdocs)"
+eval "$(spack env activate --sh "$(seanerstack paths env --package properdocs)")"
 ```
 
 A local development checkout is then attached with `spack develop`. Checkout paths remain local because they differ between machines.

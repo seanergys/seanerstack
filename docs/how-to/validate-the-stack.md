@@ -1,13 +1,12 @@
 # Validate Seanerstack changes
 
-Spack-backed validation uses the same isolated state as compiler bootstrap and an activated Seanerstack session. Select that state before running validation:
+Spack-backed validation uses the state that `seanerstack init` set up, by default `/opt/seanergys/state`, with the configuration and credentials it recorded:
 
 ```console
-export SEANERSTACK_STATE_DIR=/path/to/seanerstack-state
 seanerstack validate --online --compiler gcc@15 --spack
 ```
 
-Alternatively, pass `--state-dir /path/to/seanerstack-state` as a global Seanerstack option.
+For another state directory, pass `--state-dir DIR` or set `SEANERSTACK_STATE_DIR`.
 
 This is the project validation command. It checks the shipped recipes and environments, verifies synchronization against upstream Git, checks the expected compiler configuration, and asks Spack to concretize the shipped environments without consulting normal user or system Spack configuration.
 

@@ -1,6 +1,6 @@
 # Set up Spack for SEANERGYS
 
-Use this procedure when preparing a Spack installation for SEANERGYS work. For a completely new machine, follow the tutorial instead; this how-to assumes a `spack` executable is already available.
+Use this procedure when preparing a machine for SEANERGYS work. For a completely new machine, follow the tutorial instead. Seanerstack installs the Spack it needs itself.
 
 ## 1. Configure pipx for the SEANERGYS package registry
 
@@ -39,40 +39,61 @@ Update it with `uv tool upgrade seanerstack`.
 
 Its dependencies, including `keyloom`, come from PyPI.
 
-## 3. Initialize Seanerstack
+## 3. Prepare the state directory
 
-Choose the persistent directory in which Seanerstack will keep Spack configuration and mutable state, then bootstrap the compiler, configure build-cache/OCI registry access, and validate the result in one step:
-
-```console
-export SEANERSTACK_STATE_DIR=/path/to/seanerstack-state
-seanerstack --secrets-file secrets.toml init gcc@15
-```
-
-The directory contains Seanerstack's private Spack configuration, install store, stages, caches, and managed environments. Seanerstack does not implicitly use `$HOME` for this state, and there is no `spack repo add` step: Seanerstack installs its curated repository into the private configuration itself.
-
-`--secrets-file` is only required when `config.toml` declares build caches that need credentials (see [Create a secrets file](create-a-secrets-file.md)). Omit it, or pass `--skip-buildcache-check`, when none do.
-
-Building gcc@15 takes an hour or more. When the machine already has a suitable GCC, from the distribution or a toolset, `--external PREFIX` uses it instead and builds no compiler. The spec must name the compiler in that prefix:
+Seanerstack keeps its Spack, configuration, install store, stages, caches, and managed environments in one state directory, by default `/opt/seanergys/state`. Use that directory: every binary hash contains the install path of the compiler that built it, so only a machine with the same state directory reuses the binaries of the project build cache. Create it once and make it yours:
 
 ```console
-seanerstack --secrets-file secrets.toml init gcc@16 --external /usr
-seanerstack --secrets-file secrets.toml init gcc@15 --external /opt/rh/gcc-toolset-15/root/usr
+sudo mkdir -p /opt/seanergys/state
+sudo chown "$USER" /opt/seanergys/state
 ```
 
-Packages built this way have different hashes from those built with the Spack-installed gcc@15, so the project build cache has fewer of them ready (see [Compiler bootstrap](../explanation/compiler-bootstrap.md#using-a-compiler-that-is-already-installed)).
+Another directory can be given with `--state-dir DIR` or `SEANERSTACK_STATE_DIR`, but then nothing from the project build cache matches.
 
-With `--secrets-file`, Seanerstack asks for the keyloom vault password. Over `ssh host 'command'`, in a script or in CI there is no terminal to answer the prompt, and the command fails with `EOFError`. Supply the password with `--secrets-password-file FILE` or `--secrets-password-stdin` instead (see [Supply the vault password without a prompt](create-a-secrets-file.md#supply-the-vault-password-without-a-prompt)).
-
-## Activate the setup
+## 4. Initialize Seanerstack
 
 ```console
-eval "$(seanerstack activate)"
+seanerstack --secrets-file secrets.toml init
 ```
 
-Spack is now prepared for SEANERGYS work. Use plain `spack` commands for package development, installation, and deployment. They use the selected Seanerstack state rather than normal user or system Spack configuration.
+`init` sets up the state so that no later command needs another option:
 
-Leave the session with:
+- it installs the Spack version that Seanerstack pins into the state directory;
+- it records the `config.toml` (the shipped one, or the one given with `--config-file`) and stores the credentials of `--secrets-file` in the state directory, readable only by you;
+- it configures the build caches of `config.toml` and the CPU target of `[toolchain]`, `x86_64_v3`, for every package;
+- it finds the compilers on the machine and registers them, and finds the toolchain's packages, such as rust, without registering them; it prints both lists;
+- it checks that every build cache and every Git resource can be read.
+
+```text
+compilers found:
+  gcc@11.5.0  /usr
+  gcc@14.2.1  /opt/rh/gcc-toolset-14/root/usr
+packages found:
+  rust@1.97.1  /usr
+```
+
+A compiler off `PATH`, such as a gcc-toolset, is found with `--find /opt/rh/gcc-toolset-14/root/usr`; `init` remembers the prefix. It installs no compiler. Fix any reported access error and run `init` again; running it again is also how any of these choices is changed later.
+
+`--secrets-file` is needed for the SEANERGYS GitLab and the project build cache (see [Create a secrets file](create-a-secrets-file.md)). With it, Seanerstack asks for the keyloom vault password. Over `ssh host 'command'`, in a script or in CI there is no terminal to answer the prompt, and the command fails with `EOFError`. Supply the password with `--secrets-password-file FILE` or `--secrets-password-stdin` instead (see [Supply the vault password without a prompt](create-a-secrets-file.md#supply-the-vault-password-without-a-prompt)).
+
+Seanerstack uses its pinned Spack, and refuses one given with `--spack-executable` or `SEANERSTACK_REAL_SPACK` that has another version: a different Spack writes build-cache indexes and specs that the pinned one cannot read, and its hashes match nothing in the cache. `seanerstack --version` names both versions.
+
+## 5. Put the state's spack on PATH
+
+`init` ends by printing the line that puts the state's `spack` wrapper first on `PATH`. Add it to your shell profile, such as `~/.bashrc`:
 
 ```console
-eval "$(seanerstack deactivate)"
+export PATH=/opt/seanergys/state/spack/bin:$PATH
 ```
+
+Plain `spack` commands then use the Seanerstack state in every shell, with its credentials, and not the normal user or system Spack configuration. To use it in one shell only, run `eval "$(seanerstack activate)"` instead. See [Use the state's Spack](use-the-states-spack.md).
+
+## 6. Install the toolchain
+
+```console
+seanerstack toolchain bootstrap
+```
+
+It installs the compiler of `[toolchain]` in `config.toml` and makes it the compiler of every later build, then installs the toolchain's packages with it, rust and capnproto. Each comes from the project build cache where the cache holds it, so the hours that GCC and Rust take to build are spent once, in CI. Spack is now prepared for SEANERGYS work.
+
+The defaults suit almost everyone. `--compiler` builds another compiler, `--source-compiler gcc@14` builds it with a compiler that `init` found, `--target` and `--os` set the CPU target and the operating system to expect, and package names as arguments install only those. `--external` uses a compiler or package that `init` found instead of building it; see the warning in [Use the build cache](use-the-build-cache.md#install-from-the-cache).

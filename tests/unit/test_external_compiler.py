@@ -7,13 +7,10 @@ import subprocess
 import pytest
 
 import seanerstack.bootstrap as bootstrap_module
-import seanerstack.cli as cli
-from seanerstack.bootstrap import BootstrapResult
 
 
 COMMAND = ["/opt/spack/bin/spack", "-C", "/state/spack/config"]
 ENV = {"SPACK_DISABLE_LOCAL_CONFIG": "true"}
-
 
 
 def _installs(calls: list[list[str]], spec: str) -> bool:
@@ -168,39 +165,7 @@ def test_an_external_dry_run_changes_nothing(monkeypatch, tmp_path: Path):
     assert result.external == str(tmp_path)
 
 
-@pytest.mark.parametrize("command", [["toolchain", "bootstrap"], ["init"]])
-def test_the_commands_take_an_external_prefix(command):
-    args = cli.build_parser().parse_args([*command, "gcc@16", "--external", "/usr"])
-
-    assert (args.compiler, args.external) == ("gcc@16", "/usr")
-
-
-def test_bootstrap_passes_the_external_prefix_on_and_names_it(monkeypatch, capsys):
-    seen = {}
-
-    def fake_bootstrap(compiler, **kwargs):
-        seen.update(kwargs)
-        return BootstrapResult(
-            compiler=compiler, installed=False, registered=True, languages=("c",),
-            probe="zlib", probe_ok=True, external=kwargs["external"],
-        )
-
-    monkeypatch.setattr(cli, "_spack_runtime", lambda args: (None, None, ["spack"], {}))
-    monkeypatch.setattr(cli, "bootstrap", fake_bootstrap)
-    args = cli.build_parser().parse_args(["toolchain", "bootstrap", "gcc@16", "--external", "/usr"])
-
-    code = cli._run_bootstrap(args)
-
-    assert code == 0
-    assert seen["external"] == "/usr"
-    assert "compiler: gcc@16 in /usr" in capsys.readouterr().out
-
-
-@pytest.mark.parametrize("command", [["toolchain", "bootstrap"], ["init"]])
-def test_without_an_external_prefix_the_compiler_is_built(monkeypatch, command):
-    args = cli.build_parser().parse_args([*command, "gcc@15"])
-    assert args.external is None
-
+def test_without_an_external_prefix_the_compiler_is_built(monkeypatch):
     calls = _fake_spack(monkeypatch, compiler_spec=_spec())
     built = "/state/spack/opt/gcc-15.3.0-abcdef"
     monkeypatch.setattr(
@@ -208,7 +173,7 @@ def test_without_an_external_prefix_the_compiler_is_built(monkeypatch, command):
         lambda command, compiler, env: built if _installs(calls, "gcc@15") else None,
     )
 
-    result = bootstrap_module.bootstrap("gcc@15", command=COMMAND, env=ENV, external=args.external)
+    result = bootstrap_module.bootstrap("gcc@15", command=COMMAND, env=ENV, external=None)
 
     assert _installs(calls, "gcc@15")
     assert [*COMMAND, "compiler", "find", built] in calls

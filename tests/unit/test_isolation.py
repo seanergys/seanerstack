@@ -2,6 +2,7 @@
 from pathlib import Path
 import re
 
+import pytest
 import yaml
 
 from seanerstack.config import Config, Resource
@@ -14,7 +15,10 @@ from seanerstack.isolation import (
     prepare_isolation,
     spack_env,
 )
+from seanerstack.pins import SPACK_VERSION
 from seanerstack.secrets import SecretStore
+
+PINNED = SPACK_VERSION.removeprefix("v")
 
 
 def test_activation_skips_build_caches_without_vault_credentials(tmp_path: Path):
@@ -101,9 +105,6 @@ def test_activation_makes_isolated_spack_default_and_deactivation_restores(tmp_p
     assert f"export PATH={x.bin}:/usr/bin:/bin" in script
     assert f"export SPACK_USER_CONFIG_PATH={x.config}" in script
     assert f"export SEANERSTACK_REAL_SPACK={real_spack}" in script
-
-    shim = (x.bin / "spack").read_text(encoding="utf-8")
-    assert 'exec "$SEANERSTACK_REAL_SPACK" -C "$SEANERSTACK_SPACK_CONFIG_DIR" "$@"' in shim
 
     active = {
         "SEANERSTACK_ACTIVE": "1",
@@ -226,3 +227,150 @@ def test_existing_state_follows_a_new_pin(tmp_path: Path):
     repos = (x.config / "repos.yaml").read_text(encoding="utf-8")
     assert BUILTIN_REPO_COMMIT in repos
     assert "0" * 40 not in repos
+
+
+def test_the_state_directory_defaults_to_where_the_cached_binaries_were_built(monkeypatch):
+    import seanerstack.isolation
+    monkeypatch.delenv("SEANERSTACK_STATE_DIR", raising=False)
+    assert seanerstack.isolation.resolve_state_dir(None) == Path("/opt/seanergys/state")
+
+
+def test_the_state_directory_variable_overrides_the_default(monkeypatch, tmp_path):
+    import seanerstack.isolation
+    monkeypatch.setenv("SEANERSTACK_STATE_DIR", str(tmp_path))
+    assert seanerstack.isolation.resolve_state_dir(None) == tmp_path.resolve()
+
+
+def test_the_toolchain_is_built_in_the_default_state_directory():
+    import seanerstack.prepare
+    assert seanerstack.prepare.CONTAINER_STATE == "/opt/seanergys/state"
+
+
+def _fake_spack_executable(path: Path, version: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"#!/bin/sh\necho '{version} (0123456789abcdef)'\n", encoding="utf-8")
+    path.chmod(0o755)
+    return path
+
+
+def test_the_pinned_spack_is_installed_into_the_state_directory(monkeypatch, tmp_path):
+    import seanerstack.isolation
+    clones = []
+
+    def fake_run(args, **kwargs):
+        clones.append(args)
+        _fake_spack_executable(Path(args[-1]) / "bin" / "spack", PINNED)
+
+    monkeypatch.delenv("SEANERSTACK_REAL_SPACK", raising=False)
+    monkeypatch.setattr(seanerstack.isolation.subprocess, "run", fake_run)
+    spack = seanerstack.isolation.resolve_real_spack(None, tmp_path)
+    assert spack == tmp_path / f"spack-{SPACK_VERSION}" / "bin" / "spack"
+    assert clones[0][-3:] == [SPACK_VERSION, "https://github.com/spack/spack.git", str(tmp_path / f"spack-{SPACK_VERSION}.partial")]
+
+    # The next command finds it and clones nothing.
+    assert seanerstack.isolation.resolve_real_spack(None, tmp_path) == spack
+    assert len(clones) == 1
+
+
+def test_another_spack_of_the_pinned_version_is_used(monkeypatch, tmp_path):
+    import seanerstack.isolation
+    monkeypatch.delenv("SEANERSTACK_REAL_SPACK", raising=False)
+    spack = _fake_spack_executable(tmp_path / "spack", PINNED)
+    assert seanerstack.isolation.resolve_real_spack(spack, tmp_path / "state") == spack.resolve()
+
+
+def test_another_spack_version_is_refused(monkeypatch, tmp_path):
+    import seanerstack.isolation
+    monkeypatch.delenv("SEANERSTACK_REAL_SPACK", raising=False)
+    spack = _fake_spack_executable(tmp_path / "spack", "1.3.0.dev0")
+    with pytest.raises(RuntimeError, match=f"is Spack 1.3.0.dev0, and Seanerstack needs Spack {PINNED}"):
+        seanerstack.isolation.resolve_real_spack(spack, tmp_path / "state")
+
+
+def test_the_spack_variable_is_held_to_the_pinned_version_too(monkeypatch, tmp_path):
+    import seanerstack.isolation
+    monkeypatch.setenv("SEANERSTACK_REAL_SPACK", str(_fake_spack_executable(tmp_path / "spack", "1.3.0.dev0")))
+    with pytest.raises(RuntimeError, match="is Spack 1.3.0.dev0"):
+        seanerstack.isolation.resolve_real_spack(None, tmp_path / "state")
+
+
+def _recording_spack(path: Path) -> Path:
+    """A stand-in for Spack that prints its arguments and the variables it got."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        "#!/bin/sh\n"
+        'echo "args=$*"\n'
+        'echo "user=${SPACK_USER_CONFIG_PATH:-}"\n'
+        'echo "cache=${SPACK_USER_CACHE_PATH:-}"\n'
+        'echo "disable=${SPACK_DISABLE_LOCAL_CONFIG-unset}"\n'
+        'echo "token=${SEANERSTACK_RESOURCE_CACHE_PASSWORD:-}"\n',
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
+    return path
+
+
+def test_the_spack_wrapper_runs_the_state_without_activation(tmp_path: Path):
+    import subprocess
+    real_spack = _recording_spack(tmp_path / "real spack" / "bin" / "spack")
+    x = prepare_isolation(tmp_path / "state", real_spack)
+
+    result = subprocess.run(
+        [str(x.bin / "spack"), "find", "zlib"], check=True, capture_output=True, text=True,
+        env={"PATH": "/usr/bin:/bin", "SPACK_DISABLE_LOCAL_CONFIG": "true"},
+    )
+
+    assert result.stdout.splitlines() == [
+        f"args=-C {x.config} find zlib",
+        f"user={x.config}",
+        f"cache={x.cache}",
+        "disable=unset",
+        "token=",
+    ]
+
+
+def test_the_spack_wrapper_loads_the_stored_credentials(tmp_path: Path):
+    import subprocess
+    real_spack = _recording_spack(tmp_path / "spack")
+    x = prepare_isolation(tmp_path / "state", real_spack)
+    x.credentials_env.write_text("export SEANERSTACK_RESOURCE_CACHE_PASSWORD='s3cret'\n", encoding="utf-8")
+
+    result = subprocess.run([str(x.bin / "spack")], check=True, capture_output=True, text=True, env={"PATH": "/usr/bin:/bin"})
+
+    assert "token=s3cret" in result.stdout.splitlines()
+
+
+def _caches(*names: str) -> dict[str, Resource]:
+    return {
+        name: Resource(name=name, kind="spack-buildcache", url=f"oci://registry.example.org/{name}", credentials=name, signed=False)
+        for name in names
+    }
+
+
+def test_stored_credentials_are_readable_only_by_their_owner(tmp_path: Path):
+    import seanerstack.isolation
+    x = prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    secrets = SecretStore(tmp_path / "vault", _data={"credentials": {"present": {"token": "glpat"}}})
+
+    stored = seanerstack.isolation.store_credentials(x, Config(path=tmp_path / "config.toml", resources=_caches("present", "absent")), secrets)
+
+    assert stored == ["present"]
+    assert x.credentials.stat().st_mode & 0o777 == 0o600
+    assert x.credentials_env.stat().st_mode & 0o777 == 0o600
+    assert SecretStore.stored(x.credentials).credentials("present") == {"token": "glpat"}
+    exports = x.credentials_env.read_text(encoding="utf-8")
+    assert "export SEANERSTACK_RESOURCE_PRESENT_PASSWORD=glpat\n" in exports
+    assert "ABSENT" not in exports
+
+
+def test_no_stored_credentials_reads_as_no_secrets_file(tmp_path: Path):
+    assert SecretStore.stored(tmp_path / "credentials.json").path is None
+
+
+def test_the_record_remembers_what_init_was_given(tmp_path: Path):
+    import seanerstack.isolation
+    state = tmp_path / "state"
+    assert seanerstack.isolation.read_record(state) == {"config_file": None, "spack_executable": None}
+    x = prepare_isolation(state, tmp_path / "spack")
+    seanerstack.isolation.write_record(x, config_file=tmp_path / "config.toml", spack_executable=None)
+    assert seanerstack.isolation.read_record(state) == {"config_file": tmp_path / "config.toml", "spack_executable": None}

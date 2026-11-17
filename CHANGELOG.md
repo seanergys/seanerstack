@@ -9,11 +9,10 @@ and release process.
 
 ### Added
 
-- `seanerstack toolchain bootstrap COMPILER --external PREFIX`, and the same
-  option of `init`, make a compiler already installed in PREFIX, such as the
-  GCC 16 of `/usr`, the project compiler without building one. COMPILER must
-  name the compiler there; a spec Spack would build from source is refused
-  before anything requires it.
+- `seanerstack toolchain bootstrap --external gcc@16` makes a compiler that
+  `init` found, such as the GCC 16 of `/usr`, the project compiler without
+  building one. Seanerstack checks that the spec resolves to that installation
+  before anything requires it, and that the probe is compiled by it.
 - `SEANERSTACK_BUILTIN_REPO_GIT` overrides the Git location the pinned
   builtin `spack-packages` repository is cloned from, for hosts without
   internet access. The commit pin still applies.
@@ -25,6 +24,19 @@ and release process.
 - `seanerbus-cli`, the command-line client of the SeanerBUS.
 - `telemetry-collector`, the SEANERGYS Telemetry Collector and its plugins, and the
   `telemetry-collector-dev` environment.
+- `seanerstack --version` prints the Seanerstack version and the Spack version
+  it pins.
+- Seanerstack pins Spack to v1.2.2, in `src/seanerstack/pins.py`. It clones that
+  version into the state directory on first use, and refuses a Spack of another
+  version given with `--spack-executable` or `SEANERSTACK_REAL_SPACK`, because its
+  specs, build-cache indexes and hashes do not match the project build cache.
+- `seanerstack init --secrets-file FILE` stores the credentials that the
+  configured resources name in the state directory, readable only by their
+  owner, and records the `config.toml` and Spack it was given. Later commands
+  use them without `--secrets-file`, `--config-file` or `--spack-executable`.
+- The `spack` wrapper in `<state>/spack/bin` works in any shell: it carries the
+  state's settings and loads the stored credentials. Put it on `PATH` once.
+- `init` checks that every build cache and every Git resource can be read.
 
 ### Changed
 
@@ -34,9 +46,27 @@ and release process.
   `seanerbroker` package, the name that upstream gave it on 2026-11-03.
 - The seanerbus packages clone no submodules. They depend on `seanerbus-rs`,
   `seanerbus-msg` and the `fmt` of Spack instead.
+- The state directory defaults to `/opt/seanergys/state` for every command, the
+  directory in which the toolchain of the project build cache is built, because
+  the install path of the compiler is part of every hash.
+- `seanerstack init` takes no compiler. It sets up the state, configures the
+  build caches and the CPU target of `[toolchain]`, finds the compilers and the
+  toolchain's packages installed on the machine and prints them, and checks
+  access. `--find PREFIX` adds an installation off `PATH`, such as a
+  gcc-toolset.
+- `seanerstack toolchain bootstrap` installs the whole toolchain: the compiler,
+  then its packages, rust and capnproto by default, or those given as arguments.
+  `--compiler`, `--source-compiler`, `--target` and `--os` choose the compiler to
+  build, the one that builds it, the CPU target and the operating system to
+  expect; `--external` uses a compiler or package that `init` found instead of
+  building it.
+- `seanerstack activate` takes the credentials from the state, so it asks for no
+  vault password.
 
 ### Fixed
 
+- `buildcache check` and `init` fail on a build cache whose index a newer Spack
+  wrote, which the pinned Spack cannot read, instead of reporting it as fine.
 - `seanerbus` declares its build dependency on `capnproto`, without which a clean
   build fails in the build script of `internal_schemas`.
 - `seanerstack package update` accepts a recipe without releases, which follows only

@@ -2,34 +2,31 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import os
 from pathlib import Path
 import shlex
 import shutil
 import stat
+import subprocess
 from typing import Mapping
 
 from .config import Config
 from .paths import repository_path
+from .pins import BUILTIN_REPO_COMMIT, BUILTIN_REPO_GIT, SPACK_GIT, SPACK_VERSION
 from .auth import spack_resource_environment
 from .secrets import SecretStore
 
-
-# Spack declares this in its own defaults; the private scope has to repeat it
-# because it replaces those defaults rather than merging with them.
-BUILTIN_REPO_GIT = "https://github.com/spack/spack-packages.git"
 
 # Hosts without internet access point this at a mirror or a local clone. The
 # pinned commit still applies, so build-cache hashes stay the same.
 BUILTIN_REPO_GIT_ENV = "SEANERSTACK_BUILTIN_REPO_GIT"
 
-# Binary build-cache hashes depend on the recipes, so every session has to load
-# the same builtin commit: spack-packages v2026.10.0, package API v2.2, which
-# Spack 1.2 supports. Bump it together with SPACK_VERSION and the Spack version
-# used in CI.
-BUILTIN_REPO_COMMIT = "91cfb5b973c311f742cd31061fe224d40f1fd830"
-SPACK_GIT = "https://github.com/spack/spack.git"
-SPACK_VERSION = "v1.2.2"
+# Every hash contains the install path of the compiler that built it, and Spack
+# cannot relocate a binary to a longer path, so a machine reuses the binaries of
+# the project build cache only with this state directory. It is where the
+# toolchain is built, where seanerctl builds, and where the services install.
+DEFAULT_STATE_DIR = Path("/opt/seanergys/state")
 
 # Spack tests for the presence of this variable, not its value, so an inherited
 # one has to be removed rather than overridden. It switches the user scope off,
@@ -48,6 +45,15 @@ class SpackLayout:
     environments: Path
     package_repos: Path
     bin: Path
+    # The credentials of the configured resources, as the shell exports that
+    # Spack reads them from. Written by `seanerstack init`, mode 0600.
+    credentials_env: Path
+    # The same credentials as a secrets mapping, for Seanerstack itself.
+    credentials: Path
+    # What `seanerstack init` chose, so that no later command asks again.
+    record: Path
+    # The packages init detected on the machine, for `toolchain bootstrap --external`.
+    detected: Path
 
 
 def layout(state_dir: Path) -> SpackLayout:
@@ -63,6 +69,10 @@ def layout(state_dir: Path) -> SpackLayout:
         environments=root / "environments",
         package_repos=root / "package_repos",
         bin=root / "bin",
+        credentials_env=root / "credentials.sh",
+        credentials=state / "credentials.json",
+        record=state / "seanerstack.json",
+        detected=state / "detected.json",
     )
 
 
@@ -72,21 +82,114 @@ def resolve_state_dir(value: Path | None) -> Path:
     raw = os.environ.get("SEANERSTACK_STATE_DIR")
     if raw:
         return Path(raw).expanduser().resolve()
-    raise ValueError("Spack isolation requires --state-dir DIR or SEANERSTACK_STATE_DIR")
+    return DEFAULT_STATE_DIR
 
 
-def resolve_real_spack(explicit: Path | None = None) -> Path:
-    if explicit is not None:
-        path = explicit.expanduser().resolve()
-    elif os.environ.get("SEANERSTACK_REAL_SPACK"):
-        path = Path(os.environ["SEANERSTACK_REAL_SPACK"]).expanduser().resolve()
-    else:
-        found = shutil.which("spack")
-        if not found:
-            raise RuntimeError("spack executable not found in PATH; provide --spack-executable FILE")
-        path = Path(found).resolve()
+def _write_private(path: Path, text: str) -> None:
+    """Write a file that only its owner can read, also while it is written."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = path.with_name(path.name + ".partial")
+    partial.unlink(missing_ok=True)
+    descriptor = os.open(partial, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+        stream.write(text)
+    partial.replace(path)
+
+
+def store_credentials(x: SpackLayout, config: Config, secrets: SecretStore) -> list[str]:
+    """Keep the credentials that the resources of `config` name, readable only by the owner.
+
+    Seanerstack reads them back as a secrets file, and the spack wrapper as the
+    variables Spack takes them from. Returns the names of the stored credentials.
+    """
+    names = sorted({resource.credentials for resource in config.resources.values() if resource.credentials})
+    stored = {name: secrets.credentials(name) for name in names if secrets.path is not None and secrets.has_credentials(name)}
+    _write_private(x.credentials, json.dumps({"credentials": stored}, indent=2) + "\n")
+    holder = SecretStore.stored(x.credentials)
+    exports = {}
+    for resource in config.resources.values():
+        if resource.kind == "spack-buildcache" and resource.credentials in stored:
+            exports.update(spack_resource_environment(resource, holder))
+    _write_private(x.credentials_env, "".join(f"export {name}={shlex.quote(value)}\n" for name, value in exports.items()))
+    return sorted(stored)
+
+
+def write_record(
+    x: SpackLayout, *, config_file: Path | None, spack_executable: Path | None, find: list[Path] = ()
+) -> None:
+    """Remember what `seanerstack init` was given, for every later command."""
+    record = {
+        "config_file": str(config_file.expanduser().resolve()) if config_file else None,
+        "spack_executable": str(spack_executable.expanduser().resolve()) if spack_executable else None,
+        "find": [str(prefix.expanduser().resolve()) for prefix in find],
+    }
+    _write(x.record, json.dumps(record, indent=2) + "\n")
+
+
+def recorded_find(state_dir: Path) -> list[Path]:
+    """The installations off PATH that init was told to search, with --find."""
+    path = layout(state_dir).record
+    raw = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    return [Path(prefix) for prefix in raw.get("find") or []]
+
+
+def read_record(state_dir: Path) -> dict[str, Path | None]:
+    """What `seanerstack init` recorded in a state directory; nothing before init."""
+    path = layout(state_dir).record
+    raw = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    return {key: Path(raw[key]) if raw.get(key) else None for key in ("config_file", "spack_executable")}
+
+
+def pinned_spack(state_dir: Path) -> Path:
+    """Where the pinned Spack lives in a state directory, installed or not."""
+    return state_dir / f"spack-{SPACK_VERSION}" / "bin" / "spack"
+
+
+def install_pinned_spack(state_dir: Path) -> Path:
+    """Clone the pinned Spack into the state directory, unless it is there already."""
+    executable = pinned_spack(state_dir)
+    if executable.is_file():
+        return executable
+    root = executable.parents[1]
+    # A clone that was interrupted is started again rather than used.
+    partial = root.with_name(root.name + ".partial")
+    shutil.rmtree(partial, ignore_errors=True)
+    root.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["git", "-c", "advice.detachedHead=false", "clone", "--quiet", "--depth", "1", "--branch", SPACK_VERSION, SPACK_GIT, str(partial)],
+        check=True,
+    )
+    partial.rename(root)
+    return executable
+
+
+def spack_version(executable: Path) -> str:
+    """The version a Spack executable reports, such as 1.2.2."""
+    result = subprocess.run([str(executable), "--version"], check=True, capture_output=True, text=True)
+    return result.stdout.split()[0]
+
+
+def resolve_real_spack(explicit: Path | None, state_dir: Path) -> Path:
+    """The Spack of the session: the pinned one, which is installed when missing.
+
+    Another Spack, given with --spack-executable or SEANERSTACK_REAL_SPACK, has
+    to be the pinned version. A different one writes specs and build-cache
+    indexes that the pinned one cannot read, and its hashes match no binary of
+    the project build cache.
+    """
+    if explicit is None and os.environ.get("SEANERSTACK_REAL_SPACK"):
+        explicit = Path(os.environ["SEANERSTACK_REAL_SPACK"])
+    if explicit is None:
+        return install_pinned_spack(state_dir)
+    path = explicit.expanduser().resolve()
     if not path.is_file():
         raise ValueError(f"Spack executable does not exist: {path}")
+    found, wanted = spack_version(path), SPACK_VERSION.removeprefix("v")
+    if found != wanted:
+        raise RuntimeError(
+            f"{path} is Spack {found}, and Seanerstack needs Spack {wanted}; "
+            "leave out --spack-executable and SEANERSTACK_REAL_SPACK to use the one it installs"
+        )
     return path
 
 
@@ -150,15 +253,17 @@ def prepare_isolation(state_dir: Path, real_spack: Path) -> SpackLayout:
         f"    destination: {x.package_repos / f'builtin-{BUILTIN_REPO_COMMIT[:12]}'}\n",
     )
 
+    # Runs Spack in this state from any shell, so that putting x.bin on PATH
+    # once is all a user does: no activation, no variables to set.
     shim = x.bin / "spack"
     _write(
         shim,
         "#!/bin/sh\n"
-        'if [ -z "${SEANERSTACK_REAL_SPACK:-}" ] || [ -z "${SEANERSTACK_SPACK_CONFIG_DIR:-}" ]; then\n'
-        '  echo "seanerstack: isolated spack launcher requires an activated Seanerstack environment" >&2\n'
-        "  exit 2\n"
-        "fi\n"
-        'exec "$SEANERSTACK_REAL_SPACK" -C "$SEANERSTACK_SPACK_CONFIG_DIR" "$@"\n',
+        f"# Spack in the Seanerstack state {x.state}, written by Seanerstack.\n"
+        + "".join(f"unset {name}\n" for name in UNSET_ON_ACTIVATION)
+        + "".join(f"export {name}={shlex.quote(value)}\n" for name, value in spack_env(x).items())
+        + f"if [ -r {shlex.quote(str(x.credentials_env))} ]; then . {shlex.quote(str(x.credentials_env))}; fi\n"
+        + f'exec {shlex.quote(str(real_spack))} -C {shlex.quote(str(x.config))} "$@"\n',
     )
     shim.chmod(shim.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return x

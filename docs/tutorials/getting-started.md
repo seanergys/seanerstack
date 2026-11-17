@@ -1,6 +1,6 @@
 # Set up a SEANERGYS system from scratch
 
-This tutorial establishes the supported SEANERGYS software setup on a new Linux system. It ends with an isolated Seanerstack Spack session and a package checkout whose dependencies are installed through Spack.
+This tutorial establishes the supported SEANERGYS software setup on a new Linux system. It ends with the Seanerstack state set up, its `spack` on `PATH`, and a package checkout whose dependencies are installed through Spack.
 
 The procedure assumes Bash, Git, and a working system compiler are already provided by the operating system. The system compiler is used only to bootstrap the compiler that SEANERGYS uses through Spack.
 
@@ -41,52 +41,46 @@ Update it with `uv tool upgrade seanerstack`.
 
 Its dependencies, including `keyloom`, come from PyPI. Seanerstack installs its curated Spack repository and environments under its installation prefix in `share/seanerstack`. The `seanerstack` command exposes their installed paths, so users do not need to locate that directory themselves.
 
-## 3. Install Spack
+## 3. Prepare the state directory
 
-Obtain the Spack executable used by Seanerstack. The Spack checkout itself may live anywhere convenient; Seanerstack isolates Spack's mutable configuration and state rather than requiring the executable to be installed inside the state directory.
-
-For example:
+Seanerstack keeps the complete mutable Spack setup in one state directory, by default `/opt/seanergys/state`: its own Spack, the private configuration, install store, stages, caches, and managed environments. Use that directory, because every binary hash contains the install path of the compiler that built it, and only that directory matches the binaries of the project build cache:
 
 ```console
-git clone --depth=1 https://github.com/spack/spack.git /path/to/spack
-export PATH="/path/to/spack/bin:$PATH"
+sudo mkdir -p /opt/seanergys/state
+sudo chown "$USER" /opt/seanergys/state
 ```
 
-Do not register Seanerstack in the normal user Spack configuration. Seanerstack supplies its repository through the isolated configuration it creates.
+There is no separate Spack to install: Seanerstack clones the Spack version it pins into this directory, and refuses another version, because a different Spack produces hashes and build-cache formats that the project cache does not hold. Do not register Seanerstack in the normal user Spack configuration either; Seanerstack supplies its repository through the isolated configuration it creates.
 
-## 4. Choose the Seanerstack state directory
+## 4. Initialize Seanerstack
 
-Select the directory that will contain the complete mutable Spack state for this Seanerstack setup:
+Set up the state and check access to every resource, in one step:
 
 ```console
-export SEANERSTACK_STATE_DIR=/path/to/seanerstack-state
+seanerstack --secrets-file secrets.toml init
 ```
 
-Seanerstack deliberately does not default this state to `$HOME`. The directory will contain the private Spack configuration, install store, stages, caches, and managed environments.
+`init` installs the pinned Spack, records the configuration and stores the credentials of the secrets file in the state directory, readable only by you. It configures the build caches and the CPU target of `[toolchain]`, `x86_64_v3`, and checks that every build cache and Git resource can be read. It installs no compiler. Fix any reported errors and run `init` again before proceeding. No later command needs any of these options again.
 
-## 5. Initialize Seanerstack
+The secrets file holds the token for the SEANERGYS GitLab and its container registry (see [Create a secrets file](../how-to/create-a-secrets-file.md)). Seanerstack asks for its keyloom vault password. When there is no terminal to answer the prompt (over `ssh host 'command'`, in a script or in CI), the command fails with `EOFError`; supply the password with `--secrets-password-file FILE` or `--secrets-password-stdin` instead (see [Supply the vault password without a prompt](../how-to/create-a-secrets-file.md#supply-the-vault-password-without-a-prompt)).
 
-Bootstrap the project compiler, configure build-cache/OCI registry access, and validate the result, all in one step:
+## 5. Put the state's spack on PATH
+
+`init` ends by printing the line that puts the state's `spack` first on `PATH`. Add it to `~/.bashrc` and run it in the current shell:
 
 ```console
-seanerstack init gcc@15
+export PATH=/opt/seanergys/state/spack/bin:$PATH
 ```
 
-Seanerstack uses the compiler package supplied by Spack; it does not ship a GCC recipe of its own. The initially available system compiler is used to build GCC when necessary, after which the isolated Seanerstack configuration requires the Spack-installed GCC for SEANERGYS builds. Fix any reported errors before proceeding.
+From this point, plain `spack` uses the Seanerstack configuration, state and credentials, in this shell and every later one. Existing `~/.spack` or system Spack configuration is not part of it. To use the state in the current shell only, run `eval "$(seanerstack activate)"` instead.
 
-If `config.toml` declares build caches that need credentials, pass `--secrets-file secrets.toml` (see [Create a secrets file](../how-to/create-a-secrets-file.md)); otherwise omit it, or add `--skip-buildcache-check`.
-
-With `--secrets-file`, Seanerstack asks for the keyloom vault password. When there is no terminal to answer the prompt (over `ssh host 'command'`, in a script or in CI), the command fails with `EOFError`; supply the password with `--secrets-password-file FILE` or `--secrets-password-stdin` instead (see [Supply the vault password without a prompt](../how-to/create-a-secrets-file.md#supply-the-vault-password-without-a-prompt)).
-
-## 6. Activate the isolated Spack session
-
-Activate Seanerstack before using Spack directly:
+## 6. Install the toolchain
 
 ```console
-eval "$(seanerstack activate)"
+seanerstack toolchain bootstrap
 ```
 
-From this point, plain `spack` uses the Seanerstack configuration and state selected by `SEANERSTACK_STATE_DIR`. Existing `~/.spack` or system Spack configuration is not part of this session.
+It installs the compiler of `[toolchain]` and makes it the compiler of every later build, then installs rust and capnproto with it. Each comes from the project build cache where the cache holds it, so GCC and Rust, which take hours to build, are not built here. Seanerstack uses the compiler package supplied by Spack; it does not ship a GCC recipe of its own.
 
 ## 7. Obtain the package checkout
 
@@ -100,13 +94,13 @@ cd /path/to/src/properdocs
 
 ## 8. Activate the environment shipped by Seanerstack
 
-Activate the development environment associated with the package:
+Activate the development environment associated with the package. The state's `spack` has no Spack shell integration, so activate through the shell code that Spack prints:
 
 ```console
-spack env activate "$(seanerstack paths env --package properdocs)"
+eval "$(spack env activate --sh "$(seanerstack paths env --package properdocs)")"
 ```
 
-The environment is an ordinary Spack environment supplied by Seanerstack. The active Seanerstack session ensures that its concretization and installations use only the selected private Spack state.
+The environment is an ordinary Spack environment supplied by Seanerstack. Its concretization and installations use only the private Spack state.
 
 ## 9. Bind the local checkout
 
@@ -131,17 +125,15 @@ The system is now ready for work on the package.
 
 ## Subsequent work sessions
 
-Set the same state directory and reactivate Seanerstack before invoking Spack:
+Nothing needs to be set up again. In a new shell:
 
 ```console
-export SEANERSTACK_STATE_DIR=/path/to/seanerstack-state
-eval "$(seanerstack activate)"
 cd /path/to/src/properdocs
-spack env activate "$(seanerstack paths env --package properdocs)"
+eval "$(spack env activate --sh "$(seanerstack paths env --package properdocs)")"
 ```
 
-Then use normal Spack commands as needed. When finished with the Seanerstack session:
+Then use normal Spack commands as needed. Leave the environment with:
 
 ```console
-eval "$(seanerstack deactivate)"
+eval "$(spack env deactivate --sh)"
 ```

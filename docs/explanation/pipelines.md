@@ -20,7 +20,7 @@ Every change reaches the default branch through a merge request and a merge trai
 - **Tag** pipelines publish a [release](releases.md#release-process) after `test`.
 - **Schedules** run `e2e` against the default branch every night. It notices when Spack or the GitLab instance changes while the default branch stays the same. A pipeline run by hand on the default branch, from **Build → Pipelines → Run pipeline**, runs `e2e` as well.
 
-`e2e:external-compiler` runs `toolchain bootstrap --external /usr` in Ubuntu 26.04 with its GCC 16 packages and in Ubuntu 24.04 with its GCC 14 packages, builds a small package with that compiler, and checks that a GCC the image does not have is refused. It needs no token or registry.
+`e2e:external-compiler` runs `init` and `toolchain bootstrap --external` in Ubuntu 26.04 with its GCC 16 packages and in Ubuntu 24.04 with its GCC 14 packages, choosing the GCC that `init` found by name, builds a small package with that compiler, and checks that a GCC the image does not have is refused. It needs no token or registry.
 
 `e2e` pushes into registry repositories named after each test, so `e2e` jobs take turns through the `e2e-registry` resource group. Merge train pipelines run side by side and would otherwise overwrite each other's build-cache index.
 

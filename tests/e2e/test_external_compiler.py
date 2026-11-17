@@ -3,7 +3,9 @@
 
 They run the installed `seanerstack` against a real Spack on a machine whose
 distribution provides the compiler, such as the GCC 16 packages of Ubuntu
-26.04 or the GCC 14 packages of Ubuntu 24.04, and need no GitLab token.
+26.04 or the GCC 14 packages of Ubuntu 24.04, and need no GitLab token:
+`init` finds the compiler, and `toolchain bootstrap --external` chooses it by
+name.
 
 Environment, besides SEANERSTACK_E2E_SPACK and SEANERSTACK_E2E_REQUIRED of
 conftest.py:
@@ -12,7 +14,8 @@ conftest.py:
   prefix, such as gcc@16.
 - SEANERSTACK_E2E_MISSING_COMPILER: a compiler spec the prefix does not
   have, such as gcc@14 on Ubuntu 26.04, which must be refused.
-- SEANERSTACK_E2E_EXTERNAL_PREFIX: the prefix (default: /usr).
+- SEANERSTACK_E2E_EXTERNAL_PREFIX: the prefix (default: /usr); init is told
+  to search it when it is not on PATH.
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -56,6 +60,16 @@ def prefix() -> str:
 def _environment() -> dict[str, str]:
     """The test environment, without an activated Seanerstack session."""
     return {key: value for key, value in os.environ.items() if not key.startswith("SEANERSTACK_")}
+
+
+def _init(seanerstack: Path, spack: Path, state: Path, prefix: str, tmp_path: Path) -> None:
+    """Set up the state with a config.toml of no resources, which needs no credentials."""
+    config = tmp_path / "config.toml"
+    config.write_text("", encoding="utf-8")
+    find = [] if prefix == "/usr" else ["--find", prefix]
+    result = _seanerstack(seanerstack, spack, state, "--config-file", str(config), "init", *find)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "compilers found:" in result.stdout
 
 
 def _seanerstack(seanerstack: Path, spack: Path, state: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -96,15 +110,15 @@ def test_an_external_compiler_builds_a_package_and_no_compiler(
 ):
     compiler = _setting("SEANERSTACK_E2E_EXTERNAL_COMPILER")
     state = tmp_path / "state"
+    _init(seanerstack, spack, state, prefix, tmp_path)
 
-    result = _seanerstack(seanerstack, spack, state, "toolchain", "bootstrap", compiler, "--external", prefix)
+    # The package to install instead of the toolchain's rust and capnproto.
+    result = _seanerstack(seanerstack, spack, state, "toolchain", "bootstrap", "--external", compiler, SPEC)
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert f"compiler: {compiler} in {prefix}" in result.stdout
+    assert re.search(rf"^compiler: {re.escape(compiler)}[.\d]* in {re.escape(prefix)}$", result.stdout, re.M), result.stdout
     assert "compiler probe (zlib): ok" in result.stdout
-
-    install = _spack(seanerstack, spack, state, "install", "--fail-fast", SPEC)
-    assert install.returncode == 0, install.stdout + install.stderr
+    assert "match nothing in the project build cache" in result.stdout
 
     found = _spack(seanerstack, spack, state, "find", "--json", "--deps", SPEC)
     assert found.returncode == 0, found.stderr
@@ -121,17 +135,17 @@ def test_an_external_compiler_builds_a_package_and_no_compiler(
     assert built == []
 
 
-def test_a_compiler_the_prefix_does_not_have_is_refused(
+def test_a_compiler_init_did_not_find_is_refused(
     seanerstack: Path, spack: Path, prefix: str, tmp_path: Path
 ):
     compiler = _setting("SEANERSTACK_E2E_MISSING_COMPILER")
     state = tmp_path / "state"
+    _init(seanerstack, spack, state, prefix, tmp_path)
 
-    result = _seanerstack(seanerstack, spack, state, "toolchain", "bootstrap", compiler, "--external", prefix)
+    result = _seanerstack(seanerstack, spack, state, "toolchain", "bootstrap", "--external", compiler)
 
     assert result.returncode != 0
-    assert f"{compiler!r} does not name the compiler in {prefix}" in result.stderr
-    assert "built from source" in result.stderr
+    assert f"--external {compiler} matches none of the compilers and packages that init found" in result.stderr
 
     requirements = _spack(seanerstack, spack, state, "config", "get", "packages")
     assert requirements.returncode == 0, requirements.stderr

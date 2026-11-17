@@ -34,7 +34,7 @@ E2E_SPEC = "zlib"
 
 
 def _environment() -> dict[str, str]:
-    """The test environment, without an activated Seanerstack session."""
+    """The test environment, without any Seanerstack variables of the caller."""
     env = {key: value for key, value in os.environ.items() if not key.startswith("SEANERSTACK_")}
     # Git must use the askpass helper of Seanerstack, not stored credentials.
     env.update({"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"})
@@ -111,33 +111,34 @@ def test_wrong_vault_password_is_reported(commands: Commands, secrets_file: Path
     assert "Traceback" not in result.stderr
 
 
-def test_activation_exports_registry_credentials(commands: Commands, secrets_file: Path, spack: Path, tmp_path: Path):
+def test_init_stores_the_registry_credentials_for_spack(commands: Commands, secrets_file: Path, spack: Path, tmp_path: Path):
     state = tmp_path / "state"
-    # The activation script exports the token by design, so its output is
-    # kept out of assertion messages.
-    activation = subprocess.run(
-        [str(commands.bin / "seanerstack"), "--state-dir", str(state), "--spack-executable", str(spack),
-         "--secrets-file", str(secrets_file), "--secrets-password-stdin", "activate"],
-        input=(PASSWORD + "\n").encode("utf-8"), capture_output=True, env=_environment(), check=False,
+    # Only what init stores matters here, not whether every resource can be read.
+    init = commands.run(
+        "seanerstack", "--state-dir", state, "--spack-executable", spack,
+        "--secrets-file", secrets_file, "--secrets-password-stdin", "init",
+        input=PASSWORD + "\n", env=_environment(),
     )
-    assert activation.returncode == 0, activation.stderr.decode("utf-8").replace(commands.token, "<token>")
+    assert "credentials: stored" in init.stdout, init.stdout + init.stderr
+    assert not init.leaked
 
-    # Evaluate the activation as a user's shell does, and compare the exported
-    # values here rather than printing them.
-    script = tmp_path / "activate.sh"
-    script.touch(mode=0o600)
-    script.write_bytes(activation.stdout)
+    # The spack wrapper loads these, as a user's shell would, and the values
+    # are compared here rather than printed.
+    exports = state / "spack" / "credentials.sh"
     names = " ".join(f'"${name}"' for name in REGISTRY_VARIABLES)
     shell = subprocess.run(
-        ["bash", "-c", f". {shlex.quote(str(script))} && printf '%s\\0' {names}"],
+        ["bash", "-c", f". {shlex.quote(str(exports))} && printf '%s\\0' {names}"],
         capture_output=True, check=True, env=_environment(),
     )
     username, token = shell.stdout.decode("utf-8").split("\0")[:2]
     assert username == commands.username
     assert token == commands.token
 
-    # The credentials live only in the session, never in the isolated state.
-    assert _files_containing(state, commands.token) == []
+    # The token is in the two credentials files, readable only by their owner,
+    # and nowhere else in the state.
+    stored = {state / "credentials.json", exports}
+    assert set(_files_containing(state, commands.token)) == stored
+    assert all(path.stat().st_mode & 0o777 == 0o600 for path in stored)
 
 
 def _write_e2e_config(path: Path, url: str) -> Path:
@@ -167,14 +168,17 @@ def test_buildcache_round_trip(commands: Commands, secrets_file: Path, password_
         )
     )
 
-    configure = commands.shell(f"seanerstack {options} buildcache configure", env=_environment())
-    assert configure.returncode == 0, configure.stderr
+    # The test cache may not exist before the first push, so only the setup
+    # matters here; the second init below has to pass.
+    commands.shell(f"seanerstack {options} init || true", env=_environment())
+    wrapper = shlex.quote(str(state / "spack" / "bin"))
 
     # Build from source even if an earlier pipeline pushed the same spec, and
     # replace it in the cache. The system make spares building make itself.
+    # Spack is the state's wrapper, with no activation.
     push = commands.shell(
         f"""
-        eval "$(seanerstack {options} activate)"
+        export PATH={wrapper}:$PATH
         spack compiler find
         spack external find gmake
         spack install --no-cache {E2E_SPEC}
@@ -184,7 +188,8 @@ def test_buildcache_round_trip(commands: Commands, secrets_file: Path, password_
     )
     assert push.returncode == 0, push.stdout[-4000:] + push.stderr[-4000:]
 
-    check = commands.shell(f"seanerstack {options} buildcache check", env=_environment())
+    # Everything init needs is in the state now: no config, Spack or secrets file.
+    check = commands.shell(f"seanerstack --state-dir {shlex.quote(str(state))} init", env=_environment())
     assert check.returncode == 0, check.stdout + check.stderr
     assert f"[OK] buildcache:{E2E_BUILDCACHE}" in check.stdout, check.stdout
     assert f"{E2E_SPEC.partition('@')[0]}@" in check.stdout, check.stdout
@@ -192,7 +197,7 @@ def test_buildcache_round_trip(commands: Commands, secrets_file: Path, password_
     # With nothing installed any more, the spec can only come from the cache.
     pull = commands.shell(
         f"""
-        eval "$(seanerstack {options} activate)"
+        export PATH={wrapper}:$PATH
         spack uninstall --all --yes-to-all
         spack install --use-buildcache only {E2E_SPEC}
         spack find {E2E_SPEC}
@@ -201,8 +206,9 @@ def test_buildcache_round_trip(commands: Commands, secrets_file: Path, password_
     )
     assert pull.returncode == 0, pull.stdout[-4000:] + pull.stderr[-4000:]
 
-    assert not any(result.leaked for result in (configure, push, check, pull))
-    # Spack's mirror configuration names the variables, never the token.
+    assert not any(result.leaked for result in (push, check, pull))
+    # Spack's mirror configuration names the variables, never the token, which
+    # is only in the two credentials files.
     mirrors = (state / "spack" / "config" / "mirrors.yaml").read_text(encoding="utf-8")
     assert all(name in mirrors for name in E2E_VARIABLES), mirrors
-    assert _files_containing(state, commands.token) == []
+    assert set(_files_containing(state, commands.token)) == {state / "credentials.json", state / "spack" / "credentials.sh"}
