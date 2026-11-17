@@ -237,3 +237,49 @@ def test_bootstrap_dry_run_removes_no_compiler(monkeypatch):
     )
 
     assert not any(call[len(COMMAND):len(COMMAND) + 2] == ["compiler", "remove"] for call in calls)
+
+
+def test_bootstrap_builds_the_compiler_with_the_source_compiler(monkeypatch):
+    calls = _fake_spack(monkeypatch)
+
+    bootstrap_module.bootstrap(
+        "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV, source_compiler="gcc@14.2.1"
+    )
+
+    assert _install(calls) == [*COMMAND, "install", "gcc@15", "%c,cxx=gcc@14.2.1"]
+
+
+def test_bootstrap_removes_only_the_compilers_its_spec_matches(monkeypatch):
+    # gcc@16 or clang, found by init, stay for --source-compiler.
+    calls = _fake_spack(monkeypatch)
+
+    bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV)
+
+    assert _remove(calls) == [*COMMAND, "compiler", "remove", "-a", "gcc@15"]
+
+
+def test_an_external_compiler_takes_no_source_compiler(monkeypatch):
+    _fake_spack(monkeypatch)
+    with pytest.raises(ValueError, match="takes no source compiler"):
+        bootstrap_module.bootstrap(
+            "gcc@16", languages=("c",), probe="zlib", command=COMMAND, env=ENV, external="/usr", source_compiler="gcc@14"
+        )
+
+
+def test_an_external_package_is_registered_and_never_built(monkeypatch, tmp_path):
+    calls = _fake_spack(monkeypatch)
+    (tmp_path / "bin").mkdir()
+
+    bootstrap_module.use_external_package(COMMAND, "rust", str(tmp_path), ENV)
+
+    assert calls == [
+        [*COMMAND, "external", "find", "--path", str(tmp_path / "bin"), "rust"],
+        [*COMMAND, "config", "add", "packages:rust:buildable:false"],
+    ]
+
+
+def test_the_toolchain_packages_are_installed_together(monkeypatch):
+    calls = _fake_spack(monkeypatch)
+    bootstrap_module.install_packages(COMMAND, ["rust", "capnproto"], ENV)
+    bootstrap_module.install_packages(COMMAND, [], ENV)
+    assert calls == [[*COMMAND, "install", "rust", "capnproto"]]

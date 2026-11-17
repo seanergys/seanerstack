@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import json
 import os
+from pathlib import Path
 import re
 import subprocess
 
@@ -138,27 +139,29 @@ def _check_external(command: list[str], compiler: str, prefix: str, env, timeout
         )
 
 
-def _install_compiler(command: list[str], compiler: str, env) -> None:
+def _install_compiler(command: list[str], compiler: str, env, source: str | None = None) -> None:
     """Build the compiler, even where the system compiler has the same version.
 
     The system compiler is registered as an external, and an external that
     satisfies the spec is taken instead of a build: on Ubuntu 26.04,
     `install gcc@15` takes the system GCC 15.2.0 and installs nothing. An
     external is a leaf, so asking for a C compiler as a dependency rules it
-    out, while the system compiler can still be that dependency.
+    out, while the system compiler can still be that dependency. `source`
+    names the registered compiler that builds it; by default Spack chooses.
     """
-    _run_streaming([*command, "install", compiler, "%c"], env=env)
+    _run_streaming([*command, "install", compiler, f"%c,cxx={source}" if source else "%c"], env=env)
 
 
 def _replace_registered_compilers(command: list[str], compiler: str, prefix: str, env) -> None:
-    """Make the installed compiler the only registered compiler of its name.
+    """Make the installed compiler the only registered one that its spec matches.
 
-    The system compiler that built it stays registered, and the language
-    requirements would accept it too where its version matches, so packages
-    could be built with it instead. A name without registered compilers makes
+    A system compiler that the spec matches too, such as gcc 15.2.0 for
+    gcc@15, would satisfy the language requirements as well, so packages could
+    be built with it instead. Other compilers, such as gcc 16 or clang, stay
+    registered for --source-compiler. A spec that matches nothing makes
     `compiler remove` fail, which is fine.
     """
-    _run([*command, "compiler", "remove", "-a", _compiler_name(compiler)], check=False, env=env)
+    _run([*command, "compiler", "remove", "-a", compiler], check=False, env=env)
     _register_compiler(command, prefix, env)
 
 
@@ -202,17 +205,21 @@ def bootstrap(
     dry_run: bool = False,
     probe_timeout: float | None = DEFAULT_PROBE_TIMEOUT,
     external: str | None = None,
+    source_compiler: str | None = None,
 ) -> BootstrapResult:
     """Make COMPILER the compiler of every SEANERGYS build.
 
-    Without `external`, Spack installs COMPILER unless it already has, and the
-    installation is registered as an external. With `external`, a compiler
-    already in that prefix, such as /usr or a gcc-toolset, is registered
-    instead and nothing is built; COMPILER must name it.
+    Without `external`, Spack installs COMPILER unless it already has, built
+    with `source_compiler` or Spack's choice, and the installation is
+    registered as an external. With `external`, a compiler already in that
+    prefix, such as /usr or a gcc-toolset, is registered instead and nothing
+    is built; COMPILER must name it.
     """
     command = command or ["spack"]
     if not languages:
         raise ValueError("at least one compiler language is required")
+    if external is not None and source_compiler:
+        raise ValueError("an external compiler is not built, so it takes no source compiler")
     if external is not None:
         if force:
             raise ValueError("--force builds the compiler, and an external compiler is not built")
@@ -227,7 +234,7 @@ def bootstrap(
     already_installed = prefix is not None
     if (force or not already_installed) and not dry_run:
         _ensure_system_compiler(command, env)
-        _install_compiler(command, compiler, env)
+        _install_compiler(command, compiler, env, source_compiler)
         prefix = _compiler_prefix(command, compiler, env)
 
     registered = False
@@ -317,3 +324,21 @@ def _bootstrap_external(
         probe_ok=_same_prefix(node, prefix),
         external=prefix,
     )
+
+
+def use_external_package(command: list[str], name: str, prefix: str, env) -> None:
+    """Use an installed package, found by init, instead of building it.
+
+    Registers what is installed below `prefix` and stops Spack from building
+    the package, so that every spec that needs it takes this one. Its hash
+    then depends on this machine.
+    """
+    directory = Path(prefix) / "bin"
+    _run([*command, "external", "find", "--path", str(directory if directory.is_dir() else prefix), name], env=env)
+    _run([*command, "config", "add", f"packages:{name}:buildable:false"], env=env)
+
+
+def install_packages(command: list[str], packages: list[str], env) -> None:
+    """Install the toolchain's packages, such as rust, with the toolchain compiler."""
+    if packages:
+        _run_streaming([*command, "install", *packages], env=env)

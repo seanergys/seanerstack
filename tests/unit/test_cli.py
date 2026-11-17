@@ -215,3 +215,108 @@ def test_init_prints_the_compilers_and_packages_it_found_and_records_find(monkey
     # A later init searches there again without being told.
     cli._run_init(_init_args(tmp_path, find=None))
     assert searched[-1] == [toolset.resolve()]
+
+
+def _bootstrap_world(monkeypatch, tmp_path: Path, *, compilers=(), detected=None, system="rocky10"):
+    """init's world, with a toolchain of gcc@15, rust and capnproto, recording what bootstrap does."""
+    from seanerstack.config import Resource, Toolchain
+    x, calls = _init_world(monkeypatch, tmp_path)
+    toolchain = Toolchain(compiler="gcc@15", packages=("rust", "capnproto"), cache="cache", target="x86_64_v3", platforms={})
+    cache = Resource(name="cache", kind="spack-buildcache", url="oci://registry.example.org/cache", credentials="registry", signed=False)
+    monkeypatch.setattr(cli, "load_config", lambda path: Config(path=tmp_path / "config.toml", resources={"cache": cache}, toolchain=toolchain))
+    monkeypatch.setattr(cli, "registered_compilers", lambda x: list(compilers))
+    monkeypatch.setattr(cli, "load_detected", lambda x: dict(detected or {}))
+    monkeypatch.setattr(cli.subprocess, "run", lambda args, **kwargs: cli.subprocess.CompletedProcess(args, 0, f"{system}\n", ""))
+
+    def fake_bootstrap(compiler, **kwargs):
+        calls.append(("bootstrap", compiler, kwargs["source_compiler"], kwargs["external"]))
+        return BootstrapResult(compiler=compiler, installed=True, registered=True, languages=("c",), probe="zlib", probe_ok=True)
+
+    monkeypatch.setattr(cli, "bootstrap", fake_bootstrap)
+    monkeypatch.setattr(cli, "install_packages", lambda command, packages, env: calls.append(("install", list(packages))))
+    monkeypatch.setattr(cli, "use_external_package", lambda command, name, prefix, env: calls.append(("external", name, prefix)))
+    return calls
+
+
+def _bootstrap_args(tmp_path: Path, **overrides):
+    return _init_args(tmp_path, **{"compiler": None, "dry_run": False, **overrides})
+
+
+def test_bootstrap_builds_the_compiler_then_rust_and_the_other_packages(monkeypatch, tmp_path: Path):
+    calls = _bootstrap_world(monkeypatch, tmp_path)
+
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path)) == 0
+
+    assert calls == ["target=x86_64_v3", ("bootstrap", "gcc@15", None, None), ("install", ["rust", "capnproto"])]
+
+
+def test_bootstrap_takes_the_packages_compiler_and_target_given(monkeypatch, tmp_path: Path):
+    calls = _bootstrap_world(monkeypatch, tmp_path)
+
+    cli._run_bootstrap(_bootstrap_args(tmp_path, packages=["rust"], compiler="gcc@16.2.0", target="x86_64_v4"))
+
+    assert calls == ["target=x86_64_v4", ("bootstrap", "gcc@16.2.0", None, None), ("install", ["rust"])]
+
+
+def test_bootstrap_builds_with_a_source_compiler_that_init_found(monkeypatch, tmp_path: Path):
+    from seanerstack.discovery import Found
+    found = [Found("gcc@11.5.0", "/usr"), Found("gcc@14.2.1", "/opt/rh/gcc-toolset-14/root/usr")]
+    calls = _bootstrap_world(monkeypatch, tmp_path, compilers=found)
+
+    cli._run_bootstrap(_bootstrap_args(tmp_path, source_compiler="gcc@14"))
+
+    assert ("bootstrap", "gcc@15", "gcc@14.2.1", None) in calls
+
+
+def test_bootstrap_uses_an_external_compiler_and_package_and_warns(monkeypatch, tmp_path: Path, capsys):
+    from seanerstack.discovery import Found
+    calls = _bootstrap_world(
+        monkeypatch, tmp_path, compilers=[Found("gcc@16.2.1", "/usr")], detected={"rust": [Found("rust@1.97.1", "/usr")]}
+    )
+
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path, external=["gcc@16", "rust"])) == 0
+
+    assert calls == [
+        "target=x86_64_v3", ("bootstrap", "gcc@16.2.1", None, "/usr"), ("external", "rust", "/usr"), ("install", ["capnproto"]),
+    ]
+    out = capsys.readouterr().out
+    assert "gcc@16.2.1, rust@1.97.1 came from this machine" in out
+    assert "filesystem build cache" in out
+
+
+def test_bootstrap_names_what_init_found_when_nothing_matches(monkeypatch, tmp_path: Path):
+    import pytest
+    from seanerstack.discovery import Found
+    _bootstrap_world(monkeypatch, tmp_path, compilers=[Found("gcc@16.2.1", "/usr")], detected={})
+
+    with pytest.raises(ValueError, match=r"(?s)--external rust matches none of the compilers and packages that init found.*gcc@16.2.1"):
+        cli._run_bootstrap(_bootstrap_args(tmp_path, external=["rust"]))
+    with pytest.raises(ValueError, match=r"(?s)--source-compiler clang matches none of the compilers.*gcc@16.2.1  /usr"):
+        cli._run_bootstrap(_bootstrap_args(tmp_path, source_compiler="clang"))
+
+
+def test_bootstrap_refuses_an_ambiguous_choice(monkeypatch, tmp_path: Path):
+    import pytest
+    from seanerstack.discovery import Found
+    _bootstrap_world(monkeypatch, tmp_path, compilers=[Found("gcc@14.2.1", "/usr"), Found("gcc@14.3.1", "/opt/x")])
+
+    with pytest.raises(ValueError, match="matches more than one"):
+        cli._run_bootstrap(_bootstrap_args(tmp_path, source_compiler="gcc@14"))
+
+
+def test_bootstrap_fails_on_another_operating_system(monkeypatch, tmp_path: Path):
+    import pytest
+    calls = _bootstrap_world(monkeypatch, tmp_path, system="fedora44")
+
+    with pytest.raises(ValueError, match="this machine is fedora44, not rocky10"):
+        cli._run_bootstrap(_bootstrap_args(tmp_path, os="rocky10"))
+    assert not any(isinstance(call, tuple) for call in calls)
+
+
+def test_an_external_compiler_excludes_building_one(monkeypatch, tmp_path: Path):
+    import pytest
+    from seanerstack.discovery import Found
+    _bootstrap_world(monkeypatch, tmp_path, compilers=[Found("gcc@16.2.1", "/usr"), Found("gcc@14.2.1", "/usr")])
+
+    with pytest.raises(ValueError, match="--compiler and --source-compiler do not apply"):
+        cli._run_bootstrap(_bootstrap_args(tmp_path, external=["gcc@16"], source_compiler="gcc@14"))

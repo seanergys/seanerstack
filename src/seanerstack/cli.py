@@ -8,10 +8,10 @@ from pathlib import Path
 import subprocess
 import sys
 
-from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_PROBE_TIMEOUT, bootstrap, require_target
+from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_PROBE_TIMEOUT, bootstrap, install_packages, require_target, use_external_package
 from .buildcache import buildcaches, check_buildcaches, configure_buildcaches
 from .config import Config, load_config
-from .discovery import describe, detect_packages, find_compilers, registered_compilers, save_detected
+from .discovery import describe, detect_packages, find_compilers, load_detected, matching, registered_compilers, save_detected
 from .paths import environments_path, repository_path, share_path
 from .pins import SPACK_VERSION
 from .prepare import prepare_here, prepare_in_container
@@ -81,13 +81,26 @@ def build_parser() -> argparse.ArgumentParser:
     toolchain_sub = toolchain_parser.add_subparsers(dest="toolchain_command", required=True)
     bootstrap_parser = toolchain_sub.add_parser(
         "bootstrap",
-        help="Bootstrap a Spack-installed production compiler.",
+        help="Install the toolchain: its compiler, then its packages, such as rust.",
         description=(
-            "Install COMPILER through Spack if needed, then configure native Spack "
-            "language-provider requirements so subsequent environment concretization uses it."
+            "Install the compiler of [toolchain] in config.toml and make it the compiler of every "
+            "build in the state, then install the toolchain's packages with it, such as rust. Each "
+            "comes from the project build cache where the cache holds it, so the hours that GCC and "
+            "Rust take to build are spent once. Run init first: it registers the compilers and "
+            "detects the packages that --source-compiler and --external choose from."
         ),
     )
-    bootstrap_parser.add_argument("compiler", nargs="?", help="Spack compiler spec (default: the compiler of [toolchain] in config.toml)")
+    bootstrap_parser.add_argument(
+        "packages", nargs="*", metavar="PACKAGE",
+        help="the packages to install after the compiler (default: the packages of [toolchain], such as rust and capnproto)",
+    )
+    bootstrap_parser.add_argument("--compiler", metavar="SPEC", help="the compiler to build (default: the compiler of [toolchain], such as gcc@15)")
+    bootstrap_parser.add_argument(
+        "--source-compiler", metavar="SPEC",
+        help="the compiler that builds it, one that init found, such as gcc@14 (default: Spack's choice)",
+    )
+    bootstrap_parser.add_argument("--target", help="the CPU target of every build (default: the target of [toolchain], such as x86_64_v3)")
+    bootstrap_parser.add_argument("--os", metavar="NAME", help="fail unless this machine is NAME, as Spack names it, such as rocky10")
     bootstrap_parser.add_argument(
         "--language",
         action="append",
@@ -97,7 +110,11 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap_parser.add_argument("--probe", default=DEFAULT_PROBE, help=f"spec used to probe concretization (default: {DEFAULT_PROBE})")
     bootstrap_parser.add_argument("--probe-timeout", type=float, default=DEFAULT_PROBE_TIMEOUT, help=f"seconds to allow the probe before giving up (default: {DEFAULT_PROBE_TIMEOUT:g}); 0 waits indefinitely")
     bootstrap_parser.add_argument("--force", action="store_true", help="ask Spack to install the compiler even when it is already installed")
-    bootstrap_parser.add_argument("--external", metavar="PREFIX", help="use the compiler already in PREFIX, such as /usr or a gcc-toolset, instead of building COMPILER; COMPILER must name it, for example gcc@16")
+    bootstrap_parser.add_argument(
+        "--external", action="append", metavar="SPEC",
+        help="use what init found instead of building it: a compiler, such as gcc@16, or a package, "
+        "such as rust; repeat as needed. Its hashes then match nothing in the project build cache",
+    )
     bootstrap_parser.add_argument("--dry-run", action="store_true", help="show the intended operation without changing Spack configuration")
 
     validate_parser = subparsers.add_parser(
@@ -230,15 +247,57 @@ def _probe_warning(result) -> str:
     return "warning: compiler name not visible in probe output"
 
 
+def _only(found: list, wanted: str, option: str, kind: str, among: list) -> object:
+    """The one entry that `wanted` names, or an error that lists what there is."""
+    if len(found) == 1:
+        return found[0]
+    listed = "\n".join(f"  {line}" for line in describe(among)) or "  none"
+    problem = "matches more than one" if found else "matches none"
+    raise ValueError(f"{option} {wanted} {problem} of the {kind} that init found; run init again to look again:\n{listed}")
+
+
 def _run_bootstrap(args: argparse.Namespace) -> int:
     languages = tuple(args.language) if args.language else DEFAULT_LANGUAGES
-    compiler = args.compiler
+    config, _ = _runtime(args)
+    toolchain = config.toolchain
+    compiler = args.compiler or (toolchain.compiler if toolchain else None)
+    packages = list(args.packages) if args.packages else list(toolchain.packages if toolchain else ())
+    target = args.target or (toolchain.target if toolchain else None)
+    x, _, command, env = _spack_runtime(args)
+
+    if args.os is not None:
+        system = subprocess.run(
+            [*command, "arch", "--operating-system"], check=True, capture_output=True, text=True, env=env
+        ).stdout.strip()
+        if system != args.os:
+            raise ValueError(f"this machine is {system}, not {args.os}")
+
+    compilers = registered_compilers(x)
+    detected = load_detected(x)
+    external_compiler = None
+    external_packages = []
+    for wanted in args.external or []:
+        if matching(compilers, wanted):
+            external_compiler = _only(matching(compilers, wanted), wanted, "--external", "compilers", compilers)
+            continue
+        candidates = matching(detected.get(wanted.partition("@")[0], []), wanted)
+        everything = [item for items in detected.values() for item in items]
+        if candidates:
+            external_packages.append(_only(candidates, wanted, "--external", "packages", everything))
+        else:
+            _only([], wanted, "--external", "compilers and packages", compilers + everything)
+    if external_compiler is not None and (args.compiler or args.source_compiler):
+        raise ValueError("--external names the compiler to use, so --compiler and --source-compiler do not apply")
+    source = None
+    if args.source_compiler:
+        source = _only(matching(compilers, args.source_compiler), args.source_compiler, "--source-compiler", "compilers", compilers).spec
+    if external_compiler is not None:
+        compiler = external_compiler.spec
     if compiler is None:
-        config, _ = _runtime(args)
-        if config.toolchain is None:
-            raise ValueError(f"{config.path}: [toolchain] is missing; name the compiler")
-        compiler = config.toolchain.compiler
-    _, _, command, env = _spack_runtime(args)
+        raise ValueError(f"{config.path}: [toolchain] is missing; give --compiler")
+
+    if target and not args.dry_run:
+        require_target(command, target, env)
     result = bootstrap(
         compiler,
         languages=languages,
@@ -248,20 +307,39 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
         force=args.force,
         dry_run=args.dry_run,
         probe_timeout=args.probe_timeout or None,
-        external=args.external,
+        external=external_compiler.prefix if external_compiler else None,
+        source_compiler=source,
     )
     if args.dry_run:
         if result.external:
             print(f"would use the {result.compiler} in {result.external}, building nothing")
         else:
-            print(f"would bootstrap {result.compiler}")
+            print(f"would bootstrap {result.compiler}" + (f", built with {source}" if source else ""))
         print(f"would require it for: {', '.join(result.languages)}")
+        print(f"would install: {', '.join(packages) or 'nothing more'}")
         return 0
-    print(f"compiler: {result.compiler}{f' in {result.external}' if result.external else ''}")
+    built = f" in {result.external}" if result.external else f", built with {source}" if source else ""
+    print(f"compiler: {result.compiler}{built}")
     print(f"registered as external: {'yes' if result.registered else 'no'}")
     print(f"languages: {', '.join(result.languages)}")
     print(f"compiler probe ({result.probe}): {'ok' if result.probe_ok else _probe_warning(result)}")
-    return 0 if result.probe_ok else 1
+    if not result.probe_ok:
+        return 1
+
+    for found in external_packages:
+        use_external_package(command, found.name, found.prefix, env)
+        print(f"package: {found.spec} (external, {found.prefix})")
+    install_packages(command, [package for package in packages if package not in {found.name for found in external_packages}], env)
+
+    externals = ([external_compiler] if external_compiler else []) + external_packages
+    if externals:
+        print()
+        print(
+            f"warning: {', '.join(found.spec for found in externals)} came from this machine, so the hashes "
+            "of everything built with them match nothing in the project build cache. Keep what you build "
+            "in a filesystem build cache to reuse it: see 'Use a filesystem build cache' in the docs."
+        )
+    return 0
 
 
 def _run_init(args: argparse.Namespace) -> int:
