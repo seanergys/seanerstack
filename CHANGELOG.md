@@ -41,6 +41,11 @@ and release process.
 - The `spack` wrapper in `<state>/spack/bin` works in any shell: it carries the
   state's settings and loads the stored credentials. Put it on `PATH` once.
 - `init` checks that every build cache and every Git resource can be read.
+- `seanergys-meta` depends on the packages that build with the project
+  toolchain: `flux-core`, `priorisea`, `properdocs`, `pscom`, `py-pycapnp`,
+  `seanerbus`, `seanerbus-cli`, `seanerbus-msg` and `seanerbus-rs`. The
+  `build:rocky10` job builds it in every pipeline. `psmpi` and
+  `telemetry-collector` join it once they build.
 
 ### Changed
 
