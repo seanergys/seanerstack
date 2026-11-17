@@ -37,6 +37,7 @@ def _init_args(tmp_path: Path, **overrides) -> "cli.argparse.Namespace":
         external=None,
         skip_buildcache_check=False,
         skip_validate=False,
+        find=None,
     )
     defaults.update(overrides)
     return cli.argparse.Namespace(**defaults)
@@ -91,6 +92,11 @@ def _init_world(monkeypatch, tmp_path: Path, *, buildcache_ok=True, git_ok=True)
     monkeypatch.setattr(cli, "require_target", lambda command, target, env: calls.append(f"target={target}"))
     monkeypatch.setattr(cli, "check_buildcaches", lambda config, secrets, **kwargs: calls.append("check") or [("cache", buildcache_ok, "")])
     monkeypatch.setattr(cli, "check_git_access", lambda config, secrets: calls.append("git") or [("gitlab", git_ok, "")])
+    # Nothing installed on the machine; the tests of discovery cover finding it.
+    monkeypatch.setattr(cli, "find_compilers", lambda command, env, prefixes: None, raising=False)
+    monkeypatch.setattr(cli, "registered_compilers", lambda x: [], raising=False)
+    monkeypatch.setattr(cli, "detect_packages", lambda command, env, packages, prefixes: {}, raising=False)
+    monkeypatch.setattr(cli, "save_detected", lambda x, detected: None, raising=False)
 
     def no_compiler(*args, **kwargs):
         raise AssertionError("init installs no compiler")
