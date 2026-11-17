@@ -36,4 +36,4 @@ def test_the_nightly_toolchain_job_needs_no_docker_daemon():
     job = _toolchain_job()
     assert job["tags"] == ["docker", "seanerstack"]
     assert "services" not in job
-    assert "--no-container" in job["script"][-1]
+    assert any("buildcache prepare --no-container" in step for step in job["script"])
