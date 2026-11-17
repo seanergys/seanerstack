@@ -130,4 +130,6 @@ def test_version_names_seanerstack_and_its_pinned_spack(capsys):
     with pytest.raises(SystemExit) as stop:
         build_parser().parse_args(["--version"])
     assert stop.value.code == 0
-    assert capsys.readouterr().out == f"seanerstack {importlib.metadata.version('seanerstack')} (Spack 1.2.2)\n"
+    import seanerstack.pins
+    spack = seanerstack.pins.SPACK_VERSION.removeprefix("v")
+    assert capsys.readouterr().out == f"seanerstack {importlib.metadata.version('seanerstack')} (Spack {spack})\n"
