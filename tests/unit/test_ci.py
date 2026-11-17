@@ -58,3 +58,18 @@ def test_the_rocky10_build_job_explains_after_bootstrap_and_before_it_installs()
     assert bootstrap < explain < install
     assert "seanergys-meta" in script[explain - 1]
     assert "|| true" in script[explain]
+
+
+def test_the_nightly_toolchain_job_runs_spack_with_the_python_of_its_platform():
+    job = _toolchain_job()
+    setup = job["before_script"]
+    export = setup.index('export SPACK_PYTHON="$(command -v "$PYTHON")"')
+    # Before Spack first runs, and for every step after it, explain included.
+    assert setup.index('"$PYTHON" -m venv /opt/seanerstack') < export
+    assert not any("SPACK_PYTHON" in step for step in job["script"])
+
+
+def test_the_nightly_toolchain_job_asks_only_for_the_python_of_its_platform():
+    # Not every Python has a pip package of its own, and venv needs none.
+    (install,) = [step for step in _toolchain_job()["before_script"] if "dnf install" in step]
+    assert 'dnf install -y --setopt=install_weak_deps=False "$PYTHON"\n' in install

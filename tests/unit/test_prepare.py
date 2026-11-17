@@ -138,6 +138,18 @@ def test_the_container_uses_the_python_of_its_platform():
     assert "python3.12 -m venv /opt/seanerstack" in script
 
 
+def test_the_container_runs_spack_with_the_python_of_its_platform():
+    script = _prepare.container_script(ROCKY9, jobs=1, source=False, uid=0, gid=0, version="1").splitlines()
+    export = script.index('export SPACK_PYTHON="$(command -v python3.12)"')
+    assert export < next(index for index, line in enumerate(script) if "buildcache prepare" in line)
+
+
+def test_fedora_45_takes_a_python_that_spack_has_a_clingo_binary_for():
+    fedora45 = load_config().toolchain.platforms["fedora45"]
+    assert fedora45.python == "python3.14"
+    assert "python3.14" in fedora45.system_packages
+
+
 def test_the_container_state_is_where_the_binaries_of_the_caches_relocate_to():
     assert _prepare.CONTAINER_STATE == "/opt/seanergys/state"
 
