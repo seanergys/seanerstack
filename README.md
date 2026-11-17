@@ -34,11 +34,17 @@ seanerstack paths env --package properdocs
 For example:
 
 ```console
-export SEANERSTACK_STATE_DIR=/path/to/seanerstack-state
-seanerstack toolchain bootstrap gcc@15
-eval "$(seanerstack activate)"
-spack env activate "$(seanerstack paths env --package properdocs)"
+seanerstack --secrets-file secrets.toml init
+export PATH=/opt/seanergys/state/spack/bin:$PATH
+seanerstack toolchain bootstrap
+eval "$(spack env activate --sh "$(seanerstack paths env --package properdocs)")"
 ```
+
+`init` sets up the state directory, by default `/opt/seanergys/state`, once:
+the pinned Spack, the configuration, the credentials, the build caches and the
+CPU target. It checks access to every resource and installs no compiler; no
+later command needs its options again. `seanerstack --version` prints the
+Seanerstack version and the Spack version it pins.
 
 ## Development
 
@@ -154,11 +160,8 @@ seanerstack \
 For interactive use, omit `--secrets-password-file`; Seanerstack prompts for the
 vault password. CI may use `--secrets-password-stdin` instead.
 
-Configure the Spack binary build caches from `config.toml` in the selected isolated state with:
-
-```console
-seanerstack --state-dir /path/to/seanerstack-state buildcache configure
-```
+`seanerstack init` configures the Spack binary build caches from `config.toml`
+in the state; `seanerstack buildcache configure` does it again on its own.
 
 A build cache with an `oci://` URL lives in a container registry and takes
 `username` plus `password` or `token`; Spack cannot sign OCI caches, so such a
@@ -170,43 +173,33 @@ cache, `seanerstack-buildcache`, is the seanerstack GitLab container registry.
 
 Seanerstack stores only environment-variable references in Spack's mirror
 configuration. It never writes S3 keys or registry tokens into Spack
-configuration. The actual variables must be present in any later native
-`spack` process that accesses a private cache; this is intentionally left as a
-process/session concern rather than storing decrypted credentials on disk.
+configuration. `seanerstack init --secrets-file FILE` stores the credentials
+that the resources name in the state directory instead, readable only by
+their owner, and the state's `spack` wrapper loads them into every Spack
+process.
 
-## Isolated Spack session
+## Isolated Spack state
 
-Seanerstack keeps Spack configuration and mutable state inside one explicitly selected
-state directory. It does not use `~/.spack`, `/etc/spack`, another Spack store, or
-another Spack cache for Seanerstack-managed operations.
+Seanerstack keeps its Spack, the Spack configuration and the mutable state
+inside one state directory, by default `/opt/seanergys/state`; `--state-dir DIR`
+or `SEANERSTACK_STATE_DIR` selects another. It does not use `~/.spack`,
+`/etc/spack`, another Spack store, or another Spack cache.
 
-Activate a shell with:
+`seanerstack init` writes a `spack` wrapper into the state. Put it on `PATH`
+once, for example in `~/.bashrc`:
 
 ```console
-$ eval "$(seanerstack --state-dir /path/to/seanerstack-state activate)"
+$ export PATH=/opt/seanergys/state/spack/bin:$PATH
 $ spack find
 $ spack install <spec>
 ```
 
-After activation, plain `spack` is the native Spack CLI executed with Seanerstack's
-private configuration. The session sets `SEANERSTACK_STATE_DIR`, disables normal
-local Spack configuration, redirects Spack user data, and places a transparent
-launcher first on `PATH`. The private tree contains the install store, build
-stages, source and miscellaneous caches, managed environments, and configuration.
-
-If the private build cache needs credentials, activate with the existing secrets
-options, for example:
-
-```console
-$ eval "$(seanerstack --state-dir /path/to/seanerstack-state --secrets-file secrets.toml activate)"
-```
-
-Leave the session with:
-
-```console
-$ eval "$(seanerstack deactivate)"
-```
+Plain `spack` is then the native Spack CLI of the pinned version, run with
+Seanerstack's private configuration and the stored credentials, in any shell.
+The wrapper redirects Spack user data and removes `SPACK_DISABLE_LOCAL_CONFIG`.
+The private tree contains the install store, build stages, source and
+miscellaneous caches, managed environments, and configuration.
 
 `toolchain bootstrap`, Spack-backed validation, and build-cache commands use the
-same isolated state. Outside an activated shell, pass `--state-dir DIR` or set
-`SEANERSTACK_STATE_DIR`. There is intentionally no public Spack `--scope` option.
+same state and what `init` recorded in it. There is intentionally no public
+Spack `--scope` option.

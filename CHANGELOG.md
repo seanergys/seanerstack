@@ -31,6 +31,13 @@ and release process.
   version into the state directory on first use, and refuses a Spack of another
   version given with `--spack-executable` or `SEANERSTACK_REAL_SPACK`, because its
   specs, build-cache indexes and hashes do not match the project build cache.
+- `seanerstack init --secrets-file FILE` stores the credentials that the
+  configured resources name in the state directory, readable only by their
+  owner, and records the `config.toml` and Spack it was given. Later commands
+  use them without `--secrets-file`, `--config-file` or `--spack-executable`.
+- The `spack` wrapper in `<state>/spack/bin` works in any shell: it carries the
+  state's settings and loads the stored credentials. Put it on `PATH` once.
+- `init` checks that every build cache and every Git resource can be read.
 
 ### Changed
 
@@ -43,9 +50,20 @@ and release process.
 - The state directory defaults to `/opt/seanergys/state` for every command, the
   directory in which the toolchain of the project build cache is built, because
   the install path of the compiler is part of every hash.
+- `seanerstack init` takes no compiler. It sets up the state, configures the
+  build caches and the CPU target of `[toolchain]`, and checks access;
+  `seanerstack toolchain bootstrap` then installs the compiler, which by default
+  is the one of `[toolchain]`.
+
+### Removed
+
+- `seanerstack activate` and `seanerstack deactivate`. Put the state's `spack`
+  wrapper on `PATH` instead.
 
 ### Fixed
 
+- `buildcache check` and `init` fail on a build cache whose index a newer Spack
+  wrote, which the pinned Spack cannot read, instead of reporting it as fine.
 - `seanerbus` declares its build dependency on `capnproto`, without which a clean
   build fails in the build script of `internal_schemas`.
 - `seanerstack package update` accepts a recipe without releases, which follows only

@@ -19,7 +19,7 @@ Seanerstack environments are concretized and installed
 
 The compiler recipe comes from the normal Spack repositories; Seanerstack does not carry its own GCC or LLVM recipe.
 
-`seanerstack toolchain bootstrap gcc@15` performs the project-specific transition from the initially available compiler to the Spack-installed production compiler. The compiler is established before package development environments are concretized, so compiler setup is separate from environment definitions.
+`seanerstack toolchain bootstrap` performs the project-specific transition from the initially available compiler to the Spack-installed production compiler, the compiler of `[toolchain]` in `config.toml`. It runs after `seanerstack init` has set up the state and checked access, so the compiler comes from the project build cache where the cache holds it. The compiler is established before package development environments are concretized, so compiler setup is separate from environment definitions.
 
 For normal SEANERGYS work, this is a workstation setup operation rather than a per-environment choice.
 
