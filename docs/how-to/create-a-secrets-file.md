@@ -6,7 +6,30 @@ keyloom chooses the file format by extension: `.toml`, `.yaml`/`.yml`, or `.json
 
 ## 1. Write the credential entries
 
-Each credential set is a table under `credentials`, named as the `credentials` key of the resource in `config.toml`. The fields depend on the kind of resource:
+The names of the entries are fixed: each resource in `config.toml` names the entry it reads with its `credentials` key. The `config.toml` that Seanerstack ships needs these two:
+
+| Entry | Used for | Token scope |
+| --- | --- | --- |
+| `credentials.seanergys-gitlab` | The SEANERGYS GitLab: reading the repositories of the private recipes. | `read_repository`, `read_api` |
+| `credentials.seanergys-registry` | The project build cache in the GitLab container registry. | `read_registry`; `write_registry` to push |
+
+One GitLab access token with these scopes serves both entries.
+
+Write `secrets.toml` with exactly these two tables. Mark every secret value with a `__keyloom__` wrapper. The value `__keyloom__secret__` is a placeholder whose secret is entered when the file is encrypted, so the token is never written to disk in plaintext:
+
+```toml
+[credentials.seanergys-gitlab]
+username = "oauth2"
+token = { __keyloom__ = "secret", value = "__keyloom__secret__" }
+
+[credentials.seanergys-registry]
+username = "oauth2"
+token = { __keyloom__ = "secret", value = "__keyloom__secret__" }
+```
+
+Seanerstack looks an entry up by this name only. An entry with another name is not read, and `seanerstack init` then reports that the resource cannot be read.
+
+A `config.toml` of your own, given with `--config-file`, can name further resources. Each takes an entry named as its `credentials` key, with the fields of its kind:
 
 | Resource | Fields |
 | --- | --- |
@@ -14,13 +37,7 @@ Each credential set is a table under `credentials`, named as the `credentials` k
 | Build cache with an `oci://` URL | `username` (default `oauth2`); `token` or `password` |
 | Build cache with any other URL (S3) | `access_key_id`, `secret_access_key`; optional `session_token` |
 
-Mark every secret value with a `__keyloom__` wrapper. The value `__keyloom__secret__` is a placeholder whose secret is entered when the file is encrypted, so it never has to be written to disk in plaintext:
-
 ```toml
-[credentials.seanergys-registry]
-username = "oauth2"
-token = { __keyloom__ = "secret", value = "__keyloom__secret__" }
-
 [credentials.objectstore]
 access_key_id = "AKIA..."
 secret_access_key = { __keyloom__ = "secret", value = "__keyloom__secret__" }
