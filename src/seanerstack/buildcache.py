@@ -59,7 +59,12 @@ def check_buildcaches(config: Config, secrets: SecretStore, *, command: list[str
         env = dict(os.environ if base_env is None else base_env)
         # An activated session already carries the credentials; only then is the vault skipped.
         if not all(name in env for name in resource.credential_variables):
-            env.update(spack_resource_environment(resource, secrets))
+            try:
+                env.update(spack_resource_environment(resource, secrets))
+            except ValueError as error:
+                # Missing credentials fail this cache, not the whole check.
+                results.append((resource.name, False, str(error)))
+                continue
         process = subprocess.run(
             [*command, "buildcache", "list", "--allarch"],
             check=False,

@@ -203,3 +203,13 @@ def test_buildcache_check_fails_on_an_index_that_a_newer_spack_wrote(monkeypatch
 
     assert (name, ok) == ("cache", False)
     assert "update-index" in message
+
+
+def test_buildcache_check_reports_missing_credentials_as_a_failed_cache(monkeypatch, tmp_path: Path):
+    calls = []
+    monkeypatch.setattr(buildcache.subprocess, "run", lambda args, **kwargs: calls.append(args))
+
+    results = buildcache.check_buildcaches(_registry_config(tmp_path), SecretStore(None), command=["spack"], base_env={})
+
+    assert results == [("registry", False, "resource requires credentials; provide --secrets-file FILE")]
+    assert calls == []
