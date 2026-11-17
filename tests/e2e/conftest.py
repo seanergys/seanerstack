@@ -40,6 +40,28 @@ PASSWORD = "e2e vault password"
 REDACTED = "<token>"
 
 
+REPOSITORY = Path(__file__).resolve().parents[2]
+REGISTRY_VARIABLES = (
+    "SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME",
+    "SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD",
+)
+# Small, and with no dependencies beyond the compiler runtime.
+E2E_SPEC = "zlib"
+
+
+def environment() -> dict[str, str]:
+    """The test environment, without any Seanerstack variables of the caller."""
+    env = {key: value for key, value in os.environ.items() if not key.startswith("SEANERSTACK_")}
+    # Git must use the askpass helper of Seanerstack, not stored credentials.
+    env.update({"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"})
+    return env
+
+
+def files_containing(root: Path, text: str) -> list[Path]:
+    needle = text.encode("utf-8")
+    return [path for path in root.rglob("*") if path.is_file() and needle in path.read_bytes()]
+
+
 def _unavailable(reason: str) -> None:
     if os.environ.get("SEANERSTACK_E2E_REQUIRED") == "1":
         pytest.fail(f"{reason}, and SEANERSTACK_E2E_REQUIRED=1")
