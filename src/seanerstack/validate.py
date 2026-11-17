@@ -158,19 +158,24 @@ def _validate_resources(repository: Path, config: Config) -> list[Finding]:
 
 
 def check_git_access(
-    config: Config, secrets: SecretStore, *, repository: Path | None = None
+    config: Config, secrets: SecretStore, *, repository: Path | None = None, every_recipe: bool = False
 ) -> list[tuple[str, bool, str]]:
     """Whether each Git resource can be read, tried on one recipe that uses it.
+
+    Access to a resource can still differ between its repositories: a CI job
+    token reads only the projects that allow it. `every_recipe` checks them all.
 
     @param config: the resources
     @param secrets: their credentials
     @param repository: the recipes (default: the shipped repository)
-    @return: one (resource, readable, message) for each Git resource of `config` that a recipe uses
+    @param every_recipe: check every recipe of a Git resource, not just one per resource
+    @return: one (name, readable, message) for each Git resource of `config` that a recipe uses,
+        or with `every_recipe`, for each such recipe, named after its package
     """
     from .recipe import parse_recipe
     results: list[tuple[str, bool, str]] = []
     checked: set[str] = set()
-    for path in package_paths(repository or repository_path()).values():
+    for package, path in package_paths(repository or repository_path()).items():
         recipe = parse_recipe(path)
         name = recipe.seanerstack_resource
         if not name or name in checked or not recipe.git:
@@ -179,21 +184,24 @@ def check_git_access(
         resource = config.resources.get(name)
         if resource is None or resource.kind != "git":
             continue
-        checked.add(name)
+        if not every_recipe:
+            checked.add(name)
+        subject = package if every_recipe else name
         try:
             read_remote_refs(recipe.git, auth=git_auth(resource, secrets))
         except subprocess.CalledProcessError as error:
-            results.append((name, False, (error.stderr or "").strip() or f"cannot read {recipe.git}"))
+            results.append((subject, False, (error.stderr or "").strip() or f"cannot read {recipe.git}"))
         except (RuntimeError, ValueError) as error:
-            results.append((name, False, str(error)))
+            results.append((subject, False, str(error)))
         else:
-            results.append((name, True, f"reads {recipe.git}"))
+            results.append((subject, True, f"reads {recipe.git}"))
     return results
 
 
 def validate(
     *,
     online: bool = False,
+    access: bool = False,
     with_spack: bool = False,
     compiler: str | None = None,
     languages: tuple[str, ...] = DEFAULT_LANGUAGES,
@@ -209,6 +217,12 @@ def validate(
     findings = _validate_packages(repository) + _validate_environments(environments)
     if config is not None:
         findings.extend(_validate_resources(repository, config))
+
+    if access:
+        if config is None or secrets is None:
+            raise ValueError("access validation requires the configuration and its credentials")
+        for package, ok, message in check_git_access(config, secrets, repository=repository, every_recipe=True):
+            findings.append(Finding("ok" if ok else "error", f"access:{package}", message))
 
     if online:
         results = sync_many(

@@ -122,6 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Validate recipes, environments, resources, and optional online/Spack state.",
     )
     validate_parser.add_argument("--online", action="store_true", help="also compare recipe versions with upstream Git refs")
+    validate_parser.add_argument("--access", action="store_true", help="also check that the repository of every recipe with a Git resource can be read")
     validate_parser.add_argument("--spack", action="store_true", dest="with_spack", help="also concretize copies of all environments with Spack")
     validate_parser.add_argument("--compiler", help="verify that this compiler is required for the selected languages")
     validate_parser.add_argument(
@@ -462,6 +463,7 @@ def _run_validate(args: argparse.Namespace) -> int:
         _, _, command, env = _spack_runtime(args)
     findings = validate(
         online=args.online,
+        access=args.access,
         with_spack=args.with_spack,
         compiler=args.compiler,
         languages=languages,

@@ -114,3 +114,37 @@ def test_git_access_leaves_out_resources_the_config_does_not_declare(tmp_path, m
     )
 
     assert results == []
+
+
+def test_git_access_of_every_recipe_names_each_package(tmp_path, monkeypatch):
+    import seanerstack.validate as validate_module
+    from seanerstack.secrets import SecretStore
+
+    def read(remote, auth):
+        if remote.endswith("/two.git"):
+            raise subprocess.CalledProcessError(128, ["git"], stderr="remote: The project you were looking for could not be found\n")
+
+    monkeypatch.setattr(validate_module, "read_remote_refs", read)
+    secrets = SecretStore(tmp_path / "vault", _data={"credentials": {"token": {"token": "glpat"}}})
+
+    results = validate_module.check_git_access(
+        _gitlab_config(tmp_path), secrets, repository=_git_recipes(tmp_path), every_recipe=True
+    )
+
+    assert sorted((name, ok) for name, ok, _ in results) == [("one", True), ("two", False)]
+
+
+def test_validate_access_reports_each_recipe(tmp_path, monkeypatch):
+    import seanerstack.validate as validate_module
+    from seanerstack.secrets import SecretStore
+    monkeypatch.setattr(validate_module, "read_remote_refs", lambda remote, auth: None)
+    secrets = SecretStore(tmp_path / "vault", _data={"credentials": {"token": {"token": "glpat"}}})
+    environments = tmp_path / "environments"
+    environments.mkdir()
+
+    findings = validate_module.validate(
+        access=True, repository=_git_recipes(tmp_path), environments=environments,
+        config=_gitlab_config(tmp_path), secrets=secrets,
+    )
+
+    assert {f.subject for f in findings if f.subject.startswith("access:")} == {"access:one", "access:two"}
