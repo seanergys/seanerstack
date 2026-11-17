@@ -174,7 +174,8 @@ access:
 # index, for the pipelines after it; merge requests only read, so that no
 # unreviewed recipe reaches the shared cache. Pushes of two pipelines at once
 # are safe, and an index that misses the other's binaries is complete again
-# after the next update-index.
+# after the next rebuild, which also leaves out binaries the pinned Spack
+# cannot read.
 build:rocky10:
   stage: build
   tags:
@@ -201,7 +202,14 @@ build:rocky10:
       "$PLATFORM")"
     - *job-token-secrets
   script:
-    - seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password init
+    # The default branch repairs an index that init cannot read, such as one a
+    # newer Spack wrote; merge requests only report it.
+    - |
+      if ! seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password init; then
+        [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ] || exit 1
+        seanerstack buildcache update-index
+        seanerstack init
+      fi
     - export PATH="/opt/seanergys/state/spack/bin:$PATH"
     - seanerstack toolchain bootstrap
     # Spack clones the private recipes with Git itself.
@@ -222,7 +230,7 @@ build:rocky10:
     - |
       if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
         spack buildcache push --only package seanerstack-buildcache $(spack find --format '/{hash}')
-        spack buildcache update-index seanerstack-buildcache
+        seanerstack buildcache update-index
       fi
     - exit "$status"
 
