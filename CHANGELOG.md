@@ -25,6 +25,12 @@ and release process.
 - `seanerbus-cli`, the command-line client of the SeanerBUS.
 - `telemetry-collector`, the SEANERGYS Telemetry Collector and its plugins, and the
   `telemetry-collector-dev` environment.
+- `seanerstack --version` prints the Seanerstack version and the Spack version
+  it pins.
+- Seanerstack pins Spack to v1.2.2, in `src/seanerstack/pins.py`. It clones that
+  version into the state directory on first use, and refuses a Spack of another
+  version given with `--spack-executable` or `SEANERSTACK_REAL_SPACK`, because its
+  specs, build-cache indexes and hashes do not match the project build cache.
 
 ### Changed
 
@@ -34,6 +40,9 @@ and release process.
   `seanerbroker` package, the name that upstream gave it on 2026-11-03.
 - The seanerbus packages clone no submodules. They depend on `seanerbus-rs`,
   `seanerbus-msg` and the `fmt` of Spack instead.
+- The state directory defaults to `/opt/seanergys/state` for every command, the
+  directory in which the toolchain of the project build cache is built, because
+  the install path of the compiler is part of every hash.
 
 ### Fixed
 
