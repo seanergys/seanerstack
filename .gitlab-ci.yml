@@ -338,8 +338,11 @@ toolchain:
       - PLATFORM: rocky9
         IMAGE: docker.io/rockylinux/rockylinux:9
         PYTHON: python3.12
+      # Spack has a clingo binary up to Python 3.14, and the python3 of
+      # Fedora 45 is 3.15, for which it would build clingo in every job.
       - PLATFORM: fedora45
         IMAGE: docker.io/library/fedora:45
+        PYTHON: python3.14
       - PLATFORM: fedora44
         IMAGE: docker.io/library/fedora:44
       - PLATFORM: debian13
@@ -364,7 +367,7 @@ toolchain:
     - PYTHON="${PYTHON:-python3}"
     - |
       if command -v dnf >/dev/null; then
-        dnf install -y --setopt=install_weak_deps=False "$PYTHON" "$PYTHON-pip"
+        dnf install -y --setopt=install_weak_deps=False "$PYTHON"
       elif command -v apt-get >/dev/null; then
         apt-get update
         DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3 python3-venv python3-pip
@@ -372,6 +375,9 @@ toolchain:
         pacman -Syu --noconfirm --needed python python-pip
       fi
     - '"$PYTHON" -m venv /opt/seanerstack'
+    # Spack runs with the Python of the platform, not with whichever python3
+    # the image has.
+    - export SPACK_PYTHON="$(command -v "$PYTHON")"
     - /opt/seanerstack/bin/pip install --quiet .
     - >-
       eval "$(/opt/seanerstack/bin/python -c 'import sys, seanerstack.config, seanerstack.prepare;

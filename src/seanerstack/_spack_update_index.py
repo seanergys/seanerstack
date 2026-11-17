@@ -29,31 +29,45 @@ def main(name: str) -> int:
     image = spack.oci.oci.image_from_mirror(mirror)
     tags = [tag for tag in spack.oci.oci.list_tags(image) if distribution.tag_is_spec(tag)]
 
-    # A registry that cannot be read stops the rebuild, as in Spack.
-    with concurrent.futures.ThreadPoolExecutor(16) as pool:
-        configs = dict(zip(tags, pool.map(lambda tag: distribution._oci_config_from_tag((image, tag)), tags)))
+    fetch = distribution._oci_config_from_tag
+    configs, left_out = {}, {}
 
-    left_out = {}
-    for tag, config in configs.items():
+    def record(tag, config):
+        configs[tag] = config
         if config is None:
             left_out[tag] = "not a spec"
-            continue
+            return
         try:
             spack.spec.Spec.from_dict(config)
         except (ValueError, KeyError, TypeError, spack.error.SpackError) as error:
             left_out[tag] = str(error)
 
+    # A registry that cannot be read stops the rebuild, as in Spack.
+    with concurrent.futures.ThreadPoolExecutor(16) as pool:
+        for tag, config in zip(tags, pool.map(lambda tag: fetch((image, tag)), tags)):
+            record(tag, config)
+
+    is_spec = distribution.tag_is_spec
+
+    def indexed(tag):
+        if not is_spec(tag):
+            return False
+        # Spack lists the tags again. A job that runs at the same time may
+        # have pushed a binary since the listing above, and it is read now.
+        if tag not in configs:
+            record(tag, fetch((image, tag)))
+        return tag not in left_out
+
     # Spack's rebuild, with the configs already fetched and without the specs
     # it cannot read. Threads, not Spack's process pool, which cannot run the
     # replacement for fetching a config.
-    is_spec = distribution.tag_is_spec
-    distribution.tag_is_spec = lambda tag: is_spec(tag) and tag not in left_out
+    distribution.tag_is_spec = indexed
     distribution._oci_config_from_tag = lambda image_and_tag: configs[image_and_tag[1]]
     with tempfile.TemporaryDirectory(dir=spack.stage.get_stage_root()) as tmpdir, \
             concurrent.futures.ThreadPoolExecutor(16) as executor:
         distribution._oci_update_index(image, tmpdir, executor)
 
-    print(f"indexed {len(tags) - len(left_out)} specs of {name}, left out {len(left_out)}")
+    print(f"indexed {len(configs) - len(left_out)} specs of {name}, left out {len(left_out)}")
     for tag, reason in sorted(left_out.items()):
         print(f"left out {tag}: {reason}")
     return 0
