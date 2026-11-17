@@ -2,18 +2,9 @@
 
 Use this procedure to prepare a machine for SEANERGYS work when a step needs a choice that the [tutorial](../tutorials/getting-started.md) leaves out: another installer, a compiler off `PATH`, another state directory, or an update of an existing installation. The steps are those of the tutorial, each with its options.
 
-## 1. Configure pipx for the SEANERGYS package registry
+## 1. Install or update Seanerstack
 
-Seanerstack is published to the SEANERGYS GitLab group's PyPI registry, which requires authentication even for read access. Create a GitLab personal, project, or group access token with at least the `read_api` scope, then point the installer at the registry as an extra index. [pipx](https://pipx.pypa.io/) uses `uv` or `pip` as its installer backend depending on its version, and they read different variables, so set both:
-
-```console
-export PIP_EXTRA_INDEX_URL="https://<token-name>:<token>@gitlab.seanergys.fz-juelich.de/api/v4/groups/158/-/packages/pypi/simple"
-export UV_EXTRA_INDEX_URL="$PIP_EXTRA_INDEX_URL"
-```
-
-Persist it instead of exporting it in every shell by adding the same assignments to your shell profile.
-
-## 2. Install or update Seanerstack
+Seanerstack is on PyPI:
 
 ```console
 pipx install --python python3.12 --include-deps seanerstack
@@ -25,7 +16,7 @@ Seanerstack requires Python 3.12 or newer. Pass `--python` explicitly: without i
 
 Use pipx rather than a plain `pip install`. Without a virtual environment, pip silently falls back to a `--user` installation on hosts where you cannot write to the system site-packages, and Seanerstack cannot find its shared data in that layout. pipx installs into an isolated virtual environment and needs no root access. Inside a virtual environment that you manage yourself, `pip install --upgrade seanerstack` works as well.
 
-If pipx is not available, for example on the login node of a cluster, install with [uv](https://docs.astral.sh/uv/) instead. It reads `UV_EXTRA_INDEX_URL` from step 1 and downloads Python 3.12 itself when the system one is older:
+If pipx is not available, for example on the login node of a cluster, install with [uv](https://docs.astral.sh/uv/) instead. It downloads Python 3.12 itself when the system one is older:
 
 ```console
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -37,9 +28,7 @@ Update it with `uv tool upgrade seanerstack`.
 
 `--include-deps` (`--with-executables-from keyloom` for uv) also puts the `keyloom` command on the PATH, which you need for the secrets file. pipx and uv otherwise expose only the commands of the package itself.
 
-Its dependencies, including `keyloom`, come from PyPI.
-
-## 3. Prepare the state directory
+## 2. Prepare the state directory
 
 Seanerstack keeps its Spack, configuration, install store, stages, caches, and managed environments in one state directory, by default `/opt/seanergys/state`. Use that directory: every binary hash contains the install path of the compiler that built it, so only a machine with the same state directory reuses the binaries of the project build cache. Create it once and make it yours:
 
@@ -50,7 +39,7 @@ sudo chown "$USER" /opt/seanergys/state
 
 Another directory can be given with `--state-dir DIR` or `SEANERSTACK_STATE_DIR`, but then nothing from the project build cache matches.
 
-## 4. Initialize Seanerstack
+## 3. Initialize Seanerstack
 
 ```console
 seanerstack --secrets-file secrets.toml init
@@ -78,7 +67,7 @@ A compiler off `PATH`, such as a gcc-toolset, is found with `--find /opt/rh/gcc-
 
 Seanerstack uses its pinned Spack, and refuses one given with `--spack-executable` or `SEANERSTACK_REAL_SPACK` that has another version: a different Spack writes build-cache indexes and specs that the pinned one cannot read, and its hashes match nothing in the cache. `seanerstack --version` names both versions.
 
-## 5. Put the state's spack on PATH
+## 4. Put the state's spack on PATH
 
 `init` ends by printing the line that puts the state's `spack` wrapper first on `PATH`. Add it to your shell profile, such as `~/.bashrc`:
 
@@ -88,7 +77,7 @@ export PATH=/opt/seanergys/state/spack/bin:$PATH
 
 Plain `spack` commands then use the Seanerstack state in every shell, with its credentials, and not the normal user or system Spack configuration. To use it in one shell only, run `eval "$(seanerstack activate)"` instead. See [Use the state's Spack](use-the-states-spack.md).
 
-## 6. Install the toolchain
+## 5. Install the toolchain
 
 ```console
 seanerstack toolchain bootstrap

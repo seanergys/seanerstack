@@ -7,16 +7,14 @@ You need:
 | Requirement | Detail |
 | --- | --- |
 | A Linux machine | With Bash, Git, a C, C++ and Fortran compiler, Python 3.12 or newer, and [pipx](https://pipx.pypa.io/). |
-| A GitLab access token | For the SEANERGYS GitLab, with the `read_api`, `read_repository` and `read_registry` scopes. |
-| A secrets file | `secrets.toml` with that token, written as in [Create a secrets file](../how-to/create-a-secrets-file.md). |
+| A GitLab access token | For the SEANERGYS GitLab, with the scopes that [Create a secrets file](../how-to/create-a-secrets-file.md#1-write-the-credential-entries) names. |
+| A secrets file | `secrets.toml` with that token, written as the same guide describes. |
 
 ## 1. Install Seanerstack
 
-Seanerstack is published in the package registry of the SEANERGYS GitLab. Point pipx at the registry with your token, and install:
+Seanerstack is on PyPI. Install it with pipx:
 
 ```console
-export PIP_EXTRA_INDEX_URL="https://<token-name>:<token>@gitlab.seanergys.fz-juelich.de/api/v4/groups/158/-/packages/pypi/simple"
-export UV_EXTRA_INDEX_URL="$PIP_EXTRA_INDEX_URL"
 pipx install --python python3.12 --include-deps seanerstack
 ```
 
