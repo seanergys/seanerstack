@@ -188,3 +188,26 @@ def test_activate_exports_the_credentials_that_init_stored(monkeypatch, tmp_path
     out = capsys.readouterr().out
     assert "export SEANERSTACK_RESOURCE_CACHE_PASSWORD=glpat" in out
     assert f"export PATH={x.bin}:" in out
+
+
+def test_init_prints_the_compilers_and_packages_it_found_and_records_find(monkeypatch, tmp_path: Path, capsys):
+    import seanerstack.isolation
+    from seanerstack.discovery import Found
+    x, _ = _init_world(monkeypatch, tmp_path)
+    searched = []
+    monkeypatch.setattr(cli, "find_compilers", lambda command, env, prefixes: searched.append(prefixes))
+    monkeypatch.setattr(cli, "registered_compilers", lambda x: [Found("gcc@16.2.1", "/usr")])
+    monkeypatch.setattr(cli, "detect_packages", lambda command, env, packages, prefixes: {"rust": [Found("rust@1.91.0", "/usr")]})
+    toolset = tmp_path / "toolset"
+
+    assert cli._run_init(_init_args(tmp_path, find=[toolset])) == 0
+
+    out = capsys.readouterr().out
+    assert "compilers found:\n  gcc@16.2.1  /usr\n" in out
+    assert "packages found:\n  rust@1.91.0  /usr\n" in out
+    assert searched == [[toolset]]
+    assert seanerstack.isolation.recorded_find(x.state) == [toolset.resolve()]
+
+    # A later init searches there again without being told.
+    cli._run_init(_init_args(tmp_path, find=None))
+    assert searched[-1] == [toolset.resolve()]

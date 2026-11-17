@@ -11,12 +11,13 @@ import sys
 from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_PROBE_TIMEOUT, bootstrap, require_target
 from .buildcache import buildcaches, check_buildcaches, configure_buildcaches
 from .config import Config, load_config
+from .discovery import describe, detect_packages, find_compilers, registered_compilers, save_detected
 from .paths import environments_path, repository_path, share_path
 from .pins import SPACK_VERSION
 from .prepare import prepare_here, prepare_in_container
 from .secrets import SecretStore
 from .isolation import (
-    activation_script, deactivation_script, layout, prepare_isolation, read_record,
+    activation_script, deactivation_script, layout, prepare_isolation, read_record, recorded_find,
     resolve_real_spack, resolve_state_dir, spack_command, spack_env, store_credentials, write_record,
 )
 from .sync import package_paths, sync_many
@@ -144,7 +145,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare_parser.add_argument("--jobs", type=int, help="parallel jobs per package (default: what the free memory allows)")
     prepare_parser.add_argument("--no-container", action="store_true", help="build here, for a CI job that runs in the image of [toolchain]")
 
-    subparsers.add_parser(
+    init_parser = subparsers.add_parser(
         "init",
         help="Set up the state directory once, and check access to every resource.",
         description=(
@@ -155,6 +156,11 @@ def build_parser() -> argparse.ArgumentParser:
             "resource can be read. Run it again to change any of these. It installs no "
             "compiler: `seanerstack toolchain bootstrap` does, once init has passed."
         ),
+    )
+    init_parser.add_argument(
+        "--find", action="append", type=Path, metavar="PREFIX",
+        help="also look for compilers and packages below PREFIX, an installation off PATH such as "
+        "/opt/rh/gcc-toolset-15/root/usr; repeat as needed (default: what init was given before)",
     )
 
     subparsers.add_parser("activate", help="Emit shell code that activates an isolated Seanerstack Spack session.")
@@ -264,7 +270,8 @@ def _run_init(args: argparse.Namespace) -> int:
     config_file = args.config_file or record["config_file"]
     config = load_config(config_file)
     x, real_spack, command, env = _spack_runtime(args)
-    write_record(x, config_file=config_file, spack_executable=args.spack_executable or record["spack_executable"])
+    find = args.find if args.find is not None else recorded_find(state_dir)
+    write_record(x, config_file=config_file, spack_executable=args.spack_executable or record["spack_executable"], find=find)
     print(f"state: {x.state}")
     print(f"spack: {real_spack}")
     print(f"config: {config.path}")
@@ -285,6 +292,17 @@ def _run_init(args: argparse.Namespace) -> int:
     if config.toolchain is not None:
         require_target(command, config.toolchain.target, env)
         print(f"target: {config.toolchain.target}")
+
+    find_compilers(command, env, find)
+    compilers = registered_compilers(x)
+    detected = detect_packages(command, env, list(config.toolchain.packages) if config.toolchain else [], find)
+    save_detected(x, detected)
+    print("compilers found:")
+    for line in describe(compilers) or ["none"]:
+        print(f"  {line}")
+    print("packages found:")
+    for line in describe([item for items in detected.values() for item in items]) or ["none"]:
+        print(f"  {line}")
 
     failed = False
     for kind, results in (

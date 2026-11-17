@@ -52,6 +52,8 @@ class SpackLayout:
     credentials: Path
     # What `seanerstack init` chose, so that no later command asks again.
     record: Path
+    # The packages init detected on the machine, for `toolchain bootstrap --external`.
+    detected: Path
 
 
 def layout(state_dir: Path) -> SpackLayout:
@@ -70,6 +72,7 @@ def layout(state_dir: Path) -> SpackLayout:
         credentials_env=root / "credentials.sh",
         credentials=state / "credentials.json",
         record=state / "seanerstack.json",
+        detected=state / "detected.json",
     )
 
 
@@ -111,13 +114,23 @@ def store_credentials(x: SpackLayout, config: Config, secrets: SecretStore) -> l
     return sorted(stored)
 
 
-def write_record(x: SpackLayout, *, config_file: Path | None, spack_executable: Path | None) -> None:
+def write_record(
+    x: SpackLayout, *, config_file: Path | None, spack_executable: Path | None, find: list[Path] = ()
+) -> None:
     """Remember what `seanerstack init` was given, for every later command."""
     record = {
         "config_file": str(config_file.expanduser().resolve()) if config_file else None,
         "spack_executable": str(spack_executable.expanduser().resolve()) if spack_executable else None,
+        "find": [str(prefix.expanduser().resolve()) for prefix in find],
     }
     _write(x.record, json.dumps(record, indent=2) + "\n")
+
+
+def recorded_find(state_dir: Path) -> list[Path]:
+    """The installations off PATH that init was told to search, with --find."""
+    path = layout(state_dir).record
+    raw = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    return [Path(prefix) for prefix in raw.get("find") or []]
 
 
 def read_record(state_dir: Path) -> dict[str, Path | None]:
