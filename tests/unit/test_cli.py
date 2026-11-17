@@ -250,6 +250,30 @@ def test_bootstrap_builds_the_compiler_then_rust_and_the_other_packages(monkeypa
     assert calls == ["target=x86_64_v3", ("bootstrap", "gcc@15", None, None), ("install", ["rust", "capnproto"])]
 
 
+def test_bootstrap_gives_spack_the_stored_credentials_of_the_build_cache(monkeypatch, tmp_path: Path):
+    import json
+    import seanerstack.isolation
+    _bootstrap_world(monkeypatch, tmp_path)
+    credentials = seanerstack.isolation.layout(tmp_path / "state").credentials
+    credentials.write_text(json.dumps({"credentials": {"registry": {"username": "reader", "token": "secret"}}}))
+    environments = []
+
+    def fake_bootstrap(compiler, **kwargs):
+        environments.append(kwargs["env"])
+        return BootstrapResult(compiler=compiler, installed=True, registered=True, languages=("c",), probe="zlib", probe_ok=True)
+
+    monkeypatch.setattr(cli, "bootstrap", fake_bootstrap)
+    monkeypatch.setattr(cli, "install_packages", lambda command, packages, env: environments.append(env))
+
+    cli._run_bootstrap(_bootstrap_args(tmp_path))
+
+    # The compiler and the packages both come from the cache, so both need them.
+    for env in environments:
+        assert env["SEANERSTACK_RESOURCE_CACHE_USERNAME"] == "reader"
+        assert env["SEANERSTACK_RESOURCE_CACHE_PASSWORD"] == "secret"
+    assert len(environments) == 2
+
+
 def test_bootstrap_takes_the_packages_compiler_and_target_given(monkeypatch, tmp_path: Path):
     calls = _bootstrap_world(monkeypatch, tmp_path)
 
