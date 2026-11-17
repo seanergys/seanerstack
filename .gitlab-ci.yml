@@ -159,17 +159,17 @@ access:
   script:
     - seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password validate --access
 
-# Every recipe of the repository, built on Rocky Linux 10 the way a user's
-# machine builds it: `seanerstack init` and `seanerstack toolchain bootstrap`,
-# then one environment with the default spec of each recipe, unify: false so
-# that recipes may want different versions of a dependency. What the project
-# build cache holds is installed from it, so a pipeline builds only what a
-# change touches. The default branch pushes what it built, and rebuilds the
-# index, for the pipelines after it; merge requests only read, so that no
-# unreviewed recipe reaches the shared cache. Pushes of two pipelines at once
-# are safe, and an index that misses the other's binaries is complete again
-# after the next rebuild, which also leaves out binaries the pinned Spack
-# cannot read.
+# seanergys-meta, built on Rocky Linux 10 the way a user's machine builds it:
+# `seanerstack init` and `seanerstack toolchain bootstrap`, then an environment
+# with that one package, which depends on every recipe that builds with the
+# project toolchain. A recipe that does not build yet stays out of
+# seanergys-meta, and joins it once it does. What the project build cache holds
+# is installed from it, so a pipeline builds only what a change touches. The
+# default branch pushes what it built, and rebuilds the index, for the
+# pipelines after it; merge requests only read, so that no unreviewed recipe
+# reaches the shared cache. Pushes of two pipelines at once are safe, and an
+# index that misses the other's binaries is complete again after the next
+# rebuild, which also leaves out binaries the pinned Spack cannot read.
 build:rocky10:
   stage: build
   tags:
@@ -184,7 +184,7 @@ build:rocky10:
     - when: on_success
   variables:
     PLATFORM: rocky10
-    ENVIRONMENT: /opt/seanerstack-all-packages
+    ENVIRONMENT: /opt/seanergys-meta
   before_script:
     - dnf install -y --setopt=install_weak_deps=False python3 python3-pip
     - python3 -m venv /opt/seanerstack
@@ -211,13 +211,8 @@ build:rocky10:
       git config --global
       url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.seanergys.fz-juelich.de/".insteadOf
       "https://gitlab.seanergys.fz-juelich.de/"
-    - >-
-      python -c 'import pathlib, sys, yaml, seanerstack.paths;
-      packages = seanerstack.paths.repository_path() / "packages";
-      names = sorted(p.name.replace("_", "-") for p in packages.iterdir() if (p / "package.py").is_file());
-      root = pathlib.Path(sys.argv[1]); root.mkdir(parents=True);
-      (root / "spack.yaml").write_text(yaml.safe_dump({"spack": {"specs": names, "view": False, "concretizer": {"unify": False}}}))'
-      "$ENVIRONMENT"
+    - spack env create --without-view -d "$ENVIRONMENT"
+    - spack -e "$ENVIRONMENT" add seanergys-meta
     - spack -e "$ENVIRONMENT" concretize
     # Push what was built even when another package failed.
     - status=0; spack -e "$ENVIRONMENT" install || status=$?
