@@ -74,6 +74,10 @@ and release process.
 
 ### Fixed
 
+- `toolchain bootstrap` stops with an error that names the build cache when an
+  OCI cache refuses its request, such as a private registry asked with missing
+  or expired credentials. Spack reports that as "no binary available" and builds
+  from source.
 - `toolchain bootstrap` gives Spack the stored credentials of the build caches.
   Without them it asked a private cache anonymously, was refused, and built the
   compiler and Rust from source although the cache held them.

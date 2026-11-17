@@ -10,7 +10,7 @@ import sys
 
 from .auth import spack_resource_environment
 from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_PROBE_TIMEOUT, bootstrap, install_packages, require_target, use_external_package
-from .buildcache import buildcache_environment, buildcaches, check_buildcaches, configure_buildcaches, update_index
+from .buildcache import buildcache_environment, buildcaches, check_buildcaches, configure_buildcaches, require_cache_access, update_index
 from .config import Config, load_config
 from .discovery import describe, detect_packages, find_compilers, load_detected, matching, registered_compilers, save_detected
 from .paths import environments_path, repository_path, share_path
@@ -290,6 +290,8 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
     # Without them Spack asks a private build cache anonymously, is refused,
     # and builds from source what the cache holds, saying only "no binary available".
     env = buildcache_environment(config, secrets, env)
+    if not args.dry_run:
+        require_cache_access(command, env)
 
     if args.os is not None:
         system = subprocess.run(
