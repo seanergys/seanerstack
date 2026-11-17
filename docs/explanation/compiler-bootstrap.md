@@ -71,3 +71,9 @@ The compiler spec has to name a compiler in that prefix. Spack does not refuse a
 After the requirements, the probe checks that its compiler is that external too.
 
 An external compiler changes the hash of everything built with it, so a stack built with the GCC of `/usr` shares no binaries with one built with the Spack-installed gcc@15. `seanerstack buildcache prepare` keeps building its compiler for that reason: the project build cache is for machines bootstrapped the normal way, and an external compiler suits a workstation or a CI job that does not push to it.
+
+## Why the compiler is built even when the system has one
+
+The system compiler is registered as an external before the build, because building the new compiler needs a C compiler. An external that satisfies the requested spec would then be taken instead of a build: on Ubuntu 26.04, whose system GCC is 15.2.0, `spack install gcc@15` installs nothing. Seanerstack therefore installs `gcc@15 %c`. An external is a leaf without dependencies, so asking for a C compiler as a dependency rules it out, while the system compiler can still be that C compiler. The compiler is built whatever version the system has, the same version included.
+
+Afterwards, every registered compiler of that name is removed before the installed one is registered, so that only the installed compiler satisfies the language requirements. Otherwise a system compiler of a matching version could build packages instead.
