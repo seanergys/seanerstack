@@ -9,6 +9,7 @@ Every change reaches the default branch through a merge request and a merge trai
 | `test` | ✔ | ✔ | ✔ | ✔ | |
 | `e2e:install`, `e2e:credentials`, `e2e:init`, `e2e:buildcache` | ✔ | | | | ✔ |
 | `e2e:external-compiler` | ✔ | | | | ✔ |
+| `build:rocky10` | ✔ | ✔ | ✔ | ✔ | |
 | `docs` | ✔ | ✔ | ✔ | | |
 | `pages` | | | ✔ | | |
 | `publish:dev` | | | ✔ | | |
@@ -23,6 +24,10 @@ Every change reaches the default branch through a merge request and a merge trai
 `e2e:external-compiler` runs `init` and `toolchain bootstrap --external` in Ubuntu 26.04 with its GCC 16 packages and in Ubuntu 24.04 with its GCC 14 packages, choosing the GCC that `init` found by name, builds a small package with that compiler, and checks that a GCC the image does not have is refused. It needs no token or registry.
 
 Each `e2e:*` job runs one file of `tests/e2e`, so the areas run in parallel and a failure names its area. `e2e:buildcache` pushes into registry repositories named after each test, so those jobs take turns through the `e2e-registry` resource group. Merge train pipelines run side by side and would otherwise overwrite each other's build-cache index. The other `e2e:*` jobs only read the registry and need no turn.
+
+## Building every package
+
+`build:rocky10` builds every recipe of the repository on Rocky Linux 10, in every pipeline but the schedule, the way a user's machine does: `seanerstack init`, `seanerstack toolchain bootstrap`, then one environment with the default spec of each recipe. It installs what the project build cache holds, so a pipeline builds only what its change touches. Only the default branch pushes what it built and rebuilds the index; merge requests read the cache but put nothing into it. The private recipes are cloned with the job token, so each project they come from has to allow this project's job token under **Settings → CI/CD → Job token permissions**.
 
 ## Project settings
 

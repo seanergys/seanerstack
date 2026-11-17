@@ -3,6 +3,7 @@ image: ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 stages:
   - test
+  - build
   - docs
   - publish
   - toolchain
@@ -128,6 +129,81 @@ e2e:external-compiler:
     - git clone --depth 1 --branch "$SPACK_VERSION" https://github.com/spack/spack.git /opt/spack
   script:
     - tests/e2e/run.sh tests/e2e/test_external_compiler.py
+
+# Every recipe of the repository, built on Rocky Linux 10 the way a user's
+# machine builds it: `seanerstack init` and `seanerstack toolchain bootstrap`,
+# then one environment with the default spec of each recipe, unify: false so
+# that recipes may want different versions of a dependency. What the project
+# build cache holds is installed from it, so a pipeline builds only what a
+# change touches. The default branch pushes what it built, and rebuilds the
+# index, for the pipelines after it; merge requests only read, so that no
+# unreviewed recipe reaches the shared cache. Pushes of two pipelines at once
+# are safe, and an index that misses the other's binaries is complete again
+# after the next update-index.
+build:rocky10:
+  stage: build
+  tags:
+    - docker
+    - seanerstack
+  image: docker.io/rockylinux/rockylinux:10
+  # The first pipeline after a toolchain change builds everything.
+  timeout: 12h
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - when: on_success
+  variables:
+    PLATFORM: rocky10
+    ENVIRONMENT: /opt/seanerstack-all-packages
+  before_script:
+    - dnf install -y --setopt=install_weak_deps=False python3 python3-pip
+    - python3 -m venv /opt/seanerstack
+    - /opt/seanerstack/bin/pip install --quiet .
+    - export PATH="/opt/seanerstack/bin:$PATH"
+    - >-
+      eval "$(python -c 'import sys, seanerstack.config, seanerstack.prepare;
+      print(seanerstack.prepare.install_command(seanerstack.config.load_config().toolchain.platform(sys.argv[1])))'
+      "$PLATFORM")"
+    # The job token, for Git and the registry, in a secrets file as users write
+    # one. The vault password only has to outlive this job.
+    - umask 077
+    - echo "$CI_JOB_ID" > /tmp/vault-password
+    - |
+      cat > /tmp/secrets.toml <<EOF
+      [credentials.seanergys-gitlab]
+      username = "gitlab-ci-token"
+      token = { __keyloom__ = "secret", value = "$CI_JOB_TOKEN" }
+
+      [credentials.seanergys-registry]
+      username = "gitlab-ci-token"
+      token = { __keyloom__ = "secret", value = "$CI_JOB_TOKEN" }
+      EOF
+    - keyloom encrypt /tmp/secrets.toml --password-file /tmp/vault-password
+  script:
+    - seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password init
+    - export PATH="/opt/seanergys/state/spack/bin:$PATH"
+    - seanerstack toolchain bootstrap
+    # Spack clones the private recipes with Git itself.
+    - >-
+      git config --global
+      url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.seanergys.fz-juelich.de/".insteadOf
+      "https://gitlab.seanergys.fz-juelich.de/"
+    - >-
+      python -c 'import pathlib, sys, yaml, seanerstack.paths;
+      packages = seanerstack.paths.repository_path() / "packages";
+      names = sorted(p.name.replace("_", "-") for p in packages.iterdir() if (p / "package.py").is_file());
+      root = pathlib.Path(sys.argv[1]); root.mkdir(parents=True);
+      (root / "spack.yaml").write_text(yaml.safe_dump({"spack": {"specs": names, "view": False, "concretizer": {"unify": False}}}))'
+      "$ENVIRONMENT"
+    - spack -e "$ENVIRONMENT" concretize
+    # Push what was built even when another package failed.
+    - status=0; spack -e "$ENVIRONMENT" install || status=$?
+    - |
+      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
+        spack buildcache push --only package seanerstack-buildcache $(spack find --format '/{hash}')
+        spack buildcache update-index seanerstack-buildcache
+      fi
+    - exit "$status"
 
 docs:
   stage: docs
