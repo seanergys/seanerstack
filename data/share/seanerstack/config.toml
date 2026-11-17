@@ -57,11 +57,14 @@ package_manager = "dnf"
 python = "python3.12"
 system_packages = ["python3.12", "python3.12-pip"]
 
-# The last two Fedora releases.
+# The last two Fedora releases. Spack has a clingo binary up to Python 3.14,
+# and the python3 of Fedora 45 is 3.15, for which it would build clingo first.
 [toolchain.platforms.fedora45]
 image = "docker.io/library/fedora:45"
 operating_system = "fedora45"
 package_manager = "dnf"
+python = "python3.14"
+system_packages = ["python3.14"]
 
 [toolchain.platforms.fedora44]
 image = "docker.io/library/fedora:44"
