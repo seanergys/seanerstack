@@ -17,6 +17,10 @@ and release process.
 - `SEANERSTACK_BUILTIN_REPO_GIT` overrides the Git location the pinned
   builtin `spack-packages` repository is cloned from, for hosts without
   internet access. The commit pin still applies.
+- `seanerstack buildcache explain SPEC` says why SPEC is built instead of taken
+  from the build caches: it compares the local concretization with every cached
+  spec of the same name and version, and prints the nodes whose own fields
+  differ, such as the target, a variant, the recipe or an external's path.
 - The `seanerbus-cpp` and `seanerbus-python` packages, with `py-pycapnp`, which
   Spack does not have.
 - `seanerbus-msg` and `seanerbus-rs`, the schemas and the Rust crates that the
