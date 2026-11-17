@@ -47,17 +47,14 @@ test:
     SEANERSTACK_E2E_REQUIRED: "1"
     SEANERSTACK_E2E_USERNAME: "gitlab-ci-token"
     SEANERSTACK_E2E_TOKEN: "$CI_JOB_TOKEN"
-    SEANERSTACK_E2E_SPACK: "/opt/spack/bin/spack"
     SEANERSTACK_E2E_REGISTRY: "oci://$CI_REGISTRY_IMAGE"
-    SPACK_VERSION: "v1.2.2"
   before_script:
     - apt-get update
     # Git for Spack and the tests; a compiler, make and archivers for Spack to
-    # build the test package.
+    # build the test package. Seanerstack installs the pinned Spack itself.
     - >-
       apt-get install -y --no-install-recommends
       bzip2 ca-certificates file g++ gcc git libc6-dev make patch unzip xz-utils
-    - git clone --depth 1 --branch "$SPACK_VERSION" https://github.com/spack/spack.git /opt/spack
 
 # The installed wheel, the secrets file and --version.
 e2e:install:
@@ -114,8 +111,6 @@ e2e:external-compiler:
         SEANERSTACK_E2E_MISSING_COMPILER: "gcc@15"
   variables:
     SEANERSTACK_E2E_REQUIRED: "1"
-    SEANERSTACK_E2E_SPACK: "/opt/spack/bin/spack"
-    SPACK_VERSION: "v1.2.2"
     DEBIAN_FRONTEND: "noninteractive"
   before_script:
     - apt-get update
@@ -126,7 +121,6 @@ e2e:external-compiler:
     # uv, which run.sh uses, from PyPI into a virtual environment of its own.
     - python3 -m venv /opt/uv && /opt/uv/bin/pip install --quiet uv
     - export PATH="/opt/uv/bin:$PATH"
-    - git clone --depth 1 --branch "$SPACK_VERSION" https://github.com/spack/spack.git /opt/spack
   script:
     - tests/e2e/run.sh tests/e2e/test_external_compiler.py
 
@@ -379,11 +373,7 @@ toolchain:
     # system links it to /usr/lib/os-release, but the archlinux image writes
     # its own with the date of the image as version, which no machine has.
     - if [ -e /usr/lib/os-release ]; then ln -sf ../usr/lib/os-release /etc/os-release; fi
-    - SPACK_VERSION="$(/opt/seanerstack/bin/python -c 'import seanerstack.isolation; print(seanerstack.isolation.SPACK_VERSION)')"
-    - SPACK_GIT="$(/opt/seanerstack/bin/python -c 'import seanerstack.isolation; print(seanerstack.isolation.SPACK_GIT)')"
-    - git clone --depth 1 --branch "$SPACK_VERSION" "$SPACK_GIT" "$STATE/spack-$SPACK_VERSION"
   script:
     - >-
       /opt/seanerstack/bin/seanerstack --state-dir "$STATE"
-      --spack-executable "$STATE/spack-$SPACK_VERSION/bin/spack"
       buildcache prepare --no-container --platform "$PLATFORM"
