@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import subprocess
 
 from .auth import spack_resource_environment
 from .config import Config, Resource
 from .secrets import SecretStore
 
+
+# Run by `spack python`, so that it uses the Spack of the session.
+UPDATE_INDEX_SCRIPT = Path(__file__).with_name("_spack_update_index.py")
 
 # What Spack warns when the index of a build cache is newer than it can read.
 UNREADABLE_INDEX = "you need a newer Spack version to read the buildcache index"
@@ -117,3 +121,22 @@ def check_buildcaches(config: Config, secrets: SecretStore, *, command: list[str
             )
         results.append((resource.name, process.returncode == 0 and not unreadable, message))
     return results
+
+
+def update_index(resource: Resource, *, command: list[str], env) -> None:
+    """Rebuild the index of a build cache from the binaries it holds.
+
+    For an OCI cache, specs that this Spack cannot read, such as those a newer
+    Spack pushed, are left out and named instead of stopping the rebuild, as
+    `spack buildcache update-index` does. Other caches take Spack's own.
+
+    @param resource: the build cache, configured as a mirror of the session
+    @param command: the isolated Spack command
+    @param env: its environment, with the cache's push credentials
+    @return: nothing; a failed rebuild raises CalledProcessError
+    """
+    if resource.oci:
+        args = [*command, "python", str(UPDATE_INDEX_SCRIPT), resource.name]
+    else:
+        args = [*command, "buildcache", "update-index", resource.name]
+    subprocess.run(args, check=True, text=True, env=env)

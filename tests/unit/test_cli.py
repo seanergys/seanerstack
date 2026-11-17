@@ -320,3 +320,14 @@ def test_an_external_compiler_excludes_building_one(monkeypatch, tmp_path: Path)
 
     with pytest.raises(ValueError, match="--compiler and --source-compiler do not apply"):
         cli._run_bootstrap(_bootstrap_args(tmp_path, external=["gcc@16"], source_compiler="gcc@14"))
+
+
+def test_buildcache_update_index_rebuilds_the_toolchain_cache(monkeypatch, tmp_path: Path):
+    _init_world(monkeypatch, tmp_path)
+    rebuilt = []
+    monkeypatch.setattr(cli, "update_index", lambda resource, **kwargs: rebuilt.append((resource.name, kwargs["env"])))
+    monkeypatch.setattr(cli, "spack_resource_environment", lambda resource, secrets: {"SEANERSTACK_RESOURCE_CACHE_PASSWORD": "glpat"})
+    args = _init_args(tmp_path, buildcache_command="update-index", cache=None)
+
+    assert cli._run_buildcache(args) == 0
+    assert rebuilt == [("cache", {"SEANERSTACK_RESOURCE_CACHE_PASSWORD": "glpat"})]

@@ -8,8 +8,9 @@ from pathlib import Path
 import subprocess
 import sys
 
+from .auth import spack_resource_environment
 from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_PROBE_TIMEOUT, bootstrap, install_packages, require_target, use_external_package
-from .buildcache import buildcaches, check_buildcaches, configure_buildcaches
+from .buildcache import buildcaches, check_buildcaches, configure_buildcaches, update_index
 from .config import Config, load_config
 from .discovery import describe, detect_packages, find_compilers, load_detected, matching, registered_compilers, save_detected
 from .paths import environments_path, repository_path, share_path
@@ -156,6 +157,16 @@ def build_parser() -> argparse.ArgumentParser:
     explain_parser.add_argument("spec", nargs="+", help="the spec, such as gcc@15.3.0 or rust")
     cache_sub.add_parser("configure", help="Install configured build-cache mirrors into the isolated Spack configuration.")
     cache_sub.add_parser("check", help="Check access to configured build caches using session or vault credentials.")
+    update_index_parser = cache_sub.add_parser(
+        "update-index",
+        help="Rebuild the index of a build cache from the binaries it holds.",
+        description=(
+            "Rebuild the index of a build cache from the binaries it holds, so that Spack finds them. "
+            "Binaries that the pinned Spack cannot read, such as those a newer Spack pushed, are left "
+            "out and named, where `spack buildcache update-index` would stop. Needs write access."
+        ),
+    )
+    update_index_parser.add_argument("cache", nargs="?", help="the build cache resource (default: the cache of [toolchain])")
     prepare_parser = cache_sub.add_parser(
         "prepare",
         help="Build the toolchain for a platform and push it to the build cache of [toolchain] in config.toml.",
@@ -497,6 +508,18 @@ def _run_buildcache(args: argparse.Namespace) -> int:
             print(f"[{'OK' if ok else 'ERROR'}] buildcache:{name}: {message or 'accessible'}")
             failed |= not ok
         return 1 if failed else 0
+    if args.buildcache_command == "update-index":
+        name = args.cache or (config.toolchain.cache if config.toolchain else None)
+        if name is None:
+            raise ValueError("name the build cache; config.toml has no [toolchain]")
+        resource = config.resource(name)
+        if resource.kind != "spack-buildcache":
+            raise ValueError(f"resource {name!r} is not a spack-buildcache")
+        _, _, command, env = _spack_runtime(args)
+        if resource.credentials and not all(variable in env for variable in resource.credential_variables):
+            env.update(spack_resource_environment(resource, secrets))
+        update_index(resource, command=command, env=env)
+        return 0
     if args.buildcache_command == "prepare":
         if args.no_container:
             if args.platform == "all":

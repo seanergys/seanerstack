@@ -27,7 +27,7 @@ import yaml
 
 from .auth import spack_resource_environment
 from .bootstrap import bootstrap, require_target
-from .buildcache import buildcaches, configure_buildcaches
+from .buildcache import buildcaches, configure_buildcaches, update_index
 from .config import Config, Platform, Resource, Toolchain
 from .isolation import DEFAULT_STATE_DIR
 from .pins import SPACK_GIT, SPACK_VERSION
@@ -203,9 +203,9 @@ def prepare_here(
     # Concretization finds binaries through the index alone. Autopush has
     # already pushed what was built, and `push --update-index` updates an OCI
     # index only when it pushed something itself, so the new binaries would
-    # stay invisible. This also replaces an index that a newer Spack wrote
-    # and this one cannot read.
-    _stream([*command, "buildcache", "update-index", target.name], env)
+    # stay invisible. This also replaces an index that a newer Spack wrote,
+    # leaving out the specs this one cannot read.
+    update_index(target, command=command, env=env)
     print(f"the toolchain for {wanted.name} is in {target.url}")
     return 0
 
