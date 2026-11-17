@@ -34,11 +34,11 @@ spack install
 
 # --8<-- [start:check]
 spack find --format '{name}{@version} {variants.dev_path}' properdocs
+properdocs --version
 # --8<-- [end:check]
 
-# The installed properdocs is the one built from the checkout, and it runs.
+# The installed properdocs is the one built from the checkout.
 spack find --format '{variants.dev_path}' properdocs | grep -qx "dev_path=$PWD"
-"$(spack location --install-dir properdocs)/bin/properdocs" --version
 
 # --8<-- [start:deactivate]
 eval "$(spack env deactivate --sh)"

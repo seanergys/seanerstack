@@ -38,7 +38,7 @@ The path of a checkout differs between machines, so it is recorded on your machi
 
 Spack takes the dependencies from the build cache and builds `properdocs` from the checkout. After a change to the sources, the recipe or the dependencies, run the two commands again.
 
-The installed package names the checkout it was built from:
+The installed package names the checkout it was built from, and the active environment puts its command on `PATH`:
 
 ```bash
 --8<-- "tests/how-to/work-on-a-package.sh:check"
@@ -46,6 +46,7 @@ The installed package names the checkout it was built from:
 
 ```text
 properdocs@master dev_path=/home/you/src/properdocs
+properdocs, version 1.6.7 from ... (Python 3.14)
 ```
 
 ## 5. Leave the environment
