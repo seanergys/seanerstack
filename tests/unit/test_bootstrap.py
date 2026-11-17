@@ -48,6 +48,12 @@ def _fake_spack(monkeypatch, *, installed=False, external=False, probe_stdout="g
     return calls
 
 
+def _remove(calls: list[list[str]]) -> list[str]:
+    """The call that removes registered compilers before the installed one is registered."""
+    (call,) = [call for call in calls if call[len(COMMAND):len(COMMAND) + 3] == ["compiler", "remove", "-a"]]
+    return call
+
+
 def _install(calls: list[list[str]]) -> list[str] | None:
     """The call that installs gcc@15, whatever else it asks for."""
     for call in calls:
@@ -205,7 +211,7 @@ def test_bootstrap_leaves_only_the_installed_compiler_registered(monkeypatch):
         "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV
     )
 
-    remove = calls.index([*COMMAND, "compiler", "remove", "-a", "gcc"])
+    remove = calls.index(_remove(calls))
     register = calls.index([*COMMAND, "compiler", "find", PREFIX])
     require = calls.index([*COMMAND, "config", "add", "packages:c:require:gcc@15"])
     assert remove < register < require
@@ -218,7 +224,7 @@ def test_bootstrap_leaves_only_an_already_installed_compiler_registered(monkeypa
         "gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV
     )
 
-    assert calls.index([*COMMAND, "compiler", "remove", "-a", "gcc"]) < calls.index(
+    assert calls.index(_remove(calls)) < calls.index(
         [*COMMAND, "compiler", "find", PREFIX]
     )
 

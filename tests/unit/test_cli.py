@@ -14,8 +14,8 @@ def test_reorganized_cli():
     args = parser.parse_args(["package", "update", "demo", "--check"])
     assert (args.command, args.package_command, args.package) == ("package", "update", "demo")
 
-    args = parser.parse_args(["toolchain", "bootstrap", "gcc@15"])
-    assert (args.command, args.toolchain_command, args.compiler) == ("toolchain", "bootstrap", "gcc@15")
+    args = parser.parse_args(["toolchain", "bootstrap"])
+    assert (args.command, args.toolchain_command) == ("toolchain", "bootstrap")
 
     args = parser.parse_args(["paths", "env", "--package", "properdocs"])
     assert (args.command, args.paths_command, args.package) == ("paths", "env", "properdocs")
@@ -38,6 +38,10 @@ def _init_args(tmp_path: Path, **overrides) -> "cli.argparse.Namespace":
         skip_buildcache_check=False,
         skip_validate=False,
         find=None,
+        packages=[],
+        target=None,
+        os=None,
+        source_compiler=None,
     )
     defaults.update(overrides)
     return cli.argparse.Namespace(**defaults)
