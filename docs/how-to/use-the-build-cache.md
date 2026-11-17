@@ -97,7 +97,7 @@ operating_system = "almalinux10"
 package_manager = "dnf"
 ```
 
-`operating_system` is what `spack arch --operating-system` prints in that image. `package_manager` is `dnf`, `apt` or `pacman`, and chooses the system packages of `[toolchain.system_packages]` that the image gets before Spack runs. A platform can add its own with `system_packages`, and name another Python with `python`, as Rocky 9 does for Python 3.12.
+`operating_system` is what `spack arch --operating-system` prints in that image. `package_manager` is `dnf`, `apt` or `pacman`, and chooses the system packages of `[toolchain.system_packages]` that the image gets before Spack runs. A platform can add its own with `system_packages`, and name another Python with `python`, as Rocky 9 does for Python 3.12. Seanerstack and Spack both run with that Python in the image. Fedora 45 names Python 3.14, because Spack 1.2.2 has a ready-made clingo, its solver, for Python up to 3.14, and builds it from source for the Python 3.15 that Fedora 45 has as `python3`.
 
 ### Build it every night
 
