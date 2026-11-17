@@ -382,4 +382,6 @@ def test_prepare_always_updates_the_index_after_the_push(monkeypatch, tmp_path):
     run_here(tmp_path)
     (push,) = [call for call in spack.calls if call[1:3] == ["buildcache", "push"]]
     assert "--update-index" not in push
-    assert spack.calls.index(push) < spack.calls.index(["spack", "buildcache", "update-index", "target"])
+    # Spack's own update-index, or Seanerstack's script run by `spack python`.
+    (update,) = [call for call in spack.calls if call[-1] == "target" and ("update-index" in call or call[1] == "python")]
+    assert spack.calls.index(push) < spack.calls.index(update)
