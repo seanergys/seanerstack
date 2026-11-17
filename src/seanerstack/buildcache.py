@@ -117,7 +117,7 @@ def check_buildcaches(config: Config, secrets: SecretStore, *, command: list[str
         if unreadable:
             message = (
                 "a newer Spack wrote the index of this cache, and the pinned one cannot read it; "
-                "rebuild it with `spack buildcache update-index` from the pinned Spack"
+                "rebuild it with `seanerstack buildcache update-index`, which needs write access"
             )
         results.append((resource.name, process.returncode == 0 and not unreadable, message))
     return results
