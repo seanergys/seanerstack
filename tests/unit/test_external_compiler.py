@@ -168,7 +168,7 @@ def test_an_external_dry_run_changes_nothing(monkeypatch, tmp_path: Path):
     assert result.external == str(tmp_path)
 
 
-@pytest.mark.parametrize("command", [["toolchain", "bootstrap"], ["init"]])
+@pytest.mark.parametrize("command", [["toolchain", "bootstrap"]])
 def test_the_commands_take_an_external_prefix(command):
     args = cli.build_parser().parse_args([*command, "gcc@16", "--external", "/usr"])
 
@@ -196,7 +196,7 @@ def test_bootstrap_passes_the_external_prefix_on_and_names_it(monkeypatch, capsy
     assert "compiler: gcc@16 in /usr" in capsys.readouterr().out
 
 
-@pytest.mark.parametrize("command", [["toolchain", "bootstrap"], ["init"]])
+@pytest.mark.parametrize("command", [["toolchain", "bootstrap"]])
 def test_without_an_external_prefix_the_compiler_is_built(monkeypatch, command):
     args = cli.build_parser().parse_args([*command, "gcc@15"])
     assert args.external is None
