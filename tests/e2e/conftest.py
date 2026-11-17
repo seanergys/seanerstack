@@ -12,7 +12,9 @@ Environment:
   CI_JOB_TOKEN in CI, a personal access token otherwise.
 - SEANERSTACK_E2E_USERNAME: user name for the token (default: oauth2;
   gitlab-ci-token for a job token).
-- SEANERSTACK_E2E_SPACK: Spack executable (default: spack on PATH).
+- SEANERSTACK_E2E_SPACK: Spack executable to pass with --spack-executable; it
+  has to be the pinned version (default: none, and Seanerstack installs the
+  pinned Spack into each test's state directory).
 - SEANERSTACK_E2E_REGISTRY: oci:// location under which each build-cache
   test pushes to its own repository, test-e2e-buildcache-<test>, such as
   oci://$CI_REGISTRY_IMAGE. The token needs write access to it.
@@ -30,7 +32,6 @@ import json
 import os
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import sys
 
@@ -127,11 +128,15 @@ def commands() -> Commands:
 
 
 @pytest.fixture(scope="session")
-def spack() -> Path:
-    configured = os.environ.get("SEANERSTACK_E2E_SPACK") or shutil.which("spack")
-    if not configured:
-        _unavailable("no Spack executable; set SEANERSTACK_E2E_SPACK")
-    return Path(configured).resolve()
+def spack() -> Path | None:
+    """The Spack of SEANERSTACK_E2E_SPACK, or None to let Seanerstack install its own."""
+    configured = os.environ.get("SEANERSTACK_E2E_SPACK")
+    return Path(configured).resolve() if configured else None
+
+
+def spack_options(spack: Path | None) -> list[str | Path]:
+    """The options that name the Spack of the tests, if there is one."""
+    return ["--spack-executable", spack] if spack else []
 
 
 @pytest.fixture

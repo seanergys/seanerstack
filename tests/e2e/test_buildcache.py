@@ -6,7 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 import shlex
 
-from conftest import E2E_SPEC, Commands, environment, files_containing
+from conftest import E2E_SPEC, Commands, environment, files_containing, spack_options
 
 # The build cache of the round-trip test, declared in its own config.toml.
 E2E_BUILDCACHE = "e2e-buildcache"
@@ -30,7 +30,7 @@ signed = false
     return path
 
 
-def test_buildcache_round_trip(commands: Commands, secrets_file: Path, password_file: Path, spack: Path, buildcache_url: str, tmp_path: Path):
+def test_buildcache_round_trip(commands: Commands, secrets_file: Path, password_file: Path, spack: Path | None, buildcache_url: str, tmp_path: Path):
     """Build a package, push it to the test cache, and install it back from there."""
     state = tmp_path / "state"
     options = " ".join(
@@ -38,9 +38,9 @@ def test_buildcache_round_trip(commands: Commands, secrets_file: Path, password_
         for value in (
             "--config-file", _write_e2e_config(tmp_path / "config.toml", buildcache_url),
             "--state-dir", state,
-            "--spack-executable", spack,
             "--secrets-file", secrets_file,
             "--secrets-password-file", password_file,
+            *spack_options(spack),
         )
     )
 

@@ -29,7 +29,7 @@ import sys
 
 import pytest
 
-from conftest import _unavailable
+from conftest import _unavailable, spack_options
 
 # Small, and with no dependencies beyond the compiler runtime.
 SPEC = "zlib"
@@ -62,7 +62,7 @@ def _environment() -> dict[str, str]:
     return {key: value for key, value in os.environ.items() if not key.startswith("SEANERSTACK_")}
 
 
-def _init(seanerstack: Path, spack: Path, state: Path, prefix: str, tmp_path: Path) -> None:
+def _init(seanerstack: Path, spack: Path | None, state: Path, prefix: str, tmp_path: Path) -> None:
     """Set up the state with a config.toml of no resources, which needs no credentials."""
     config = tmp_path / "config.toml"
     config.write_text("", encoding="utf-8")
@@ -72,9 +72,9 @@ def _init(seanerstack: Path, spack: Path, state: Path, prefix: str, tmp_path: Pa
     assert "compilers found:" in result.stdout
 
 
-def _seanerstack(seanerstack: Path, spack: Path, state: Path, *args: str) -> subprocess.CompletedProcess[str]:
+def _seanerstack(seanerstack: Path, spack: Path | None, state: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [str(seanerstack), "--state-dir", str(state), "--spack-executable", str(spack), *args],
+        [str(seanerstack), "--state-dir", str(state), *map(str, spack_options(spack)), *args],
         env=_environment(),
         text=True,
         capture_output=True,
@@ -83,11 +83,11 @@ def _seanerstack(seanerstack: Path, spack: Path, state: Path, *args: str) -> sub
     )
 
 
-def _spack(seanerstack: Path, spack: Path, state: Path, *args: str) -> subprocess.CompletedProcess[str]:
-    """Run spack in the isolated session of the state directory."""
-    script = 'eval "$("$0" --state-dir "$1" --spack-executable "$2" activate)"; shift 2; spack "$@"'
+def _spack(seanerstack: Path, state: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    """Run spack in the isolated session of the state directory, with the Spack init recorded."""
+    script = 'eval "$("$0" --state-dir "$1" activate)"; shift; spack "$@"'
     return subprocess.run(
-        ["bash", "-euo", "pipefail", "-c", script, str(seanerstack), str(state), str(spack), *args],
+        ["bash", "-euo", "pipefail", "-c", script, str(seanerstack), str(state), *args],
         env=_environment(),
         text=True,
         capture_output=True,
@@ -106,7 +106,7 @@ def _nodes(output: str) -> list[dict]:
 
 
 def test_an_external_compiler_builds_a_package_and_no_compiler(
-    seanerstack: Path, spack: Path, prefix: str, tmp_path: Path
+    seanerstack: Path, spack: Path | None, prefix: str, tmp_path: Path
 ):
     compiler = _setting("SEANERSTACK_E2E_EXTERNAL_COMPILER")
     state = tmp_path / "state"
@@ -120,7 +120,7 @@ def test_an_external_compiler_builds_a_package_and_no_compiler(
     assert "compiler probe (zlib): ok" in result.stdout
     assert "match nothing in the project build cache" in result.stdout
 
-    found = _spack(seanerstack, spack, state, "find", "--json", "--deps", SPEC)
+    found = _spack(seanerstack, state, "find", "--json", "--deps", SPEC)
     assert found.returncode == 0, found.stderr
     nodes = _nodes(found.stdout)
     compilers = [node for node in nodes if node["name"] == "gcc"]
@@ -130,13 +130,13 @@ def test_an_external_compiler_builds_a_package_and_no_compiler(
         assert node["version"].split(".")[0] == compiler.split("@")[1].split(".")[0]
 
     # Nothing but externals: no gcc was built.
-    gcc = _spack(seanerstack, spack, state, "find", "--json", "gcc")
+    gcc = _spack(seanerstack, state, "find", "--json", "gcc")
     built = [node for node in _nodes(gcc.stdout) if "external" not in node] if gcc.returncode == 0 else []
     assert built == []
 
 
 def test_a_compiler_init_did_not_find_is_refused(
-    seanerstack: Path, spack: Path, prefix: str, tmp_path: Path
+    seanerstack: Path, spack: Path | None, prefix: str, tmp_path: Path
 ):
     compiler = _setting("SEANERSTACK_E2E_MISSING_COMPILER")
     state = tmp_path / "state"
@@ -147,6 +147,6 @@ def test_a_compiler_init_did_not_find_is_refused(
     assert result.returncode != 0
     assert f"--external {compiler} matches none of the compilers and packages that init found" in result.stderr
 
-    requirements = _spack(seanerstack, spack, state, "config", "get", "packages")
+    requirements = _spack(seanerstack, state, "config", "get", "packages")
     assert requirements.returncode == 0, requirements.stderr
     assert f"require: {compiler}" not in requirements.stdout

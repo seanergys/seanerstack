@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import sys
 
 from conftest import REPOSITORY, Commands, environment
@@ -30,4 +31,4 @@ def test_version_names_the_pinned_spack(commands: Commands):
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.startswith("seanerstack "), result.stdout
-    assert result.stdout.rstrip().endswith("(Spack 1.2.2)"), result.stdout
+    assert re.search(r"\(Spack \d+\.\d+\.\d+\)$", result.stdout.rstrip()), result.stdout

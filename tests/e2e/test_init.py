@@ -4,18 +4,19 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 import shlex
 import subprocess
 
-from conftest import PASSWORD, REGISTRY_VARIABLES, Commands, environment, files_containing, write_secrets
+from conftest import PASSWORD, REGISTRY_VARIABLES, Commands, environment, files_containing, spack_options, write_secrets
 
 
 
-def test_init_stores_the_registry_credentials_for_spack(commands: Commands, secrets_file: Path, spack: Path, tmp_path: Path):
+def test_init_stores_the_registry_credentials_for_spack(commands: Commands, secrets_file: Path, spack: Path | None, tmp_path: Path):
     state = tmp_path / "state"
     # Only what init stores matters here, not whether every resource can be read.
     init = commands.run(
-        "seanerstack", "--state-dir", state, "--spack-executable", spack,
+        "seanerstack", "--state-dir", state, *spack_options(spack),
         "--secrets-file", secrets_file, "--secrets-password-stdin", "init",
         input=PASSWORD + "\n", env=environment(),
     )
@@ -54,10 +55,10 @@ signed = false
     return path
 
 
-def test_the_states_spack_runs_without_activation(commands: Commands, secrets_file: Path, spack: Path, tmp_path: Path):
+def test_the_states_spack_runs_without_activation(commands: Commands, secrets_file: Path, spack: Path | None, tmp_path: Path):
     state = tmp_path / "state"
     commands.run(
-        "seanerstack", "--state-dir", state, "--spack-executable", spack,
+        "seanerstack", "--state-dir", state, *spack_options(spack),
         "--secrets-file", secrets_file, "--secrets-password-stdin", "init",
         input=PASSWORD + "\n", env=environment(),
     )
@@ -73,11 +74,11 @@ def test_the_states_spack_runs_without_activation(commands: Commands, secrets_fi
     assert "target=x86_64_v3" in target.stdout, target.stdout
 
 
-def test_init_again_needs_nothing_but_the_state(commands: Commands, secrets_file: Path, spack: Path, buildcache_url: str, tmp_path: Path):
+def test_init_again_needs_nothing_but_the_state(commands: Commands, secrets_file: Path, spack: Path | None, buildcache_url: str, tmp_path: Path):
     state = tmp_path / "state"
     config = _e2e_config(tmp_path / "config.toml", buildcache_url)
     first = commands.run(
-        "seanerstack", "--state-dir", state, "--spack-executable", spack, "--config-file", config,
+        "seanerstack", "--state-dir", state, *spack_options(spack), "--config-file", config,
         "--secrets-file", secrets_file, "--secrets-password-stdin", "init",
         input=PASSWORD + "\n", env=environment(),
     )
@@ -85,17 +86,18 @@ def test_init_again_needs_nothing_but_the_state(commands: Commands, secrets_file
     again = commands.run("seanerstack", "--state-dir", state, "init", env=environment())
 
     assert f"config: {config}" in again.stdout, again.stdout + again.stderr
-    assert f"spack: {spack}" in again.stdout, again.stdout + again.stderr
+    spack_line = next(line for line in first.stdout.splitlines() if line.startswith("spack: "))
+    assert spack_line in again.stdout.splitlines(), again.stdout + again.stderr
     # The same access as the first time, from the stored credentials.
     assert again.returncode == first.returncode, again.stdout + again.stderr
     assert not first.leaked and not again.leaked
 
 
-def test_init_fails_on_a_build_cache_it_cannot_read(commands: Commands, password_file: Path, spack: Path, buildcache_url: str, tmp_path: Path):
+def test_init_fails_on_a_build_cache_it_cannot_read(commands: Commands, password_file: Path, spack: Path | None, buildcache_url: str, tmp_path: Path):
     invalid = write_secrets(commands, tmp_path / "secrets.toml", password_file, token="invalid-e2e-token")
 
     result = commands.run(
-        "seanerstack", "--state-dir", tmp_path / "state", "--spack-executable", spack,
+        "seanerstack", "--state-dir", tmp_path / "state", *spack_options(spack),
         "--config-file", _e2e_config(tmp_path / "config.toml", buildcache_url),
         "--secrets-file", invalid, "--secrets-password-file", password_file, "init",
         env=environment(),
@@ -114,4 +116,4 @@ def test_init_refuses_another_spack_version(commands: Commands, tmp_path: Path):
     result = commands.run("seanerstack", "--state-dir", tmp_path / "state", "--spack-executable", other, "init", env=environment())
 
     assert result.returncode == 2, result.stdout + result.stderr
-    assert "is Spack 1.3.0.dev0, and Seanerstack needs Spack 1.2.2" in result.stderr
+    assert re.search(r"is Spack 1\.3\.0\.dev0, and Seanerstack needs Spack \d+\.\d+\.\d+", result.stderr), result.stderr
