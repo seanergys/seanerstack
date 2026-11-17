@@ -12,6 +12,7 @@ from .secrets import SecretStore
 
 # Run by `spack python`, so that it uses the Spack of the session.
 UPDATE_INDEX_SCRIPT = Path(__file__).with_name("_spack_update_index.py")
+CACHE_ACCESS_SCRIPT = Path(__file__).with_name("_spack_cache_access.py")
 
 # What Spack warns when the index of a build cache is newer than it can read.
 UNREADABLE_INDEX = "you need a newer Spack version to read the buildcache index"
@@ -73,6 +74,25 @@ def buildcache_environment(config: Config, secrets: SecretStore, env) -> dict[st
             except ValueError:
                 pass
     return env
+
+
+def require_cache_access(command: list[str], env) -> None:
+    """Fail when an OCI build cache of the session refuses a request made with `env`.
+
+    Spack reports such a cache as "no binary available" and builds from source
+    what the cache holds, so an install that follows would hide the refusal.
+
+    @param command: the isolated Spack command
+    @param env: the environment the install will run in, with its credentials
+    @return: nothing; a refused cache raises RuntimeError that names it
+    """
+    result = subprocess.run([*command, "python", str(CACHE_ACCESS_SCRIPT)], check=False, text=True, capture_output=True, env=env)
+    if result.returncode != 0:
+        reason = result.stdout.strip() or result.stderr.strip()
+        raise RuntimeError(
+            f"a build cache cannot be read, so Spack would build from source what it holds:\n{reason}\n"
+            "Run `seanerstack init --secrets-file FILE` again with credentials that can read it."
+        )
 
 
 def explain(spec: str, *, command: list[str], env) -> int:

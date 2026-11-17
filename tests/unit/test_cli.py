@@ -94,6 +94,8 @@ def _init_world(monkeypatch, tmp_path: Path, *, buildcache_ok=True, git_ok=True)
     monkeypatch.setattr(cli, "_spack_runtime", lambda args: (x, tmp_path / "spack", ["spack"], {}))
     monkeypatch.setattr(cli, "configure_buildcaches", lambda config, **kwargs: calls.append("configure"))
     monkeypatch.setattr(cli, "require_target", lambda command, target, env: calls.append(f"target={target}"))
+    # The build caches answer; the tests of the access check cover a refusal.
+    monkeypatch.setattr(cli, "require_cache_access", lambda command, env: None, raising=False)
     monkeypatch.setattr(cli, "check_buildcaches", lambda config, secrets, **kwargs: calls.append("check") or [("cache", buildcache_ok, "")])
     monkeypatch.setattr(cli, "check_git_access", lambda config, secrets: calls.append("git") or [("gitlab", git_ok, "")])
     # Nothing installed on the machine; the tests of discovery cover finding it.
@@ -248,6 +250,53 @@ def test_bootstrap_builds_the_compiler_then_rust_and_the_other_packages(monkeypa
     assert cli._run_bootstrap(_bootstrap_args(tmp_path)) == 0
 
     assert calls == ["target=x86_64_v3", ("bootstrap", "gcc@15", None, None), ("install", ["rust", "capnproto"])]
+
+
+def test_bootstrap_gives_spack_the_stored_credentials_of_the_build_cache(monkeypatch, tmp_path: Path):
+    import json
+    import seanerstack.isolation
+    _bootstrap_world(monkeypatch, tmp_path)
+    credentials = seanerstack.isolation.layout(tmp_path / "state").credentials
+    credentials.write_text(json.dumps({"credentials": {"registry": {"username": "reader", "token": "secret"}}}))
+    environments = []
+
+    def fake_bootstrap(compiler, **kwargs):
+        environments.append(kwargs["env"])
+        return BootstrapResult(compiler=compiler, installed=True, registered=True, languages=("c",), probe="zlib", probe_ok=True)
+
+    monkeypatch.setattr(cli, "bootstrap", fake_bootstrap)
+    monkeypatch.setattr(cli, "install_packages", lambda command, packages, env: environments.append(env))
+
+    cli._run_bootstrap(_bootstrap_args(tmp_path))
+
+    # The compiler and the packages both come from the cache, so both need them.
+    for env in environments:
+        assert env["SEANERSTACK_RESOURCE_CACHE_USERNAME"] == "reader"
+        assert env["SEANERSTACK_RESOURCE_CACHE_PASSWORD"] == "secret"
+    assert len(environments) == 2
+
+
+def test_bootstrap_checks_the_build_caches_before_it_builds(monkeypatch, tmp_path: Path):
+    calls = _bootstrap_world(monkeypatch, tmp_path)
+    monkeypatch.setattr(cli, "require_cache_access", lambda command, env: calls.append(("access", command)))
+
+    cli._run_bootstrap(_bootstrap_args(tmp_path))
+
+    assert calls.index(("access", ["spack"])) < calls.index(("bootstrap", "gcc@15", None, None))
+
+
+def test_bootstrap_builds_nothing_when_a_build_cache_refuses(monkeypatch, tmp_path: Path):
+    import pytest
+    calls = _bootstrap_world(monkeypatch, tmp_path)
+
+    def refused(command, env):
+        raise RuntimeError("cache: refuses the request: HTTP Error 401")
+
+    monkeypatch.setattr(cli, "require_cache_access", refused)
+
+    with pytest.raises(RuntimeError, match="HTTP Error 401"):
+        cli._run_bootstrap(_bootstrap_args(tmp_path))
+    assert not [call for call in calls if call[0] in ("bootstrap", "install")]
 
 
 def test_bootstrap_takes_the_packages_compiler_and_target_given(monkeypatch, tmp_path: Path):
