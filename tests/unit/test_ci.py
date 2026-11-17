@@ -37,3 +37,13 @@ def test_the_nightly_toolchain_job_needs_no_docker_daemon():
     assert job["tags"] == ["docker", "seanerstack"]
     assert "services" not in job
     assert any("buildcache prepare --no-container" in step for step in job["script"])
+
+
+def test_the_nightly_toolchain_job_explains_after_it_prepared_and_keeps_the_status():
+    script = _toolchain_job()["script"]
+    prepare = next(index for index, step in enumerate(script) if "buildcache prepare" in step)
+    explain = next(index for index, step in enumerate(script) if "buildcache explain" in step)
+    assert prepare < explain
+    assert "|| status=$?" in script[prepare]
+    assert "|| true" in script[explain]
+    assert script[-1] == 'exit "$status"'
