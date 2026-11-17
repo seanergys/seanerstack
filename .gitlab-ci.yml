@@ -185,7 +185,7 @@ build:rocky10:
   variables:
     PLATFORM: rocky10
     ENVIRONMENT: /opt/seanergys-meta
-  before_script:
+  before_script: &rocky10-setup
     - dnf install -y --setopt=install_weak_deps=False python3 python3-pip
     - python3 -m venv /opt/seanerstack
     - /opt/seanerstack/bin/pip install --quiet .
@@ -235,6 +235,31 @@ build:rocky10:
         seanerstack buildcache update-index
       fi
     - exit "$status"
+
+# The "Work on a package" guide, run as it tells a reader to: the guide shows
+# the sections of tests/how-to/work-on-a-package.sh, and this job runs that
+# script in a state set up like a user's machine, so the guide cannot describe
+# a procedure that no longer works.
+how-to:work-on-a-package:
+  stage: build
+  tags:
+    - docker
+    - seanerstack
+  image: docker.io/rockylinux/rockylinux:10
+  # The dependencies come from the build cache; only the package is built.
+  timeout: 2h
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - when: on_success
+  variables:
+    PLATFORM: rocky10
+  before_script: *rocky10-setup
+  script:
+    - seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password init
+    - export PATH="/opt/seanergys/state/spack/bin:$PATH"
+    - seanerstack toolchain bootstrap
+    - tests/how-to/work-on-a-package.sh
 
 docs:
   stage: docs
