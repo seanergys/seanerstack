@@ -1,6 +1,6 @@
-# Set up Spack for SEANERGYS
+# Set up a workstation
 
-Use this procedure when preparing a machine for SEANERGYS work. For a completely new machine, follow the tutorial instead. Seanerstack installs the Spack it needs itself.
+Use this procedure to prepare a machine for SEANERGYS work when a step needs a choice that the [tutorial](../tutorials/getting-started.md) leaves out: another installer, a compiler off `PATH`, another state directory, or an update of an existing installation. The steps are those of the tutorial, each with its options.
 
 ## 1. Configure pipx for the SEANERGYS package registry
 
