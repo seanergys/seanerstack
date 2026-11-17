@@ -118,6 +118,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     cache_parser = subparsers.add_parser("buildcache", help="Configure and verify Spack binary build caches.")
     cache_sub = cache_parser.add_subparsers(dest="buildcache_command", required=True)
+    explain_parser = cache_sub.add_parser(
+        "explain",
+        help="Explain why a spec is built instead of taken from the build caches.",
+        description=(
+            "Concretize SPEC as `spack install` would, and compare it with every spec of the same name "
+            "and version in the configured build caches. For each, print the nodes whose own fields "
+            "differ, such as the CPU target, a variant, the package recipe or the install path of an "
+            "external compiler; a node that differs only through a dependency is not repeated."
+        ),
+    )
+    explain_parser.add_argument("spec", nargs="+", help="the spec, such as gcc@15.3.0 or rust")
     cache_sub.add_parser("configure", help="Install configured build-cache mirrors into the isolated Spack configuration.")
     cache_sub.add_parser("check", help="Check access to configured build caches using session or vault credentials.")
     prepare_parser = cache_sub.add_parser(
@@ -368,6 +379,10 @@ def _run_validate(args: argparse.Namespace) -> int:
 
 def _run_buildcache(args: argparse.Namespace) -> int:
     config, secrets = _runtime(args)
+    if args.buildcache_command == "explain":
+        from .buildcache import buildcache_environment, explain
+        _, _, command, env = _spack_runtime(args)
+        return explain(" ".join(args.spec), command=command, env=buildcache_environment(config, secrets, env))
     if args.buildcache_command == "configure":
         _, _, command, env = _spack_runtime(args)
         configure_buildcaches(config, command=command, env=env)

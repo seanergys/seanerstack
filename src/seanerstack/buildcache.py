@@ -48,6 +48,40 @@ def configure_buildcaches(config: Config, *, command: list[str] | None = None, e
             raise RuntimeError(f"could not configure build cache {resource.name!r}: {message}")
 
 
+# Run by `spack python`, so that it uses the Spack of the session.
+HASHDIFF_SCRIPT = os.path.join(os.path.dirname(__file__), "_spack_hashdiff.py")
+
+
+def buildcache_environment(config: Config, secrets: SecretStore, env) -> dict[str, str]:
+    """`env` with the credentials of every build cache that has them, for reading all of them.
+
+    A cache whose credentials are missing is read anonymously, as Spack would.
+    """
+    env = dict(env)
+    for resource in buildcaches(config):
+        if resource.credentials and not all(name in env for name in resource.credential_variables):
+            try:
+                env.update(spack_resource_environment(resource, secrets))
+            except ValueError:
+                pass
+    return env
+
+
+def explain(spec: str, *, command: list[str], env) -> int:
+    """Explain why `spec` is not taken from the build caches.
+
+    Concretizes `spec` in the session, and for each cached spec of the same
+    name and version, prints the nodes whose own hashed fields differ, such
+    as the target, a variant, the package recipe or the path of an external.
+
+    @param spec: the spec as `spack install` would get it, such as gcc@15.3.0
+    @param command: the isolated Spack command
+    @param env: its environment, with the credentials of the caches
+    @return: 0 when a cached spec was compared, 1 when the caches hold none of that name and version
+    """
+    return subprocess.run([*command, "python", HASHDIFF_SCRIPT, spec], check=False, text=True, env=env).returncode
+
+
 def check_buildcaches(config: Config, secrets: SecretStore, *, command: list[str] | None = None, base_env=None) -> list[tuple[str, bool, str]]:
     command = command or ["spack"]
     results: list[tuple[str, bool, str]] = []
