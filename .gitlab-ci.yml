@@ -211,6 +211,19 @@ build:rocky10:
       git config --global
       url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.seanergys.fz-juelich.de/".insteadOf
       "https://gitlab.seanergys.fz-juelich.de/"
+    # Why this pipeline builds instead of reusing: the toolchain and
+    # seanergys-meta against the cached specs of their name and version. It
+    # runs after bootstrap, which sets the target and the compiler that the
+    # specs concretize with, and never fails the job.
+    - >-
+      SPECS="$(python -c 'import seanerstack.config;
+      toolchain = seanerstack.config.load_config().toolchain;
+      print(toolchain.compiler, *toolchain.packages)') seanergys-meta"
+    - |
+      for spec in $SPECS; do
+        echo "== seanerstack buildcache explain $spec"
+        seanerstack buildcache explain "$spec" || true
+      done
     - spack env create --without-view -d "$ENVIRONMENT"
     - spack -e "$ENVIRONMENT" add seanergys-meta
     - spack -e "$ENVIRONMENT" concretize
