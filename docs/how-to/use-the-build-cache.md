@@ -105,6 +105,26 @@ The `toolchain` job of the CI pipeline runs `buildcache prepare --no-container` 
 
 A night in which nothing changed only checks that the cache holds everything. When the hashes change, for example with the Spack version or the `spack-packages` pin, it builds again, which for GCC and Rust takes hours, so the job may run for 12 hours. A unit test keeps the platforms of the job, their images and their Python equal to those in the shipped `config.toml`, so a platform added there also needs an entry in the job's matrix.
 
+## Find out why a package is not taken from the cache
+
+When Spack builds a package that you expected from the cache, ask Seanerstack why:
+
+```console
+seanerstack buildcache explain gcc@15.3.0
+```
+
+It concretizes the spec as `spack install` would, and compares it with every spec of the same name and version in the configured caches. For each one, it prints the nodes whose own fields differ, from the root down; a node that differs only because one of its dependencies differs is not repeated, so the cause is the lowest node listed:
+
+```text
+cached: gcc@15.3.0/frjwpux...  linux-fedora44-zen3
+gcc  local /4vm5ymy  cached /frjwpux
+    arch.target.name:
+        local:  None
+        cached: 'zen3'
+```
+
+The usual causes are a different CPU target, Spack version, recipe (`package_hash`), operating system, or compiler install path, such as a state directory other than the default or an external compiler. When the caches hold no spec of that name and version at all, it says so.
+
 ## Use a filesystem build cache
 
 A build cache can also be a directory on a local or shared filesystem. Declare it as a resource with a `file://` URL in the `config.toml` passed with `--config-file`:
