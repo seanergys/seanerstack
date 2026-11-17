@@ -31,20 +31,14 @@ test:
     - uv run pytest
     - uv run seanerstack validate
 
-# Builds the wheel of this commit, installs it into a fresh environment, and
-# runs tests/e2e against this GitLab instance. The job token reads the seanerbroker
-# repository, and builds and pushes a small package into
-# test-e2e-buildcache-<test> in the project's container registry, separate
-# from the project build cache, before installing it back from there.
-e2e:
+# The end-to-end tests: each job builds the wheel of this commit, installs it
+# into a fresh environment, and runs one file of tests/e2e against this GitLab
+# instance, with the job token. They run in merge requests, so that what
+# reaches the default branch has passed them in the merge train, and in the
+# nightly schedule, which notices when Spack or this GitLab instance changes
+# under an unchanged default branch.
+.e2e:
   stage: test
-  # Those repositories are named after the test, not the pipeline, so two e2e
-  # jobs at once, as in the pipelines of a merge train, would overwrite each
-  # other's index. They take turns instead.
-  resource_group: e2e-registry
-  # Merge requests, so that what reaches the default branch has passed it in
-  # the merge train, and the nightly schedule, which notices when Spack or this
-  # GitLab instance changes under an unchanged default branch.
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE =~ /^(schedule|web)$/'
@@ -63,9 +57,38 @@ e2e:
       apt-get install -y --no-install-recommends
       bzip2 ca-certificates file g++ gcc git libc6-dev make patch unzip xz-utils
     - git clone --depth 1 --branch "$SPACK_VERSION" https://github.com/spack/spack.git /opt/spack
+
+# The installed wheel, the secrets file and --version.
+e2e:install:
+  extends: .e2e
   script:
-    # e2e:external-compiler runs those, in images with the compilers.
-    - tests/e2e/run.sh -k "not external_compiler"
+    - tests/e2e/run.sh tests/e2e/test_install.py
+
+# Git access with the credentials of a secrets file: valid, invalid, and
+# behind a wrong vault password.
+e2e:credentials:
+  extends: .e2e
+  script:
+    - tests/e2e/run.sh tests/e2e/test_credentials.py
+
+# What init sets up and checks, and the state's spack without activation.
+# These only read the registry.
+e2e:init:
+  extends: .e2e
+  script:
+    - tests/e2e/run.sh tests/e2e/test_init.py
+
+# Builds a small package, pushes it into test-e2e-buildcache-<test> in the
+# project's container registry, separate from the project build cache, and
+# installs it back from there.
+e2e:buildcache:
+  extends: .e2e
+  # That repository is named after the test, not the pipeline, so two of these
+  # jobs at once, as in the pipelines of a merge train, would overwrite each
+  # other's index. They take turns instead.
+  resource_group: e2e-registry
+  script:
+    - tests/e2e/run.sh tests/e2e/test_buildcache.py
 
 # In an image whose distribution packages a GCC, init finds it, and toolchain
 # bootstrap --external chooses it by name and builds a small package with it;
@@ -104,7 +127,7 @@ e2e:external-compiler:
     - export PATH="/opt/uv/bin:$PATH"
     - git clone --depth 1 --branch "$SPACK_VERSION" https://github.com/spack/spack.git /opt/spack
   script:
-    - tests/e2e/run.sh -k external_compiler
+    - tests/e2e/run.sh tests/e2e/test_external_compiler.py
 
 docs:
   stage: docs
