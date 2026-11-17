@@ -163,3 +163,22 @@ def test_toolchain_bootstrap_installs_the_compiler_of_the_config(monkeypatch, tm
 
     assert cli._run_bootstrap(args) == 0
     assert installed == ["gcc@15"]
+
+
+def test_activate_exports_the_credentials_that_init_stored(monkeypatch, tmp_path: Path, capsys):
+    import seanerstack.isolation
+    from seanerstack.config import Resource
+    x = seanerstack.isolation.prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    x.credentials.write_text('{"credentials": {"registry": {"token": "glpat"}}}', encoding="utf-8")
+    cache = Resource(name="cache", kind="spack-buildcache", url="oci://registry.example.org/cache", credentials="registry", signed=False)
+    monkeypatch.setattr(cli, "load_config", lambda path: Config(path=tmp_path / "config.toml", resources={"cache": cache}))
+    monkeypatch.setattr(cli, "resolve_real_spack", lambda explicit, state_dir: tmp_path / "spack")
+    monkeypatch.delenv("SEANERSTACK_ACTIVE", raising=False)
+
+    with __import__("pytest").raises(SystemExit) as stop:
+        cli.main(["--state-dir", str(tmp_path / "state"), "activate"])
+
+    assert stop.value.code == 0
+    out = capsys.readouterr().out
+    assert "export SEANERSTACK_RESOURCE_CACHE_PASSWORD=glpat" in out
+    assert f"export PATH={x.bin}:" in out

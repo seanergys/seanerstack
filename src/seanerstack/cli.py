@@ -430,7 +430,7 @@ def main(argv: list[str] | None = None) -> None:
         elif args.command == "activate":
             config, secrets = _runtime(args)
             state_dir = resolve_state_dir(args.state_dir)
-            real_spack = resolve_real_spack(args.spack_executable, state_dir)
+            real_spack = resolve_real_spack(args.spack_executable or read_record(state_dir)["spack_executable"], state_dir)
             print(activation_script(state_dir=state_dir, real_spack=real_spack, config=config, secrets=secrets), end="")
             code = 0
         elif args.command == "deactivate":
