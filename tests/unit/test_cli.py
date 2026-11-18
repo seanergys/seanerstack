@@ -132,6 +132,27 @@ def test_init_sets_up_the_state_and_checks_access_without_a_compiler(monkeypatch
     assert "seanerstack toolchain bootstrap" in out
 
 
+def test_init_ends_with_how_to_activate_the_state_it_set_up(monkeypatch, tmp_path: Path, capsys):
+    x, _ = _init_world(monkeypatch, tmp_path)
+    monkeypatch.delenv("SEANERSTACK_STATE_DIR", raising=False)
+
+    cli._run_init(_init_args(tmp_path))
+
+    # Neither the default nor named by the variable, so activation names it.
+    out = capsys.readouterr().out
+    assert f'eval "$(seanerstack --state-dir {x.state} activate)"' in out
+    assert out.index("activate") < out.index("export PATH=")
+
+
+def test_init_needs_no_option_to_activate_the_state_that_the_variable_names(monkeypatch, tmp_path: Path, capsys):
+    x, _ = _init_world(monkeypatch, tmp_path)
+    monkeypatch.setenv("SEANERSTACK_STATE_DIR", str(x.state))
+
+    cli._run_init(_init_args(tmp_path))
+
+    assert 'eval "$(seanerstack activate)"' in capsys.readouterr().out
+
+
 def test_init_stores_the_credentials_of_the_secrets_file(monkeypatch, tmp_path: Path):
     from seanerstack.secrets import SecretStore
     x, _ = _init_world(monkeypatch, tmp_path)
