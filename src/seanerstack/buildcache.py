@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 import subprocess
 
@@ -13,6 +14,14 @@ from .secrets import SecretStore
 # Run by `spack python`, so that it uses the Spack of the session.
 UPDATE_INDEX_SCRIPT = Path(__file__).with_name("_spack_update_index.py")
 CACHE_ACCESS_SCRIPT = Path(__file__).with_name("_spack_cache_access.py")
+
+# How Spack reports a build cache without an index: the registry knows no
+# manifest of that name, which a refused request (401, 403) never says.
+EMPTY_CACHE = re.compile(r"FetchIndexError.*returned 404", re.DOTALL)
+EMPTY_CACHE_MESSAGE = (
+    "empty: the cache has no index yet, so everything is built until "
+    "`seanerstack buildcache prepare` or a push with an index update fills it"
+)
 
 # What Spack warns when the index of a build cache is newer than it can read.
 UNREADABLE_INDEX = "you need a newer Spack version to read the buildcache index"
@@ -145,6 +154,11 @@ def check_buildcaches(config: Config, secrets: SecretStore, *, command: list[str
                 "a newer Spack wrote the index of this cache, and the pinned one cannot read it; "
                 "rebuild it with `seanerstack buildcache update-index`, which needs write access"
             )
+        # A cache that nothing was pushed to yet has no index. It answered the
+        # request, so the credentials read it, and it holds nothing to install.
+        if process.returncode != 0 and EMPTY_CACHE.search(process.stdout + process.stderr):
+            results.append((resource.name, True, EMPTY_CACHE_MESSAGE))
+            continue
         results.append((resource.name, process.returncode == 0 and not unreadable, message))
     return results
 
