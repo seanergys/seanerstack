@@ -397,3 +397,63 @@ def test_prepare_always_updates_the_index_after_the_push(monkeypatch, tmp_path):
     # Spack's own update-index, or Seanerstack's script run by `spack python`.
     (update,) = [call for call in spack.calls if call[-1] == "target" and ("update-index" in call or call[1] == "python")]
     assert spack.calls.index(push) < spack.calls.index(update)
+
+
+CONFIG_YAML = "config::\n  install_tree:\n    root: /state/spack/store\n  build_stage:\n  - /state/spack/stage\n"
+
+
+def _state_config(tmp_path, text=CONFIG_YAML):
+    (tmp_path / "config.yaml").write_text(text, encoding="utf-8")
+    return tmp_path
+
+
+def test_padding_goes_below_the_install_root_and_keeps_the_override(monkeypatch, tmp_path):
+    monkeypatch.setattr(_prepare, "_output", lambda args, env: "")
+
+    _prepare.pad_install_tree(_state_config(tmp_path), 200, command=["spack"], env={})
+
+    text = (tmp_path / "config.yaml").read_text()
+    assert text.startswith("config::\n  install_tree:\n    root: /state/spack/store\n    padded_length: 200\n  build_stage:")
+    # Again with the same length, and back to none.
+    _prepare.pad_install_tree(tmp_path, 200, command=["spack"], env={})
+    assert (tmp_path / "config.yaml").read_text() == text
+    _prepare.pad_install_tree(tmp_path, 0, command=["spack"], env={})
+    assert (tmp_path / "config.yaml").read_text() == CONFIG_YAML
+
+
+def test_a_state_with_installations_keeps_its_padding(monkeypatch, tmp_path):
+    monkeypatch.setattr(_prepare, "_output", lambda args, env: "/aaa\n/bbb\n")
+
+    with pytest.raises(RuntimeError, match="holds installations with a padded length of 0, and cannot change to 200"):
+        _prepare.pad_install_tree(_state_config(tmp_path), 200, command=["spack"], env={})
+    assert (tmp_path / "config.yaml").read_text() == CONFIG_YAML
+    # The same padding as before is no change, whatever is installed.
+    padded = CONFIG_YAML.replace("store\n", "store\n    padded_length: 128\n")
+    _prepare.pad_install_tree(_state_config(tmp_path, padded), 128, command=["spack"], env={})
+    with pytest.raises(RuntimeError, match="padded length of 128, and cannot change to 0"):
+        _prepare.pad_install_tree(tmp_path, 0, command=["spack"], env={})
+
+
+def test_prepare_pads_before_anything_is_installed(monkeypatch, tmp_path):
+    spack = Spack(monkeypatch)
+    order = []
+    monkeypatch.setattr(_prepare, "pad_install_tree", lambda path, length, **kwargs: order.append(("pad", path, length)))
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: order.append("bootstrap") or type("Result", (), {"probe_ok": True}))
+
+    assert run_here(tmp_path, padded_length=200, spack_config=tmp_path / "config") == 0
+
+    assert order == [("pad", tmp_path / "config", 200), "bootstrap"]
+    assert spack.calls
+
+
+def test_the_container_builds_with_the_padding_it_was_given():
+    plain = _prepare.container_script(ROCKY10, jobs=1, source=False, uid=0, gid=0, version="1")
+    padded = _prepare.container_script(ROCKY10, jobs=1, source=False, uid=0, gid=0, version="1", padded_length=200)
+    assert "--padded-length" not in plain
+    assert "buildcache prepare --no-container --platform rocky10 --jobs 1 --padded-length 200" in padded
+
+
+def test_prepare_takes_a_padded_length_and_pads_nothing_without_it():
+    arguments = ["buildcache", "prepare", "--platform", "rocky10"]
+    assert build_parser().parse_args(arguments).padded_length == 0
+    assert build_parser().parse_args([*arguments, "--padded-length", "200"]).padded_length == 200
