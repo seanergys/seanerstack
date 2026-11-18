@@ -56,4 +56,4 @@ paths repo
 paths env --package <package>
 ```
 
-Seanerstack is therefore not a replacement command language for Spack. The `spack` wrapper in the state directory establishes the configuration and state boundary; users put it on `PATH` once and then invoke ordinary `spack` commands to concretize, install, develop, and deploy software.
+Seanerstack is therefore not a replacement command language for Spack. The `spack` wrapper in the state directory establishes the configuration and state boundary; users activate the state in a shell and then invoke ordinary `spack` commands to concretize, install, develop, and deploy software.

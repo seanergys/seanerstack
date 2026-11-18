@@ -73,6 +73,6 @@ The stack is installed, and the machine is set up for SEANERGYS work.
 | --- | --- |
 | Change a package and build it from your checkout | [Work on a package](../how-to/work-on-a-package.md) |
 | Choose another installer, state directory or compiler | [Set up a workstation](../how-to/set-up-a-workstation.md) |
-| Have the state's Spack in every shell, or keep the state in another directory | [Use the state's Spack](../how-to/use-the-states-spack.md) |
+| Keep the state in another directory | [Use the state's Spack](../how-to/use-the-states-spack.md) |
 | Find out why Spack builds a package that the cache should hold | [Use the project build cache](../how-to/use-the-build-cache.md#find-out-why-a-package-is-not-taken-from-the-cache) |
 | Understand how the state stays apart from other Spack setups | [Isolation](../explanation/isolation.md) |

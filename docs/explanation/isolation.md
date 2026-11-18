@@ -71,13 +71,13 @@ The Spack version is pinned too, to v1.2.2. Both pins live in `src/seanerstack/p
 
 A command such as `seanerstack toolchain bootstrap` can pass the isolation settings to the Spack subprocess it starts. Normal development is different: users should be able to invoke the native `spack` CLI directly.
 
-The state directory therefore contains a small Seanerstack-generated `spack` wrapper in `spack/bin/`. It sets the variables that redirect Spack's user configuration and data into the state, removes `SPACK_DISABLE_LOCAL_CONFIG`, loads the stored credentials, and runs the state's Spack with the private configuration, passing the complete native command line through. Put it first on `PATH` once, for example in `~/.bashrc`:
+The state directory therefore contains a small Seanerstack-generated `spack` wrapper in `spack/bin/`. It sets the variables that redirect Spack's user configuration and data into the state, removes `SPACK_DISABLE_LOCAL_CONFIG`, loads the stored credentials, and runs the state's Spack with the private configuration, passing the complete native command line through. `seanerstack activate` puts it first on `PATH` in the shell that runs it:
 
 ```console
-export PATH=/opt/seanergys/state/spack/bin:$PATH
+eval "$(seanerstack activate)"
 ```
 
-Consequently these remain ordinary Spack commands, in any shell:
+Consequently these remain ordinary Spack commands in that shell:
 
 ```console
 spack spec hdf5

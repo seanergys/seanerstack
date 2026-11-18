@@ -68,21 +68,13 @@ A compiler off `PATH`, such as a gcc-toolset, is found with `--find /opt/rh/gcc-
 
 Seanerstack uses its pinned Spack, and refuses one given with `--spack-executable` or `SEANERSTACK_REAL_SPACK` that has another version: a different Spack writes build-cache indexes and specs that the pinned one cannot read, and its hashes match nothing in the cache. `seanerstack --version` names both versions.
 
-## 4. Make the state's Spack available
-
-For the current shell, activate the state:
+## 4. Activate the state
 
 ```console
 eval "$(seanerstack activate)"
 ```
 
-`spack` is then the Spack of the state in this shell, and other shells keep whatever Spack they had. For every shell, put the state's `spack` wrapper first on `PATH` in your shell profile instead; `init` ends by printing the line:
-
-```console
-export PATH=/opt/seanergys/state/spack/bin:$PATH
-```
-
-[Use the state's Spack](use-the-states-spack.md) describes both.
+`spack` is then the Spack of the state in this shell, with its configuration and credentials. Other shells keep whatever Spack they had. Run the line in each shell that works with the state, and leave it with `eval "$(seanerstack deactivate)"`. See [Use the state's Spack](use-the-states-spack.md).
 
 ## 5. Install the toolchain
 
