@@ -7,21 +7,21 @@ Use this procedure to prepare a machine for SEANERGYS work when a step needs a c
 Seanerstack is on PyPI:
 
 ```console
-pipx install --python python3.12 --include-deps seanerstack
+pipx install --include-deps seanerstack
 ```
 
 To update an existing installation, run `pipx upgrade seanerstack`.
 
-Seanerstack requires Python 3.12 or newer. Pass `--python` explicitly: without it, pipx uses the system `python3`, which may be older.
+Seanerstack requires Python 3.12 or newer. pipx installs with the `python3` of the system; where that is older, install with uv as below.
 
 Use pipx rather than a plain `pip install`. Without a virtual environment, pip silently falls back to a `--user` installation on hosts where you cannot write to the system site-packages, and Seanerstack cannot find its shared data in that layout. pipx installs into an isolated virtual environment and needs no root access. Inside a virtual environment that you manage yourself, `pip install --upgrade seanerstack` works as well.
 
-If pipx is not available, for example on the login node of a cluster, install with [uv](https://docs.astral.sh/uv/) instead. It downloads Python 3.12 itself when the system one is older:
+If pipx is not available, for example on the login node of a cluster, install with [uv](https://docs.astral.sh/uv/) instead. It downloads a suitable Python itself when the system one is older:
 
 ```console
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
-uv tool install --python 3.12 --with-executables-from keyloom seanerstack
+uv tool install --with-executables-from keyloom seanerstack
 ```
 
 Update it with `uv tool upgrade seanerstack`.

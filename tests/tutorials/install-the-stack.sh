@@ -24,7 +24,7 @@ export USER="${USER:-$(id -un)}"
 
 install_seanerstack() {
 # --8<-- [start:install]
-pipx install --python python3.12 --include-deps seanerstack
+pipx install --include-deps seanerstack
 # --8<-- [end:install]
 }
 command -v seanerstack >/dev/null || install_seanerstack
