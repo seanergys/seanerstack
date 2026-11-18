@@ -127,3 +127,24 @@ def test_the_tutorial_shows_every_section_of_the_script_that_tests_it():
         assert f'--8<-- "tests/tutorials/install-the-stack.sh:{section}"' in page
     # The page types no command of its own.
     assert "```console" not in page
+
+
+def test_the_jobs_that_install_from_the_cache_use_a_random_state_directory():
+    ci = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+    for name in ("tutorial:install-the-stack", "how-to:work-on-a-package"):
+        steps = _steps(ci[name])
+        (choose,) = [index for index, step in enumerate(steps) if step.startswith("export SEANERSTACK_STATE_DIR=")]
+        assert "mktemp -d" in steps[choose] and "$RANDOM" in steps[choose]
+        # Before anything sets the state up, and nothing names the default directory after it.
+        assert not any("seanerstack" in step.split("=")[0] for step in steps[:choose] if "git config" not in step)
+        assert not any("/opt/seanergys/state" in step for step in steps)
+    # The tutorial script keeps a directory that is named, and only then chooses the documented one.
+    script = TUTORIAL.read_text(encoding="utf-8")
+    assert '[ -n "${SEANERSTACK_STATE_DIR:-}" ] || choose_state_directory' in script
+
+
+def test_the_nightly_toolchain_job_builds_below_a_padded_prefix():
+    job = _toolchain_job()
+    assert int(job["variables"]["PADDED_LENGTH"]) >= 200
+    (prepare,) = [step for step in job["script"] if "buildcache prepare" in step]
+    assert '--padded-length "$PADDED_LENGTH"' in prepare
