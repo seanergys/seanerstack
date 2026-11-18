@@ -149,12 +149,22 @@ def build_parser() -> argparse.ArgumentParser:
         "explain",
         help="Explain why a spec is built instead of taken from the build caches.",
         description=(
-            "Concretize SPEC as `spack install` would, and compare it with every spec of the same name "
-            "and version in the configured build caches. For each, print the nodes whose own fields "
+            "Concretize SPEC as `spack install` would, and compare it with the specs of the same name "
+            "and version in the configured build caches that are for this operating system. For each, print the nodes whose own fields "
             "differ, such as the CPU target, a variant, the package recipe or the install path of an "
             "external compiler; a node that differs only through a dependency is not repeated."
         ),
     )
+    selection = explain_parser.add_mutually_exclusive_group()
+    selection.add_argument(
+        "--match-target", action="store_const", const="target", dest="match",
+        help="compare only with the cached specs for this operating system and this CPU target",
+    )
+    selection.add_argument(
+        "--all", action="store_const", const="all", dest="match",
+        help="compare with the cached specs for every operating system and target",
+    )
+    explain_parser.set_defaults(match="os")
     explain_parser.add_argument("spec", nargs="+", help="the spec, such as gcc@15.3.0 or rust")
     cache_sub.add_parser("configure", help="Install configured build-cache mirrors into the isolated Spack configuration.")
     cache_sub.add_parser("check", help="Check access to configured build caches using session or vault credentials.")
@@ -524,7 +534,10 @@ def _run_buildcache(args: argparse.Namespace) -> int:
     if args.buildcache_command == "explain":
         from .buildcache import buildcache_environment, explain
         _, _, command, env = _spack_runtime(args)
-        return explain(" ".join(args.spec), command=command, env=buildcache_environment(config, secrets, env))
+        return explain(
+            " ".join(args.spec), command=command, env=buildcache_environment(config, secrets, env),
+            match=getattr(args, "match", "os"),
+        )
     if args.buildcache_command == "configure":
         _, _, command, env = _spack_runtime(args)
         configure_buildcaches(config, command=command, env=env)

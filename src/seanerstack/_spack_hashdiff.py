@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """Explain why a locally concretized spec does not match the build cache.
 
-Run by Seanerstack as `spack python THIS_FILE SPEC`, inside its isolated
-session, so it imports Spack, not Seanerstack; `seanerstack buildcache
-explain SPEC` does that.
+Run by Seanerstack as `spack python THIS_FILE [--match=os|target|all] SPEC`,
+inside its isolated session, so it imports Spack, not Seanerstack;
+`seanerstack buildcache explain SPEC` does that.
 
-For every cached spec with the same name and version, walks both DAGs and
-prints the nodes whose own fields differ (package_hash, variants, arch, ...).
+For every cached spec with the same name and version, and by default the same
+operating system, walks both DAGs and prints the nodes whose own fields
+differ (package_hash, variants, arch, ...). `--match=target` takes only the
+cached specs of the same target as well, `--match=all` those of every platform.
 A node whose hash differs only because a dependency differs is not repeated;
 the reason sits lower in the graph.
 """
@@ -75,13 +77,44 @@ def compare(local, cached, path, seen, report):
         compare(ea[n][2], eb[n][2], path + [n], seen, report)
 
 
+MATCHES = ("os", "target", "all")
+
+
+def select(local, cached, match):
+    """The cached specs to compare with: those a machine like this one could install.
+
+    A cache holds the same package for every platform it is built on, and a
+    spec for another operating system differs in every node, which says
+    nothing about why this machine builds.
+
+    Returns the chosen specs, and for the rest how many there are for each
+    operating system and target.
+    """
+    def fits(spec):
+        if match == "all":
+            return True
+        same_os = spec.architecture.os == local.architecture.os
+        return same_os and (match == "os" or str(spec.architecture.target) == str(local.architecture.target))
+
+    chosen = [spec for spec in cached if fits(spec)]
+    left_out = {}
+    for spec in cached:
+        if not fits(spec):
+            key = f"{spec.architecture.os}-{spec.architecture.target}"
+            left_out[key] = left_out.get(key, 0) + 1
+    return chosen, left_out
+
+
 def main(argv):
-    if len(argv) != 1:
+    match = "os"
+    if argv and argv[0].startswith("--match="):
+        match, argv = argv[0].partition("=")[2], argv[1:]
+    if len(argv) != 1 or match not in MATCHES:
         print(__doc__)
         return 2
     print(f"spack {spack.spack_version}")
     local = spack.concretize.concretize_one(argv[0])
-    print(f"local:  {local.format('{name}{@version}{/hash}')}")
+    print(f"local:  {local.format('{name}{@version}{/hash}')}  {local.format('{arch}')}")
 
     cached = [
         s
@@ -92,7 +125,20 @@ def main(argv):
         print(f"no {local.name}@{local.version} in any configured build cache")
         return 1
 
-    for c in cached:
+    chosen, left_out = select(local, cached, match)
+    wanted = {
+        "os": f"for {local.architecture.os}",
+        "target": f"for {local.architecture.os} and {local.architecture.target}",
+        "all": "for any platform",
+    }[match]
+    print(f"cached: {len(cached)} of {local.name}@{local.version}, {len(chosen)} {wanted}")
+    if left_out:
+        others = ", ".join(f"{key} ({count})" for key, count in sorted(left_out.items()))
+        print(f"not compared: {others}; --all compares them too")
+    if not chosen:
+        return 1
+
+    for c in chosen:
         print(f"\ncached: {c.format('{name}{@version}{/hash}')}  {c.format('{arch}')}")
         if c.dag_hash() == local.dag_hash():
             print("    identical: the cache should be used")

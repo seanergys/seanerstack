@@ -95,19 +95,25 @@ def require_cache_access(command: list[str], env) -> None:
         )
 
 
-def explain(spec: str, *, command: list[str], env) -> int:
+def explain(spec: str, *, command: list[str], env, match: str = "os") -> int:
     """Explain why `spec` is not taken from the build caches.
 
     Concretizes `spec` in the session, and for each cached spec of the same
     name and version, prints the nodes whose own hashed fields differ, such
     as the target, a variant, the package recipe or the path of an external.
+    A cache holds a package for every platform it is built on, so only the
+    cached specs that `match` selects are compared.
 
     @param spec: the spec as `spack install` would get it, such as gcc@15.3.0
     @param command: the isolated Spack command
     @param env: its environment, with the credentials of the caches
-    @return: 0 when a cached spec was compared, 1 when the caches hold none of that name and version
+    @param match: "os" for the cached specs of this operating system, "target" for those of this target as well, "all" for every one
+    @return: 0 when a cached spec was compared, 1 when the caches hold none that `match` selects
     """
-    return subprocess.run([*command, "python", HASHDIFF_SCRIPT, spec], check=False, text=True, env=env).returncode
+    if match not in ("os", "target", "all"):
+        raise ValueError(f"unknown match {match!r}; one of os, target, all")
+    selection = [] if match == "os" else [f"--match={match}"]
+    return subprocess.run([*command, "python", HASHDIFF_SCRIPT, *selection, spec], check=False, text=True, env=env).returncode
 
 
 def check_buildcaches(config: Config, secrets: SecretStore, *, command: list[str] | None = None, base_env=None) -> list[tuple[str, bool, str]]:
