@@ -26,7 +26,7 @@ Spack's mirror configuration names only the variables that hold the token. The s
 seanerstack buildcache check
 ```
 
-The check fails when the cache cannot be read, and also when its index was written by a newer Spack than the pinned one: Spack then only warns and lists nothing, so nothing in the cache could be installed. Rebuild such an index with `spack buildcache update-index seanerstack-buildcache` from the pinned Spack.
+A cache that nothing was pushed to yet has no index. The check passes and reports it as empty: the credentials read it, and Spack builds everything until the cache is filled. The check fails when the cache cannot be read, and also when its index was written by a newer Spack than the pinned one: Spack then only warns and lists nothing, so nothing in the cache could be installed. Rebuild such an index with `spack buildcache update-index seanerstack-buildcache` from the pinned Spack.
 
 ## Install from the cache
 
