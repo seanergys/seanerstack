@@ -259,6 +259,12 @@ how-to:work-on-a-package:
     - seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password init
     - export PATH="/opt/seanergys/state/spack/bin:$PATH"
     - seanerstack toolchain bootstrap
+    # The guide clones a SEANERGYS repository, which a reader does with their
+    # own Git access and this job with its token.
+    - >-
+      git config --global
+      url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.seanergys.fz-juelich.de/".insteadOf
+      "https://gitlab.seanergys.fz-juelich.de/"
     - tests/how-to/work-on-a-package.sh
 
 docs:
