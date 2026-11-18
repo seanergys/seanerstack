@@ -457,3 +457,15 @@ def test_prepare_takes_a_padded_length_and_pads_nothing_without_it():
     arguments = ["buildcache", "prepare", "--platform", "rocky10"]
     assert build_parser().parse_args(arguments).padded_length == 0
     assert build_parser().parse_args([*arguments, "--padded-length", "200"]).padded_length == 200
+
+
+def test_prepare_builds_the_compiler_in_the_environment_next_to_the_toolchain(monkeypatch, tmp_path):
+    Spack(monkeypatch)
+    given = {}
+    monkeypatch.setattr(_prepare, "pad_install_tree", lambda path, length, **kwargs: None)
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: given.update(kwargs) or type("Result", (), {"probe_ok": True}))
+
+    assert run_here(tmp_path, spack_config=tmp_path / "config") == 0
+
+    assert given["environment"] == tmp_path / "compiler"
+    assert given["spack_config"] == tmp_path / "config"
