@@ -1,3 +1,11 @@
 nav:
   - index.md
-  - "*"
+  - Design:
+      - architecture.md
+      - isolation.md
+      - compiler-bootstrap.md
+      - packages-and-environments.md
+      - synchronization.md
+  - Project:
+      - pipelines.md
+      - releases.md

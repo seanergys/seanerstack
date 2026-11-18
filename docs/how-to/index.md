@@ -1,5 +1,25 @@
 # How-to guides
 
-These guides define the supported SEANERGYS procedures for common Seanerstack tasks.
+Each guide gives one procedure for one task. Options beyond that procedure are in the [reference](../reference/index.md).
 
-Each task has one canonical workflow. Options and lower-level CLI details that are not part of normal project work are documented only in the reference section.
+## Set up
+
+| Guide | Task |
+| --- | --- |
+| [Set up a workstation](set-up-a-workstation.md) | Install Seanerstack, set up the state and install the toolchain, with the choices each step has. |
+| [Create a secrets file](create-a-secrets-file.md) | Write and encrypt the file with the GitLab and registry tokens. |
+| [Use the state's Spack](use-the-states-spack.md) | Run plain `spack` commands in the Seanerstack state, and activate environments. |
+
+## Build
+
+| Guide | Task |
+| --- | --- |
+| [Use the project build cache](use-the-build-cache.md) | Install from the cache, fill it for a platform, and find out why a package is built instead. |
+| [Work on a package](work-on-a-package.md) | Build a package from a local checkout in its Seanerstack environment. |
+
+## Maintain the stack
+
+| Guide | Task |
+| --- | --- |
+| [Synchronize a package recipe](sync-a-package.md) | Bring the versions of a recipe up to its upstream repository. |
+| [Validate Seanerstack changes](validate-the-stack.md) | Check recipes, environments and the compiler configuration before a merge request. |

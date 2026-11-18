@@ -1,6 +1,6 @@
 # Use Spack in the Seanerstack state
 
-Use this procedure whenever you want ordinary `spack` commands to use Seanerstack's private configuration, store, stages, caches, and environments. It assumes `seanerstack init` has set up the state (see [Set up Spack for SEANERGYS](set-up-a-workstation.md)).
+Use this procedure whenever you want ordinary `spack` commands to use Seanerstack's private configuration, store, stages, caches, and environments. It assumes `seanerstack init` has set up the state (see [Set up a workstation](set-up-a-workstation.md)).
 
 ## Put the state's spack on PATH
 

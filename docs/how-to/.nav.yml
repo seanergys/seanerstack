@@ -1,9 +1,12 @@
 nav:
   - index.md
-  - Set up a workstation: set-up-a-workstation.md
-  - Create a secrets file: create-a-secrets-file.md
-  - Use the state's Spack: use-the-states-spack.md
-  - Use the project build cache: use-the-build-cache.md
-  - Work on a package: work-on-a-package.md
-  - Synchronize a package recipe: sync-a-package.md
-  - Validate Seanerstack changes: validate-the-stack.md
+  - Set up:
+      - Set up a workstation: set-up-a-workstation.md
+      - Create a secrets file: create-a-secrets-file.md
+      - Use the state's Spack: use-the-states-spack.md
+  - Build:
+      - Use the project build cache: use-the-build-cache.md
+      - Work on a package: work-on-a-package.md
+  - Maintain the stack:
+      - Synchronize a package recipe: sync-a-package.md
+      - Validate Seanerstack changes: validate-the-stack.md

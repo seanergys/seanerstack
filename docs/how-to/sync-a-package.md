@@ -1,6 +1,6 @@
 # Synchronize a package recipe
 
-Use `sync` when maintaining a Seanerstack recipe whose upstream Git repository has gained a new release tag or tracked development-branch revision.
+Use `seanerstack package update` when maintaining a Seanerstack recipe whose upstream Git repository has gained a new release tag or tracked development-branch revision.
 
 Synchronize the package:
 
