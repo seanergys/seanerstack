@@ -1,6 +1,6 @@
 # Work on a package
 
-Use this procedure to build a SEANERGYS package from a local checkout. It assumes that the state is set up, the toolchain is installed and the state's `spack` is on `PATH`, as after the [tutorial](../tutorials/getting-started.md).
+Use this procedure to build a SEANERGYS package from a local checkout. It assumes that the state is set up, the toolchain is installed and the state is active in the shell, as after the [tutorial](../tutorials/getting-started.md).
 
 The example package is `priorisea`, the job priority manager. Every command on this page comes from `tests/how-to/work-on-a-package.sh`, which the `how-to:work-on-a-package` job of the CI pipeline runs from start to end, so the procedure is tested with every change.
 
