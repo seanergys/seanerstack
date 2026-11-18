@@ -125,7 +125,7 @@ When Spack builds a package that you expected from the cache, ask Seanerstack wh
 seanerstack buildcache explain gcc@15.3.0
 ```
 
-It concretizes the spec as `spack install` would, and compares it with every spec of the same name and version in the configured caches. For each one, it prints the nodes whose own fields differ, from the root down; a node that differs only because one of its dependencies differs is not repeated, so the cause is the lowest node listed:
+It concretizes the spec as `spack install` would, and compares it with the specs of the same name and version in the configured caches that are for this operating system. A cache holds the package for every platform it is built on; those for other platforms differ in every node and are only counted, in a line such as `not compared: debian13-x86_64_v3 (2)`. `--match-target` compares only with the cached specs for this CPU target as well, and `--all` with those of every platform. For each one, it prints the nodes whose own fields differ, from the root down; a node that differs only because one of its dependencies differs is not repeated, so the cause is the lowest node listed:
 
 ```text
 cached: gcc@15.3.0/frjwpux...  linux-fedora44-zen3
