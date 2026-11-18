@@ -13,6 +13,8 @@ import yaml
 
 
 DEFAULT_LANGUAGES = ("c", "cxx", "fortran")
+# Every language that a compiler rule of Seanerstack can be about.
+LANGUAGE_VIRTUALS = ("c", "cxx", "fortran")
 DEFAULT_PROBE = "zlib"
 DEFAULT_PROBE_TIMEOUT = 300
 
@@ -245,14 +247,110 @@ def _set_language_requirement(command: list[str], language: str, compiler: str, 
     )
 
 
-def require_target(command: list[str], target: str, env) -> None:
+def _edit_packages(spack_config: Path, change: Callable[[dict], None]) -> None:
+    """Change the `packages` section of the state's own packages.yaml.
+
+    Written directly, because a requirement with a condition is a mapping,
+    which `spack config add` takes only from a file, and removing one entry of
+    `packages:all:require` with `spack config remove` removes them all.
+
+    @param spack_config: the Spack configuration directory of the state
+    @param change: called with the section, which it changes in place
+    @return: nothing
+    """
+    path = spack_config / "packages.yaml"
+    data = (yaml.safe_load(path.read_text(encoding="utf-8")) if path.is_file() else None) or {}
+    # A new state has `packages::`, which Spack itself rewrites as `packages:`.
+    key = next((name for name in data if name.rstrip(":") == "packages"), "packages")
+    packages = data.pop(key, None) or {}
+    change(packages)
+    data["packages"] = packages
+    path.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+
+def _requirements_of_all(packages: dict) -> list:
+    """The requirements on every package, as the list that the section then holds."""
+    everything = packages.setdefault("all", {})
+    found = everything.get("require", [])
+    everything["require"] = list(found) if isinstance(found, list) else [found]
+    return everything["require"]
+
+
+def _is_compiler_rule(requirement) -> bool:
+    """Whether a requirement on every package is a compiler rule that Seanerstack wrote."""
+    condition = str(requirement.get("when", "")) if isinstance(requirement, dict) else ""
+    return condition.startswith(tuple(f"%{language}=" for language in LANGUAGE_VIRTUALS))
+
+
+def _require_compiler_where_used(spack_config: Path, languages: tuple[str, ...], compiler: str | None) -> None:
+    """Compile every new package with COMPILER, in each of `languages` that the package uses.
+
+    The rule is a requirement on every package, with a condition, and not a
+    requirement on the language, because of how Spack 1.2.2 and the develop
+    branch of 2026-11-18 treat a compiler that is reused as a package:
+
+    - `packages:c:require:gcc@15` also holds for the compiler's own
+      dependencies, which the system compiler built. Nothing satisfies it, and
+      Spack searches for minutes before it says so, or without end.
+    - A requirement on every package that names a compiler is not applied to
+      compilers and their runtime libraries, so the compiler's own tree is
+      left alone.
+    - The condition `%cxx` also holds for a package that has no C++ itself but
+      depends directly on one that has, such as a C library built with CMake,
+      and Spack then refuses it. `%cxx=gcc`, "takes C++ from a gcc", holds only
+      for the package itself.
+    - Spack warns about a single spec with a compiler under `all`, and
+      suggests the requirement on the language. `any_of` of the same spec
+      twice means the same and has no such warning.
+
+    With `compiler` None, the rules are removed: an external compiler has no
+    tree of its own, and is required on the language.
+
+    @param spack_config: the Spack configuration directory of the state
+    @param languages: the language virtuals to compile with the compiler
+    @param compiler: the compiler spec, such as gcc@15, or None for no rule
+    @return: nothing
+    """
+    rules = []
+    if compiler is not None:
+        name = re.match(r"[A-Za-z0-9_.+-]+", compiler)
+        if not name:
+            raise ValueError(f"cannot determine compiler package name from {compiler!r}")
+        for language in languages:
+            rule = f"%{language}={compiler}"
+            rules.append({"any_of": [rule, rule], "when": f"%{language}={name.group(0)}"})
+
+    def change(packages: dict) -> None:
+        if compiler is not None:
+            # The requirement on the language that an earlier Seanerstack wrote.
+            for language in LANGUAGE_VIRTUALS:
+                section = packages.get(language) or {}
+                section.pop("require", None)
+                if not section:
+                    packages.pop(language, None)
+        requirements = _requirements_of_all(packages)
+        requirements[:] = [found for found in requirements if not _is_compiler_rule(found)] + rules
+
+    _edit_packages(spack_config, change)
+
+
+def require_target(spack_config: Path, target: str) -> None:
     """Build every package for `target`, such as x86_64_v3, not for the host's CPU.
 
     The target is part of every hash. Without the requirement, each machine
-    builds for its own processor, and no hash matches another machine's.
+    builds for its own processor, and no hash matches another machine's. The
+    compiler rules among the requirements on every package stay as they are.
+
+    @param spack_config: the Spack configuration directory of the state
+    @param target: the target to build for
+    @return: nothing
     """
-    _run([*command, "config", "remove", "packages:all:require"], check=False, env=env)
-    _run([*command, "config", "add", f"packages:all:require:target={target}"], env=env)
+    def change(packages: dict) -> None:
+        requirements = _requirements_of_all(packages)
+        kept = [found for found in requirements if not (isinstance(found, str) and found.startswith("target="))]
+        requirements[:] = [f"target={target}", *kept]
+
+    _edit_packages(spack_config, change)
 
 
 def bootstrap(
@@ -296,6 +394,8 @@ def bootstrap(
             raise ValueError("--force builds the compiler, and an external compiler is not built")
         if not os.path.isdir(external):
             raise ValueError(f"external compiler prefix is not a directory: {external}")
+        if spack_config is not None and not dry_run:
+            _require_compiler_where_used(spack_config, (), None)
         return _bootstrap_external(
             compiler, external, languages=languages, probe=probe, command=command,
             env=env, dry_run=dry_run, probe_timeout=probe_timeout,
@@ -315,12 +415,11 @@ def bootstrap(
             raise RuntimeError(f"the compiler environment {environment} holds no installation of {compiler!r}")
         if installed_compiler is not None:
             installed_compiler()
-        # Before the requirements: only a compiler that the concretizer may
-        # reuse can satisfy them.
+        # Before the rule: only a compiler that the concretizer may reuse can
+        # satisfy it.
         _reuse_environment(spack_config, environment)
         _forget_registered_compilers(command, compiler, env)
-        for language in languages:
-            _set_language_requirement(command, language, compiler, env)
+        _require_compiler_where_used(spack_config, languages, compiler)
 
     probe_ok = False
     if not dry_run:

@@ -82,6 +82,14 @@ and release process.
 
 ### Fixed
 
+- `toolchain bootstrap` and `buildcache prepare` no longer stop at a compiler
+  probe that never finishes. The compiler was required on the languages `c`,
+  `cxx` and `fortran`, which Spack also applies to the compiler's own
+  dependencies, built by the system compiler, so nothing could satisfy it. It
+  is now required on every package that takes a language from that compiler.
+- `seanerstack init` run again keeps the compiler rule that `toolchain
+  bootstrap` wrote. Setting the target removed every requirement on all
+  packages before.
 - A compiler probe that runs out of time reports what Spack printed until then
   and how to tell a slow solve from a requirement without a solution. It no
   longer names the requirement as the cause, which it had not checked.

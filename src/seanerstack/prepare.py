@@ -236,7 +236,8 @@ def prepare_here(
     # Every finished package goes out at once, so a failure hours in keeps them.
     resources = {name: replace(cache, autopush=name == target.name) for name, cache in caches.items()}
     configure_buildcaches(replace(config, resources=resources), command=command, env=env)
-    require_target(command, toolchain.target, env)
+    if spack_config is not None:
+        require_target(spack_config, toolchain.target)
     def push() -> None:
         # Also what came from another cache, so that this one is complete by itself.
         specs = _output([*command, "find", "--format", "/{hash}"], env).split()

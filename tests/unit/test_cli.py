@@ -93,7 +93,7 @@ def _init_world(monkeypatch, tmp_path: Path, *, buildcache_ok=True, git_ok=True)
     monkeypatch.setattr(cli, "load_config", lambda path: Config(path=path or tmp_path / "shipped.toml", resources={"cache": cache}, toolchain=toolchain))
     monkeypatch.setattr(cli, "_spack_runtime", lambda args: (x, tmp_path / "spack", ["spack"], {}))
     monkeypatch.setattr(cli, "configure_buildcaches", lambda config, **kwargs: calls.append("configure"))
-    monkeypatch.setattr(cli, "require_target", lambda command, target, env: calls.append(f"target={target}"))
+    monkeypatch.setattr(cli, "require_target", lambda spack_config, target: calls.append(f"target={target}"))
     # The build caches answer; the tests of the access check cover a refusal.
     monkeypatch.setattr(cli, "require_cache_access", lambda command, env: None, raising=False)
     monkeypatch.setattr(cli, "check_buildcaches", lambda config, secrets, **kwargs: calls.append("check") or [("cache", buildcache_ok, "")])

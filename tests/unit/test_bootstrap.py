@@ -25,15 +25,17 @@ def _fake_spack(monkeypatch):
     return calls
 
 
-def test_the_target_requirement_replaces_an_earlier_one(monkeypatch):
-    calls = _fake_spack(monkeypatch)
+def _packages(config):
+    return yaml.safe_load((config / "packages.yaml").read_text())["packages"]
 
-    bootstrap_module.require_target(COMMAND, "x86_64_v3", ENV)
 
-    assert calls == [
-        [*COMMAND, "config", "remove", "packages:all:require"],
-        [*COMMAND, "config", "add", "packages:all:require:target=x86_64_v3"],
-    ]
+def test_the_target_requirement_replaces_an_earlier_one(tmp_path):
+    (tmp_path / "packages.yaml").write_text("packages:: {}\n")
+
+    bootstrap_module.require_target(tmp_path, "x86_64_v2")
+    bootstrap_module.require_target(tmp_path, "x86_64_v3")
+
+    assert _packages(tmp_path) == {"all": {"require": ["target=x86_64_v3"]}}
 
 
 def test_an_external_compiler_takes_no_source_compiler(monkeypatch):
@@ -102,8 +104,16 @@ def _toolchain_spack(monkeypatch, state, *, installed=False, probe=None, probe_t
         if args[-2:] == ["concretize", "--force"]:
             (environment / "spack.lock").write_text("{}")
 
+    require = bootstrap_module._require_compiler_where_used
+
+    def fake_require(spack_config, languages, compiler):
+        # A step among the Spack commands, so that a test can tell when the rule is written.
+        calls.append([*COMMAND, "require", str(compiler)])
+        require(spack_config, languages, compiler)
+
     monkeypatch.setattr(bootstrap_module, "_run", fake_run)
     monkeypatch.setattr(bootstrap_module, "_run_streaming", fake_run_streaming)
+    monkeypatch.setattr(bootstrap_module, "_require_compiler_where_used", fake_require)
     return calls, dict(command=COMMAND, env=ENV, environment=environment, spack_config=config)
 
 
@@ -148,7 +158,7 @@ def test_bootstrap_requires_the_compiler_only_once_it_can_be_reused(monkeypatch,
     steps = _steps(calls)
     # A system gcc 15, or the external record of an earlier Seanerstack, would satisfy the requirement too.
     assert steps.index("install") < written[0] <= steps.index("compiler remove -a gcc@15")
-    assert steps.index("compiler remove -a gcc@15") < steps.index("config add packages:c:require:gcc@15")
+    assert steps.index("compiler remove -a gcc@15") < steps.index("require gcc@15")
 
 
 def test_bootstrap_builds_nothing_when_the_environment_has_the_compiler(monkeypatch, tmp_path):
@@ -158,7 +168,7 @@ def test_bootstrap_builds_nothing_when_the_environment_has_the_compiler(monkeypa
 
     steps = _steps(calls)
     assert "install" not in steps and "compiler find" not in steps
-    assert "config add packages:c:require:gcc@15" in steps
+    assert "require gcc@15" in steps
     assert result.probe_ok
 
 
@@ -228,7 +238,7 @@ def test_bootstrap_says_when_the_compiler_is_installed_before_anything_requires_
         assert steps.count("told") == 1
         if not installed:
             assert steps.index("install") < steps.index("told")
-        assert steps.index("told") < steps.index("config add packages:c:require:gcc@15") < steps.index("spec --json zlib")
+        assert steps.index("told") < steps.index("require gcc@15") < steps.index("spec --json zlib")
 
 
 def test_a_dry_run_installs_nothing_to_tell_of(monkeypatch, tmp_path):

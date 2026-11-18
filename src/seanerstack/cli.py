@@ -348,7 +348,7 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
         raise ValueError(f"{config.path}: [toolchain] is missing; give --compiler")
 
     if target and not args.dry_run:
-        require_target(command, target, env)
+        require_target(x.config, target)
     result = bootstrap(
         compiler,
         languages=languages,
@@ -427,7 +427,7 @@ def _run_init(args: argparse.Namespace) -> int:
     configure_buildcaches(config, command=command, env=env)
     print(f"build caches: {', '.join(cache.name for cache in buildcaches(config)) or 'none'}")
     if config.toolchain is not None:
-        require_target(command, config.toolchain.target, env)
+        require_target(x.config, config.toolchain.target)
         print(f"target: {config.toolchain.target}")
 
     find_compilers(command, env, find)

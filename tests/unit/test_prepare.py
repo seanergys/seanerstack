@@ -42,7 +42,9 @@ class Spack:
 
     def __init__(self, monkeypatch, system="rocky10"):
         self.calls = []
+        self.targets = []
         self.system = system
+        monkeypatch.setattr(_prepare, "require_target", lambda spack_config, target: self.targets.append((spack_config, target)))
         monkeypatch.setattr(_prepare, "check_push_access", lambda resource, env: None)
         monkeypatch.setattr(_prepare, "configure_buildcaches", self.configure)
         monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: type("Result", (), {"probe_ok": True}))
@@ -67,12 +69,20 @@ def run_here(tmp_path, platform="rocky10", **extra):
 def test_prepare_builds_the_toolchain_and_then_pushes_it(monkeypatch, tmp_path):
     spack = Spack(monkeypatch)
     assert run_here(tmp_path, jobs=3) == 0
-    assert ["spack", "config", "add", "packages:all:require:target=x86_64_v3"] in spack.calls
     assert yaml.safe_load((tmp_path / "toolchain/spack.yaml").read_text())["spack"]["specs"] == ["rust", "capnproto"]
     install = ["spack", "-e", str(tmp_path / "toolchain"), "install", "--jobs", "3"]
     (push,) = [call for call in spack.calls if call[1:3] == ["buildcache", "push"]]
     assert push[-3:] == ["target", "/aaa", "/bbb"]
     assert spack.calls.index(install) < spack.calls.index(push)
+
+
+def test_prepare_requires_the_target_of_the_toolchain(monkeypatch, tmp_path):
+    spack = Spack(monkeypatch)
+    monkeypatch.setattr(_prepare, "pad_install_tree", lambda path, length, **kwargs: None)
+
+    assert run_here(tmp_path, spack_config=tmp_path / "config") == 0
+
+    assert spack.targets == [(tmp_path / "config", "x86_64_v3")]
 
 
 def test_prepare_pushes_every_package_as_soon_as_it_is_built(monkeypatch, tmp_path):
