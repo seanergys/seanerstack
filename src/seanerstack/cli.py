@@ -200,6 +200,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="install below a prefix padded to N characters, so that the binaries of the cache install into any "
         "shorter path, such as a state directory of the user's choice (default: 0, no padding)",
     )
+    prepare_parser.add_argument("--probe-timeout", type=float, default=DEFAULT_PROBE_TIMEOUT, help=f"seconds to allow the probe before giving up (default: {DEFAULT_PROBE_TIMEOUT:g}); 0 waits indefinitely")
 
     init_parser = subparsers.add_parser(
         "init",
@@ -569,7 +570,7 @@ def _run_buildcache(args: argparse.Namespace) -> int:
             return prepare_here(
                 config, secrets, platform=args.platform, command=command, env=env,
                 work=x.environments / "toolchain", jobs=args.jobs,
-                padded_length=args.padded_length, spack_config=x.config,
+                padded_length=args.padded_length, spack_config=x.config, probe_timeout=args.probe_timeout or None,
             )
         state_dir = args.state_dir or Path(os.environ.get("SEANERSTACK_STATE_DIR", "~/.cache/seanerstack"))
         toolchain = config.toolchain
@@ -577,6 +578,7 @@ def _run_buildcache(args: argparse.Namespace) -> int:
         for platform in platforms:
             prepare_in_container(
                 config, secrets, platform=platform, state_dir=state_dir, jobs=args.jobs, padded_length=args.padded_length,
+                probe_timeout=args.probe_timeout,
             )
         return 0
     raise ValueError(f"unknown buildcache command: {args.buildcache_command}")

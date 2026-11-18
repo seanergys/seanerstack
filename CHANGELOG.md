@@ -9,6 +9,9 @@ and release process.
 
 ### Added
 
+- `seanerstack buildcache prepare --probe-timeout SECONDS` sets how long the
+  compiler probe may take, as `init` and `toolchain bootstrap` already do; 0
+  waits indefinitely. In a container, the build inside gets the same limit.
 - `seanerstack toolchain bootstrap --external gcc@16` makes a compiler that
   `init` found, such as the GCC 16 of `/usr`, the project compiler without
   building one. Seanerstack checks that the spec resolves to that installation
