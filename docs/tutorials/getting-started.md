@@ -27,6 +27,7 @@ Seanerstack is on PyPI. Install it with pipx:
 Seanerstack keeps its Spack, the configuration, the installed software and the caches in one state directory, which `SEANERSTACK_STATE_DIR` names. Create it and make it yours, then let `init` set it up:
 
 ```bash
+--8<-- "tests/tutorials/install-the-stack.sh:state-directory"
 --8<-- "tests/tutorials/install-the-stack.sh:state"
 ```
 
