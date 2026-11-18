@@ -25,14 +25,21 @@ For normal SEANERGYS work, this is a workstation setup operation rather than a p
 
 ## Why the compiler is reused as an installed package
 
-Spack 1.x has no separate notion of a compiler: `c`, `cxx` and `fortran` are virtual packages, and `gcc` is one provider among others. Directing the stack at a compiler therefore means requiring a provider for those virtuals:
+Spack 1.x has no separate notion of a compiler: `c`, `cxx` and `fortran` are virtual packages, and `gcc` is one provider among others. Directing the stack at a compiler therefore means requiring a provider for those virtuals, for every package that uses them:
 
 ```yaml
 packages:
-  c:       {require: [gcc@15]}
-  cxx:     {require: [gcc@15]}
-  fortran: {require: [gcc@15]}
+  all:
+    require:
+    - any_of: ["%c=gcc@15", "%c=gcc@15"]
+      when: "%c=gcc"
+    - any_of: ["%cxx=gcc@15", "%cxx=gcc@15"]
+      when: "%cxx=gcc"
+    - any_of: ["%fortran=gcc@15", "%fortran=gcc@15"]
+      when: "%fortran=gcc"
 ```
+
+[How the compiler is required](#how-the-compiler-is-required) explains why the rule has this form.
 
 Spack takes a compiler only when it is an external or a concrete spec that the concretizer may reuse. A Seanerstack state concretizes everything fresh, so that the same recipes give the same hashes on every machine, and with reuse switched off an installed gcc@15 is neither: the requirement can then only be met by building gcc@15 with gcc@15, which is circular.
 
@@ -53,6 +60,18 @@ The compiler then enters every build as the installed package it is, by its hash
 Registering the installed compiler as an external also satisfies the requirement, and Seanerstack did so before. An external is hashed by its path, because Spack knows nothing else about it. The path of the compiler contains the state directory and the hash of the compiler's own build, and every package built with the compiler inherited both. A state in another directory, or a compiler built by another system compiler, therefore matched nothing in the build cache.
 
 A package is hashed by its recipe, version, variants, target and dependencies, and not by where it is installed. Reused as a package, the compiler has the same hash in every state directory, and so has everything built with it. `bootstrap` removes the external record that an earlier Seanerstack wrote.
+
+### How the compiler is required
+
+The rule reads: a package that takes C from a gcc takes it from gcc@15, and the same for C++ and Fortran. Each part of its form answers something that Spack 1.2.2 does with a compiler that is reused as a package. The develop branch of Spack of 2026-11-18 fails the first point in the same way.
+
+- **A requirement on every package, not on the language.** `packages:c:require:gcc@15` also holds for the compiler's own dependencies, such as its `gcc-runtime`, which the system compiler built. Nothing satisfies it, and Spack searches for minutes before it says so, or without end. A requirement under `all` that names a compiler is not applied to compilers and their runtime libraries, so the compiler's own tree is left alone.
+- **The condition `%cxx=gcc`, not `%cxx`.** `%cxx` also holds for a package that has no C++ itself but depends directly on one that has. A C library built with CMake is such a package, because CMake is written in C++, and Spack then refuses it with "Only external, or concrete, compilers are allowed". `%cxx=gcc`, "takes C++ from a gcc", holds only for the package itself.
+- **`any_of` with the same spec twice.** Spack warns on every command about a single spec with a compiler under `all`, and suggests the requirement on the language, which is the form that has no solution. `any_of` means the same and has no such warning.
+
+The rule is hard: a spec that asks for another gcc, such as `zlib %gcc@14`, has no solution. Spack 1.2.2 takes minutes to say so.
+
+What the compiler environment holds can be reused by every package, not only the compiler. A new package that needs a library of the compiler's own tree, such as `zlib-ng`, `ncurses` or `xz`, links against that installation, which the system compiler built. The hashes are still the same on every machine of a platform, because the compiler's tree is.
 
 ## Using a compiler that is already installed
 
