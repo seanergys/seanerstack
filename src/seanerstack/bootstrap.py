@@ -8,6 +8,8 @@ from pathlib import Path
 import re
 import subprocess
 
+import yaml
+
 
 DEFAULT_LANGUAGES = ("c", "cxx", "fortran")
 DEFAULT_PROBE = "zlib"
@@ -23,6 +25,8 @@ class BootstrapResult:
     probe: str
     probe_ok: bool
     external: str | None = None
+    # The hash of the installed compiler that the concretizer reuses.
+    hash: str | None = None
 
 
 def _run(
@@ -39,11 +43,18 @@ def _run_streaming(args: list[str], *, env=None) -> None:
     subprocess.run(args, check=True, text=True, env=env)
 
 
-def _compiler_prefix(command: list[str], compiler: str, env) -> str | None:
-    # Once a build has used the compiler, the database also holds an external
-    # record for the same prefix, so `location -i COMPILER` is ambiguous. Only a
-    # real installation counts.
-    result = _run([*command, "find", "--json", compiler], check=False, env=env)
+def _environment_compiler(command: list[str], environment: Path, compiler: str, env) -> str | None:
+    """The hash of the compiler that the compiler environment has installed, or None.
+
+    @param command: the isolated Spack command
+    @param environment: the directory of the compiler environment
+    @param compiler: the compiler spec, such as gcc@15
+    @param env: the environment of the command
+    @return: the hash of the installed compiler, or None when the environment has none
+    """
+    if not (environment / "spack.lock").is_file():
+        return None
+    result = _run([*command, "-e", str(environment), "find", "--json", compiler], check=False, env=env)
     if result.returncode != 0:
         return None
     hashes = [spec["hash"] for spec in json.loads(result.stdout or "[]") if not spec.get("external")]
@@ -51,10 +62,7 @@ def _compiler_prefix(command: list[str], compiler: str, env) -> str | None:
         return None
     if len(hashes) > 1:
         raise RuntimeError(f"{compiler!r} matches {len(hashes)} installations; use a more specific spec")
-    result = _run([*command, "location", "-i", f"/{hashes[0]}"], check=False, env=env)
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip() or None
+    return hashes[0]
 
 
 def _ensure_system_compiler(command: list[str], env) -> None:
@@ -139,37 +147,63 @@ def _check_external(command: list[str], compiler: str, prefix: str, env, timeout
         )
 
 
-def _install_compiler(command: list[str], compiler: str, env, source: str | None = None) -> None:
-    """Build the compiler, even where the system compiler has the same version.
+def _install_compiler(command: list[str], environment: Path, compiler: str, env, source: str | None = None) -> None:
+    """Build the compiler in an environment of its own, even where the system compiler has the same version.
 
     The system compiler is registered as an external, and an external that
     satisfies the spec is taken instead of a build: on Ubuntu 26.04,
-    `install gcc@15` takes the system GCC 15.2.0 and installs nothing. An
+    `gcc@15` alone takes the system GCC 15.2.0 and installs nothing. An
     external is a leaf, so asking for a C compiler as a dependency rules it
     out, while the system compiler can still be that dependency. `source`
     names the registered compiler that builds it; by default Spack chooses.
+
+    The environment records which installation is the compiler, with
+    everything it links to: its lockfile is what the concretizer reuses.
+
+    @param command: the isolated Spack command
+    @param environment: the directory of the compiler environment, written here
+    @param compiler: the compiler spec, such as gcc@15
+    @param env: the environment of the command
+    @param source: the registered compiler that builds it, or None for Spack's choice
+    @return: nothing; a failed build raises CalledProcessError
     """
-    _run_streaming([*command, "install", compiler, f"%c,cxx={source}" if source else "%c"], env=env)
+    environment.mkdir(parents=True, exist_ok=True)
+    root = f"{compiler} %c,cxx={source}" if source else f"{compiler} %c"
+    manifest = {"spack": {"specs": [root], "view": False, "concretizer": {"unify": True}}}
+    (environment / "spack.yaml").write_text(yaml.safe_dump(manifest), encoding="utf-8")
+    _run_streaming([*command, "-e", str(environment), "concretize", "--force"], env=env)
+    _run_streaming([*command, "-e", str(environment), "install"], env=env)
 
 
-def _replace_registered_compilers(command: list[str], compiler: str, prefix: str, env) -> None:
-    """Make the installed compiler the only registered one that its spec matches.
+def _reuse_environment(spack_config: Path, environment: Path) -> None:
+    """Let the concretizer reuse what the compiler environment installed, and nothing else.
+
+    Spack takes a compiler only when it is an external or a concrete spec it
+    may reuse. A state concretizes everything fresh, so that the same recipes
+    give the same hashes on every machine; the compiler is the one exception.
+    Reused as the installed package it is, it enters the hash of what it
+    builds by its own hash, which is the same wherever it is installed, and
+    not by its path, as an external does.
+
+    @param spack_config: the Spack configuration directory of the state
+    @param environment: the directory of the compiler environment
+    @return: nothing
+    """
+    settings = {"concretizer": {"reuse": {"from": [{"type": "environment", "path": str(environment)}]}}}
+    (spack_config / "concretizer.yaml").write_text(yaml.safe_dump(settings), encoding="utf-8")
+
+
+def _forget_registered_compilers(command: list[str], compiler: str, env) -> None:
+    """Leave the installed compiler as the only one that its spec matches.
 
     A system compiler that the spec matches too, such as gcc 15.2.0 for
     gcc@15, would satisfy the language requirements as well, so packages could
-    be built with it instead. Other compilers, such as gcc 16 or clang, stay
-    registered for --source-compiler. A spec that matches nothing makes
-    `compiler remove` fail, which is fine.
+    be built with it instead. The same goes for the external record that an
+    earlier Seanerstack wrote for the installed compiler. Other compilers,
+    such as gcc 16 or clang, stay registered for --source-compiler. A spec
+    that matches nothing makes `compiler remove` fail, which is fine.
     """
     _run([*command, "compiler", "remove", "-a", compiler], check=False, env=env)
-    _register_compiler(command, prefix, env)
-
-
-def _compiler_name(compiler: str) -> str:
-    match = re.match(r"([A-Za-z0-9_.+-]+)", compiler)
-    if not match:
-        raise ValueError(f"cannot determine compiler package name from {compiler!r}")
-    return match.group(1)
 
 
 def _set_language_requirement(command: list[str], language: str, compiler: str, env) -> None:
@@ -206,14 +240,20 @@ def bootstrap(
     probe_timeout: float | None = DEFAULT_PROBE_TIMEOUT,
     external: str | None = None,
     source_compiler: str | None = None,
+    environment: Path | None = None,
+    spack_config: Path | None = None,
 ) -> BootstrapResult:
     """Make COMPILER the compiler of every SEANERGYS build.
 
-    Without `external`, Spack installs COMPILER unless it already has, built
-    with `source_compiler` or Spack's choice, and the installation is
-    registered as an external. With `external`, a compiler already in that
-    prefix, such as /usr or a gcc-toolset, is registered instead and nothing
-    is built; COMPILER must name it.
+    Without `external`, Spack installs COMPILER in the compiler environment
+    unless it already has, built with `source_compiler` or Spack's choice, and
+    the concretizer reuses that installation as the package it is. With
+    `external`, a compiler already in that prefix, such as /usr or a
+    gcc-toolset, is registered instead and nothing is built; COMPILER must
+    name it.
+
+    @param environment: the directory of the compiler environment in the state
+    @param spack_config: the Spack configuration directory of the state
     """
     command = command or ["spack"]
     if not languages:
@@ -230,22 +270,22 @@ def bootstrap(
             env=env, dry_run=dry_run, probe_timeout=probe_timeout,
         )
 
-    prefix = _compiler_prefix(command, compiler, env)
-    already_installed = prefix is not None
+    if environment is None or spack_config is None:
+        raise ValueError("the compiler environment and the Spack configuration of the state are required")
+    installed = _environment_compiler(command, environment, compiler, env)
+    already_installed = installed is not None
     if (force or not already_installed) and not dry_run:
         _ensure_system_compiler(command, env)
-        _install_compiler(command, compiler, env, source_compiler)
-        prefix = _compiler_prefix(command, compiler, env)
+        _install_compiler(command, environment, compiler, env, source_compiler)
+        installed = _environment_compiler(command, environment, compiler, env)
 
-    registered = False
     if not dry_run:
-        if prefix is None:
-            raise RuntimeError(
-                f"Spack reports no installation prefix for {compiler!r}; "
-                "cannot register it as a compiler"
-            )
-        _replace_registered_compilers(command, compiler, prefix, env)
-        registered = True
+        if installed is None:
+            raise RuntimeError(f"the compiler environment {environment} holds no installation of {compiler!r}")
+        # Before the requirements: only a compiler that the concretizer may
+        # reuse can satisfy them.
+        _reuse_environment(spack_config, environment)
+        _forget_registered_compilers(command, compiler, env)
         for language in languages:
             _set_language_requirement(command, language, compiler, env)
 
@@ -253,29 +293,31 @@ def bootstrap(
     if not dry_run:
         try:
             probe_result = _run(
-                [*command, "spec", probe], check=False, env=env, timeout=probe_timeout
+                [*command, "spec", "--json", probe], check=False, env=env, timeout=probe_timeout
             )
         except subprocess.TimeoutExpired as error:
             raise RuntimeError(
                 f"Spack did not concretize compiler probe {probe!r} within "
                 f"{probe_timeout:g} seconds. This usually means the {compiler} "
-                "requirement cannot be satisfied: check that `spack compiler list` "
-                "reports it and that `spack config get packages` lists it under "
-                "`gcc: externals`."
+                "requirement cannot be satisfied: check that the compiler environment "
+                f"{environment} has it installed and that `spack config get concretizer` "
+                "reuses that environment."
             ) from error
         if probe_result.returncode != 0:
             message = probe_result.stderr.strip() or probe_result.stdout.strip()
             raise RuntimeError(f"Spack could not concretize compiler probe {probe!r}:\n{message}")
-        compiler_name = _compiler_name(compiler)
-        probe_ok = compiler_name in (probe_result.stdout + probe_result.stderr)
+        node = _compiler_node(probe_result.stdout, languages) or {}
+        # The installed compiler itself, not another build of the same spec.
+        probe_ok = node.get("hash") == installed and "external" not in node
 
     return BootstrapResult(
         compiler=compiler,
         installed=already_installed or not dry_run,
-        registered=registered,
+        registered=False,
         languages=languages,
         probe=probe,
         probe_ok=probe_ok,
+        hash=installed,
     )
 
 

@@ -274,7 +274,7 @@ def _spack_runtime(args: argparse.Namespace):
 def _probe_warning(result) -> str:
     if result.external:
         return f"warning: the probe is not compiled by the compiler in {result.external}"
-    return "warning: compiler name not visible in probe output"
+    return f"warning: the probe is not compiled by the installed compiler /{(result.hash or '')[:7]}"
 
 
 def _only(found: list, wanted: str, option: str, kind: str, among: list) -> object:
@@ -344,6 +344,8 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
         probe_timeout=args.probe_timeout or None,
         external=external_compiler.prefix if external_compiler else None,
         source_compiler=source,
+        environment=x.environments / "compiler",
+        spack_config=x.config,
     )
     if args.dry_run:
         if result.external:
@@ -355,7 +357,10 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
         return 0
     built = f" in {result.external}" if result.external else f", built with {source}" if source else ""
     print(f"compiler: {result.compiler}{built}")
-    print(f"registered as external: {'yes' if result.registered else 'no'}")
+    if result.external:
+        print("used as: an external of this machine")
+    else:
+        print(f"used as: the installed package /{(result.hash or '')[:7]}")
     print(f"languages: {', '.join(result.languages)}")
     print(f"compiler probe ({result.probe}): {'ok' if result.probe_ok else _probe_warning(result)}")
     if not result.probe_ok:

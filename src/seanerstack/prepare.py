@@ -177,8 +177,7 @@ def pad_install_tree(spack_config: Path, length: int, *, command: list[str], env
     keeps other configuration out.
 
     A state that already holds installations keeps the padding they were
-    installed with: their prefixes are recorded, and the registered compiler
-    is an external at one of them.
+    installed with, because their prefixes are recorded.
 
     @param spack_config: the Spack configuration directory of the state
     @param length: the padded length of the install prefix; 0 for none
@@ -237,7 +236,9 @@ def prepare_here(
     resources = {name: replace(cache, autopush=name == target.name) for name, cache in caches.items()}
     configure_buildcaches(replace(config, resources=resources), command=command, env=env)
     require_target(command, toolchain.target, env)
-    result = bootstrap(toolchain.compiler, command=command, env=env)
+    result = bootstrap(
+        toolchain.compiler, command=command, env=env, environment=work.parent / "compiler", spack_config=spack_config,
+    )
     if not result.probe_ok:
         raise RuntimeError(f"Spack does not use {toolchain.compiler}")
 
