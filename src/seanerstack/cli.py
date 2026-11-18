@@ -188,8 +188,7 @@ def build_parser() -> argparse.ArgumentParser:
     prepare_parser.add_argument(
         "--padded-length", type=int, default=0, metavar="N",
         help="install below a prefix padded to N characters, so that the binaries of the cache install into any "
-        "shorter path, such as a state directory of the user's choice (default: 0, no padding). The compiler is "
-        "then registered at a padded path, so such a cache is installed from a lockfile, not concretized against",
+        "shorter path, such as a state directory of the user's choice (default: 0, no padding)",
     )
 
     init_parser = subparsers.add_parser(
