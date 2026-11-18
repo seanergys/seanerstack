@@ -78,7 +78,7 @@ def _probe(compiler_hash=HASH, external=False):
     return "==> Installing clingo-bootstrap\n" + json.dumps({"spec": {"nodes": [root, compiler]}})
 
 
-def _toolchain_spack(monkeypatch, state, *, installed=False, probe=None, probe_timeout=False, records=None):
+def _toolchain_spack(monkeypatch, state, *, installed=False, probe=None, probe_timeout=False, probe_stderr=None, records=None):
     """Stand in for Spack with a compiler environment below `state`."""
     environment, config = state / "environments" / "compiler", state / "config"
     config.mkdir(parents=True)
@@ -93,7 +93,7 @@ def _toolchain_spack(monkeypatch, state, *, installed=False, probe=None, probe_t
             return subprocess.CompletedProcess(args, 0, json.dumps(records if records is not None else [{"hash": HASH}]), "")
         if "spec" in args:
             if probe_timeout:
-                raise subprocess.TimeoutExpired(args, timeout or 0)
+                raise subprocess.TimeoutExpired(args, timeout or 0, output=b"==> Installing clingo-bootstrap\n", stderr=probe_stderr)
             return subprocess.CompletedProcess(args, 0, probe or _probe(), "")
         return subprocess.CompletedProcess(args, 0, "", "")
 
@@ -192,6 +192,29 @@ def test_the_probe_fails_when_another_compiler_built_it(monkeypatch, tmp_path):
 def test_bootstrap_reports_a_probe_that_never_finishes(monkeypatch, tmp_path):
     _, state = _toolchain_spack(monkeypatch, tmp_path, probe_timeout=True)
     with pytest.raises(RuntimeError, match="did not concretize compiler probe"):
+        bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", probe_timeout=1, **state)
+
+
+def test_a_probe_that_never_finishes_reports_what_spack_printed_and_names_no_cause(monkeypatch, tmp_path):
+    _, state = _toolchain_spack(monkeypatch, tmp_path, probe_timeout=True, probe_stderr="==> Warning: no index\n")
+    with pytest.raises(RuntimeError) as error:
+        bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", probe_timeout=1, **state)
+    message = str(error.value)
+    # Captured output of a command that timed out arrives as bytes or as text.
+    assert "Until then it printed:\n==> Installing clingo-bootstrap\n==> Warning: no index\n" in message
+    assert "usually means" not in message
+    assert "Run `spack spec zlib` in this state without a limit" in message
+
+
+def test_a_probe_that_printed_nothing_says_so(monkeypatch, tmp_path):
+    _, state = _toolchain_spack(monkeypatch, tmp_path, probe_timeout=True)
+    monkeypatch.setattr(
+        bootstrap_module, "_run", lambda args, **kwargs: (_ for _ in ()).throw(subprocess.TimeoutExpired(args, 1))
+        if "spec" in args else subprocess.CompletedProcess(args, 0, json.dumps([{"hash": HASH}]), ""),
+    )
+    (state["environment"]).mkdir(parents=True)
+    (state["environment"] / "spack.lock").write_text("{}")
+    with pytest.raises(RuntimeError, match="It printed nothing until then."):
         bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", probe_timeout=1, **state)
 
 
