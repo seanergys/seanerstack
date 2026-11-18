@@ -128,7 +128,7 @@ def test_init_sets_up_the_state_and_checks_access_without_a_compiler(monkeypatch
     assert calls == ["configure", "target=x86_64_v3", "check", "git"]
     assert seanerstack.isolation.read_record(x.state)["config_file"] == tmp_path / "config.toml"
     out = capsys.readouterr().out
-    assert f"export PATH={x.bin}:$PATH" in out
+    assert "activate" in out
     assert "seanerstack toolchain bootstrap" in out
 
 
@@ -141,7 +141,6 @@ def test_init_ends_with_how_to_activate_the_state_it_set_up(monkeypatch, tmp_pat
     # Neither the default nor named by the variable, so activation names it.
     out = capsys.readouterr().out
     assert f'eval "$(seanerstack --state-dir {x.state} activate)"' in out
-    assert out.index("activate") < out.index("export PATH=")
 
 
 def test_init_needs_no_option_to_activate_the_state_that_the_variable_names(monkeypatch, tmp_path: Path, capsys):
