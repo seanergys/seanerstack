@@ -441,6 +441,32 @@ def test_prepare_names_the_probe_and_the_compiler_that_spack_does_not_use(monkey
         run_here(tmp_path)
 
 
+def test_prepare_gives_the_probe_the_time_it_was_given(monkeypatch, tmp_path):
+    Spack(monkeypatch)
+    given = []
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: given.append(kwargs["probe_timeout"]) or type("Result", (), {"probe_ok": True}))
+
+    run_here(tmp_path)
+    run_here(tmp_path, probe_timeout=900)
+    run_here(tmp_path, probe_timeout=None)
+
+    assert given == [300, 900, None]
+
+
+def test_prepare_takes_a_probe_timeout_and_waits_indefinitely_for_zero(monkeypatch, tmp_path):
+    arguments = ["buildcache", "prepare", "--platform", "rocky10"]
+    assert build_parser().parse_args(arguments).probe_timeout == 300
+    assert build_parser().parse_args([*arguments, "--probe-timeout", "0"]).probe_timeout == 0
+
+
+def test_the_container_builds_with_the_probe_timeout_it_was_given():
+    script = lambda **extra: _prepare.container_script(ROCKY10, jobs=1, source=False, uid=0, gid=0, version="1", **extra)
+    assert "--probe-timeout" not in script()
+    assert "--platform rocky10 --jobs 1 --probe-timeout 900" in script(probe_timeout=900)
+    # 0 waits indefinitely, and is not the default.
+    assert "--jobs 1 --padded-length 200 --probe-timeout 0" in script(padded_length=200, probe_timeout=0)
+
+
 CONFIG_YAML = "config::\n  install_tree:\n    root: /state/spack/store\n  build_stage:\n  - /state/spack/stage\n"
 
 
