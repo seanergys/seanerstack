@@ -37,6 +37,32 @@ def _run(
     )
 
 
+def _probe_timeout(probe: str, timeout: float | None, error: subprocess.TimeoutExpired, hint: str) -> RuntimeError:
+    """The error for a probe that Spack was still concretizing when its time ran out.
+
+    A solve that is only slow and a requirement without a solution look the
+    same from here, so the error says what Spack printed and how to tell them
+    apart, and names no cause.
+
+    @param probe: the spec of the probe
+    @param timeout: the seconds the probe was given
+    @param error: the timeout, with what Spack printed until then
+    @param hint: what to check when the requirement has no solution
+    @return: the error to raise
+    """
+    printed = []
+    for stream in (error.stdout, error.stderr):
+        text = stream.decode(errors="replace") if isinstance(stream, bytes) else stream or ""
+        if text.strip():
+            printed.append(text.strip())
+    output = "Until then it printed:\n" + "\n".join(printed) if printed else "It printed nothing until then."
+    return RuntimeError(
+        f"Spack did not concretize compiler probe {probe!r} within {timeout or 0:g} seconds. {output}\n"
+        f"Run `spack spec {probe}` in this state without a limit: if it finishes, the solve is only slow and "
+        f"needs a longer limit, which `init` and `toolchain bootstrap` take as --probe-timeout; if it fails, its message names the conflict. {hint}"
+    )
+
+
 def _run_streaming(args: list[str], *, env=None) -> None:
     # Building a compiler takes upwards of an hour; capturing the output would
     # make a long build indistinguishable from a hang.
@@ -296,12 +322,10 @@ def bootstrap(
                 [*command, "spec", "--json", probe], check=False, env=env, timeout=probe_timeout
             )
         except subprocess.TimeoutExpired as error:
-            raise RuntimeError(
-                f"Spack did not concretize compiler probe {probe!r} within "
-                f"{probe_timeout:g} seconds. This usually means the {compiler} "
-                "requirement cannot be satisfied: check that the compiler environment "
-                f"{environment} has it installed and that `spack config get concretizer` "
-                "reuses that environment."
+            raise _probe_timeout(
+                probe, probe_timeout, error,
+                f"Without a solution, check that the compiler environment {environment} has {compiler} "
+                "installed and that `spack config get concretizer` reuses that environment.",
             ) from error
         if probe_result.returncode != 0:
             message = probe_result.stderr.strip() or probe_result.stdout.strip()
@@ -349,8 +373,9 @@ def _bootstrap_external(
             [*command, "spec", "--json", probe], check=False, env=env, timeout=probe_timeout
         )
     except subprocess.TimeoutExpired as error:
-        raise RuntimeError(
-            f"Spack did not concretize compiler probe {probe!r} within {probe_timeout:g} seconds."
+        raise _probe_timeout(
+            probe, probe_timeout, error,
+            f"Without a solution, check that `spack compiler list` reports the compiler in {prefix}.",
         ) from error
     if probe_result.returncode != 0:
         message = probe_result.stderr.strip() or probe_result.stdout.strip()

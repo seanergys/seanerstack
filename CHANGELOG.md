@@ -74,6 +74,9 @@ and release process.
 
 ### Fixed
 
+- A compiler probe that runs out of time reports what Spack printed until then
+  and how to tell a slow solve from a requirement without a solution. It no
+  longer names the requirement as the cause, which it had not checked.
 - `toolchain bootstrap` stops with an error that names the build cache when an
   OCI cache refuses its request, such as a private registry asked with missing
   or expired credentials. Spack reports that as "no binary available" and builds
