@@ -11,6 +11,14 @@ def _toolchain_job() -> dict:
     return ci["toolchain"]
 
 
+def _steps(job: dict) -> list[str]:
+    """The script of a job, with the steps of the anchors it includes."""
+    steps: list[str] = []
+    for step in job["script"]:
+        steps += step if isinstance(step, list) else [step]
+    return steps
+
+
 def _matrix_platforms(job: dict) -> list[str]:
     # An entry names one platform, or several that share everything else.
     names: list[str] = []
@@ -83,9 +91,10 @@ def test_the_how_to_job_runs_the_script_of_the_guide_in_a_state_set_up_like_a_us
     job = ci["how-to:work-on-a-package"]
     assert job["before_script"] == ci["build:rocky10"]["before_script"]
     # The state as the tutorial leaves it, then nothing after the script of the guide.
-    assert job["script"][1] == 'eval "$(seanerstack activate)"'
-    assert [step.split()[0] for step in job["script"][:3]] == ["seanerstack", "eval", "seanerstack"]
-    assert job["script"][-1] == "tests/how-to/work-on-a-package.sh"
+    steps = _steps(job)
+    init = next(index for index, step in enumerate(steps) if step.startswith("seanerstack --secrets-file"))
+    assert init < steps.index('eval "$(seanerstack activate)"') < steps.index("seanerstack toolchain bootstrap")
+    assert steps[-1] == "tests/how-to/work-on-a-package.sh"
     assert HOW_TO.stat().st_mode & 0o111
 
 
@@ -106,7 +115,7 @@ def test_the_tutorial_job_runs_the_script_of_the_tutorial_with_the_seanerstack_o
     # The same preparation as build:rocky10, which installs the checkout.
     assert job["before_script"] == ci["build:rocky10"]["before_script"]
     # In the directory of secrets.toml, with the vault password on standard input.
-    assert job["script"][-2:] == ["cd /tmp", '"$CI_PROJECT_DIR/tests/tutorials/install-the-stack.sh" < /tmp/vault-password']
+    assert _steps(job)[-2:] == ["cd /tmp", '"$CI_PROJECT_DIR/tests/tutorials/install-the-stack.sh" < /tmp/vault-password']
     assert TUTORIAL.stat().st_mode & 0o111
 
 
