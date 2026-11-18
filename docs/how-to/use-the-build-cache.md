@@ -99,6 +99,21 @@ package_manager = "dnf"
 
 `operating_system` is what `spack arch --operating-system` prints in that image. `package_manager` is `dnf`, `apt` or `pacman`, and chooses the system packages of `[toolchain.system_packages]` that the image gets before Spack runs. A platform can add its own with `system_packages`, and name another Python with `python`, as Rocky 9 does for Python 3.12. Seanerstack and Spack both run with that Python in the image. Fedora 45 names Python 3.14, because Spack 1.2.2 has a ready-made clingo, its solver, for Python up to 3.14, and builds it from source for the Python 3.15 that Fedora 45 has as `python3`.
 
+### Build binaries that install into any directory
+
+Spack rewrites the install prefix inside a binary only into a path that is no longer than the one it was built in. The binaries of the project cache are built below `/opt/seanergys/state`, so they install only below a path of that length or shorter. To build a cache whose binaries install into a state directory of the user's choice, pad the install prefix:
+
+```console
+seanerstack --state-dir "$HOME/padded-state" --secrets-file credentials.toml buildcache prepare --platform rocky10 --padded-length 200
+```
+
+The build then happens below a prefix of 200 characters, and its binaries install into any shorter path.
+
+!!! warning "Install a padded cache from a lockfile"
+    The toolchain compiler is registered at its install path, and that path is part of the hash of every package built with it. In a padded build the path is the padded one, which no user's state has, so a machine that concretizes on its own computes other hashes and finds nothing in a padded cache. Ship the `spack.lock` of the environment with such a cache: installed from the lockfile, the packages keep the hashes of the build, and no compiler is needed.
+
+A state keeps the padding of its first build. `buildcache prepare` refuses another padded length for a state that already holds installations; give the padded build a state directory of its own.
+
 ### Build it every night
 
 The `toolchain` job of the CI pipeline runs `buildcache prepare --no-container` for every shipped platform, in parallel, on runners tagged `docker` and `seanerstack`. Each job runs in the image of its platform, so it needs no Docker daemon: it installs Python and the system packages of `[toolchain]`, clones Spack, and builds under `/opt/seanergys/state`, as `buildcache prepare` does in a container. It runs in a pipeline schedule of the default branch, which a maintainer creates under **Build → Pipeline schedules**, for example with the interval `0 1 * * *`, or by hand from **Build → Pipelines → Run pipeline**. It pushes with the job token, which may write to the container registry of the project. After the build, each job runs `buildcache explain` for the compiler and the packages of `[toolchain]`, so the log of a night that built something shows how its specs differ from those the cache held; a failed explanation does not fail the job.
