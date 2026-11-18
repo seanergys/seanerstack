@@ -17,7 +17,7 @@ Seanerstack also ships the Spack environments adopted by the project. An environ
 With the state's `spack` on `PATH`, locate the environment with Seanerstack and activate it with Spack:
 
 ```console
-eval "$(spack env activate --sh "$(seanerstack paths env --package properdocs)")"
+eval "$(spack env activate --sh "$(seanerstack paths env --package priorisea)")"
 ```
 
 A local development checkout is then attached with `spack develop`. Checkout paths remain local because they differ between machines.

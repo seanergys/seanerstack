@@ -38,7 +38,7 @@ To change the credentials, run `seanerstack init --secrets-file FILE` again.
 The `spack` wrapper is the plain Spack executable without Spack's shell integration. Activate an environment through the shell code that Spack prints:
 
 ```console
-eval "$(spack env activate --sh "$(seanerstack paths env --package properdocs)")"
+eval "$(spack env activate --sh "$(seanerstack paths env --package priorisea)")"
 ```
 
 and leave it with:
