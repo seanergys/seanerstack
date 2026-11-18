@@ -34,6 +34,8 @@ Each `e2e:*` job runs one file of `tests/e2e`, so the areas run in parallel and 
 
 `tutorial:install-the-stack` runs `tests/tutorials/install-the-stack.sh` on Rocky Linux 10 with the Seanerstack of the commit. The script is the [tutorial](../tutorials/getting-started.md): the page shows its sections, so the commands a reader types are the ones this job has run. It sets up the state with `init`, activates it, installs the toolchain and `seanergys-meta`, and checks that the stack is installed by the Spack of the state. Only the first step differs: the job uses the Seanerstack it installed from the checkout, where a reader installs the release with pipx.
 
+Both jobs set up their state in a directory with a random name of a random length below `/var/tmp`, not in the directory the build cache is built in. A binary that installs only where it was built, or a hash that depends on the state directory, therefore fails them instead of passing unnoticed.
+
 `how-to:work-on-a-package` runs `tests/how-to/work-on-a-package.sh` on Rocky Linux 10, in a state set up with `seanerstack init` and `seanerstack toolchain bootstrap`. The script is the procedure of [Work on a package](../how-to/work-on-a-package.md): the guide shows its sections, so the commands a reader types are the ones this job has run. It clones `priorisea` with the job token, binds the checkout to the package environment, installs it, and checks that the installed package was built from the checkout. The priorisea project and the projects of its submodules therefore have to allow this project's job token, as for `build:rocky10`.
 
 ## Project settings
