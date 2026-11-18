@@ -159,6 +159,15 @@ access:
   script:
     - seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password validate --access
 
+# Where the jobs that fill the build cache build. Spack rewrites an install
+# prefix inside a binary only into a path that is no longer than the one it
+# was built in. So the state directory has a path longer than any that a user
+# would choose, and the install prefix below it is padded on top of that:
+# what is built here installs into every shorter path.
+.cache-build: &cache-build
+  STATE: "/opt/seanergys/a-state-directory-with-a-path-longer-than-any-that-a-user-would-choose-so-that-what-is-built-here-installs-into-every-shorter-path/state"
+  PADDED_LENGTH: "256"
+
 # seanergys-meta, built on Rocky Linux 10 the way a user's machine builds it:
 # `seanerstack init` and `seanerstack toolchain bootstrap`, then an environment
 # with that one package, which depends on every recipe that builds with the
@@ -183,6 +192,7 @@ build:rocky10:
       when: never
     - when: on_success
   variables:
+    <<: *cache-build
     PLATFORM: rocky10
     ENVIRONMENT: /opt/seanergys-meta
   before_script: &rocky10-setup
@@ -198,13 +208,14 @@ build:rocky10:
   script:
     # The default branch repairs an index that init cannot read, such as one a
     # newer Spack wrote; merge requests only report it.
+    - export SEANERSTACK_STATE_DIR="$STATE"
     - |
-      if ! seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password init; then
+      if ! seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password init --padded-length "$PADDED_LENGTH"; then
         [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ] || exit 1
         seanerstack buildcache update-index
         seanerstack init
       fi
-    - export PATH="/opt/seanergys/state/spack/bin:$PATH"
+    - eval "$(seanerstack activate)"
     - seanerstack toolchain bootstrap
     # Spack clones the private recipes with Git itself.
     - >-
@@ -430,11 +441,7 @@ toolchain:
   variables:
     SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME: "gitlab-ci-token"
     SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD: "$CI_JOB_TOKEN"
-    STATE: /opt/seanergys/state
-    # Spack rewrites an install prefix only into a path that is no longer, so
-    # the toolchain is built below a padded prefix and installs into a state
-    # directory of any shorter path.
-    PADDED_LENGTH: "256"
+    <<: *cache-build
   before_script:
     # Just enough Python for Seanerstack, which then installs the system
     # packages of the platform from config.toml.
