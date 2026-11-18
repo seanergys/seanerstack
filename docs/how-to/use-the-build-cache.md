@@ -36,7 +36,7 @@ A plain `spack install` takes a binary whenever the cache holds the exact spec i
 spack install --use-buildcache only
 ```
 
-A binary matches only when the concretized hash matches, which requires the same Spack version, the same Seanerstack and builtin package recipes, the same compiler at the same install path, operating system, and target microarchitecture as the build that pushed it. `seanerstack init` takes care of all of these but the operating system: it uses the pinned Spack, the default state directory `/opt/seanergys/state`, and the target of `[toolchain]`.
+A binary matches only when the concretized hash matches, which requires the same Spack version, the same Seanerstack and builtin package recipes, the same compiler, operating system, and target microarchitecture as the build that pushed it. `seanerstack init` takes care of all of these but the operating system: it uses the pinned Spack and the target of `[toolchain]`, and `seanerstack toolchain bootstrap` installs the compiler of the cache. The state directory does not enter a hash.
 
 !!! warning "Externals take you off the project build cache"
 
@@ -101,18 +101,15 @@ package_manager = "dnf"
 
 ### Build binaries that install into any directory
 
-Spack rewrites the install prefix inside a binary only into a path that is no longer than the one it was built in. The binaries of the project cache are built below `/opt/seanergys/state`, so they install only below a path of that length or shorter. To build a cache whose binaries install into a state directory of the user's choice, pad the install prefix:
+Spack rewrites the install prefix inside a binary only into a path that is no longer than the one it was built in. Built below `/opt/seanergys/state`, binaries install only below a path of that length or shorter. `--padded-length` builds below a prefix padded to that many characters, so the binaries install into any shorter path, such as a state directory of the user's choice:
 
 ```console
-seanerstack --state-dir "$HOME/padded-state" --secrets-file credentials.toml buildcache prepare --platform rocky10 --padded-length 200
+seanerstack --secrets-file credentials.toml buildcache prepare --platform rocky10 --padded-length 256
 ```
 
-The build then happens below a prefix of 200 characters, and its binaries install into any shorter path.
+The `toolchain` job builds with a padded length of 256. Padding changes no hash, because the install path is not part of one.
 
-!!! warning "Install a padded cache from a lockfile"
-    The toolchain compiler is registered at its install path, and that path is part of the hash of every package built with it. In a padded build the path is the padded one, which no user's state has, so a machine that concretizes on its own computes other hashes and finds nothing in a padded cache. Ship the `spack.lock` of the environment with such a cache: installed from the lockfile, the packages keep the hashes of the build, and no compiler is needed.
-
-A state keeps the padding of its first build. `buildcache prepare` refuses another padded length for a state that already holds installations; give the padded build a state directory of its own.
+A state keeps the padding of its first build. `buildcache prepare` refuses another padded length for a state that already holds installations; give such a build a state directory of its own.
 
 ### Build it every night
 
@@ -138,7 +135,7 @@ gcc  local /4vm5ymy  cached /frjwpux
         cached: 'zen3'
 ```
 
-The usual causes are a different CPU target, Spack version, recipe (`package_hash`), operating system, or compiler install path, such as a state directory other than the default or an external compiler. When the caches hold no spec of that name and version at all, it says so.
+The usual causes are a different CPU target, Spack version, recipe (`package_hash`), operating system, or compiler: one built by another system compiler, or an external compiler. When the caches hold no spec of that name and version at all, it says so.
 
 ## Use a filesystem build cache
 

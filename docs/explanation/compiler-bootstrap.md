@@ -23,7 +23,7 @@ The compiler recipe comes from the normal Spack repositories; Seanerstack does n
 
 For normal SEANERGYS work, this is a workstation setup operation rather than a per-environment choice.
 
-## Why the new compiler is registered as an external
+## Why the compiler is reused as an installed package
 
 Spack 1.x has no separate notion of a compiler: `c`, `cxx` and `fortran` are virtual packages, and `gcc` is one provider among others. Directing the stack at a compiler therefore means requiring a provider for those virtuals:
 
@@ -34,23 +34,25 @@ packages:
   fortran: {require: [gcc@15]}
 ```
 
-Such a requirement is global: it applies to *every* node that needs the virtual. That includes the nodes inside the new compiler's own build tree, which the system compiler built:
+Spack takes a compiler only when it is an external or a concrete spec that the concretizer may reuse. A Seanerstack state concretizes everything fresh, so that the same recipes give the same hashes on every machine, and with reuse switched off an installed gcc@15 is neither: the requirement can then only be met by building gcc@15 with gcc@15, which is circular.
 
-```text
-gcc@15.3.0            %c,cxx=gcc@11.5.0     <- built by the system compiler
-  |-- binutils        %c,cxx=gcc@11.5.0
-  |-- m4, perl, texinfo, zstd, gmp, mpfr ...  all gcc@11
+`seanerstack toolchain bootstrap` therefore installs the compiler in a Spack environment of its own, `environments/compiler` in the state, and lets the concretizer reuse what that environment holds, and nothing else:
+
+```yaml
+concretizer:
+  reuse:
+    from:
+    - type: environment
+      path: /opt/seanergys/state/spack/environments/compiler
 ```
 
-Written on its own, the requirement forbids reusing that tree, so the only way to satisfy it is to rebuild gcc@15 with gcc@15, which is circular. The system compiler cannot stand in either, because `11.5.0` does not match `gcc@15`. There is no solution, and Spack does not report one: it keeps searching for hours at full CPU.
+The compiler then enters every build as the installed package it is, by its hash.
 
-`seanerstack toolchain bootstrap` therefore registers the compiler as an external before writing the requirements:
+### Why not an external
 
-```console
-$ spack compiler find "$(spack location -i gcc@15)"
-```
+Registering the installed compiler as an external also satisfies the requirement, and Seanerstack did so before. An external is hashed by its path, because Spack knows nothing else about it. The path of the compiler contains the state directory and the hash of the compiler's own build, and every package built with the compiler inherited both. A state in another directory, or a compiler built by another system compiler, therefore matched nothing in the build cache.
 
-An external node is a leaf: it carries no build dependencies, so the requirement has nothing left to contradict. Concretization then takes seconds and the whole stack, the compiler excepted, is built by gcc@15.
+A package is hashed by its recipe, version, variants, target and dependencies, and not by where it is installed. Reused as a package, the compiler has the same hash in every state directory, and so has everything built with it. `bootstrap` removes the external record that an earlier Seanerstack wrote.
 
 ## Using a compiler that is already installed
 
@@ -76,7 +78,7 @@ An external compiler changes the hash of everything built with it, so a stack bu
 
 The system compiler is registered as an external before the build, because building the new compiler needs a C compiler. An external that satisfies the requested spec would then be taken instead of a build: on Ubuntu 26.04, whose system GCC is 15.2.0, `spack install gcc@15` installs nothing. Seanerstack therefore installs `gcc@15 %c`. An external is a leaf without dependencies, so asking for a C compiler as a dependency rules it out, while the system compiler can still be that C compiler. The compiler is built whatever version the system has, the same version included.
 
-Afterwards, every registered compiler that the spec matches, such as a system gcc 15.2.0 for `gcc@15`, is removed before the installed one is registered, so that only the installed compiler satisfies the language requirements. Otherwise a system compiler of a matching version could build packages instead. Other compilers, such as a system gcc 16 or clang, stay registered.
+Afterwards, every registered compiler that the spec matches, such as a system gcc 15.2.0 for `gcc@15`, is removed, so that only the installed compiler satisfies the language requirements. Otherwise a system compiler of a matching version could build packages instead. Other compilers, such as a system gcc 16 or clang, stay registered.
 
 ## Choosing the compilers
 

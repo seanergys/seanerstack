@@ -38,7 +38,7 @@ sudo mkdir -p "$SEANERSTACK_STATE_DIR"
 sudo chown "$USER" "$SEANERSTACK_STATE_DIR"
 ```
 
-`SEANERSTACK_STATE_DIR` names the state directory for every `seanerstack` command, and `--state-dir DIR` does the same for one command. Unset, it is `/opt/seanergys/state`. To keep the state elsewhere, set another directory here and in your shell profile; nothing from the project build cache matches then, and Spack builds from source (see [Keep the state in another directory](use-the-states-spack.md#keep-the-state-in-another-directory)).
+`SEANERSTACK_STATE_DIR` names the state directory for every `seanerstack` command, and `--state-dir DIR` does the same for one command. Unset, it is `/opt/seanergys/state`. To keep the state elsewhere, set another directory here and in your shell profile; the binaries of the project build cache install there as well (see [Keep the state in another directory](use-the-states-spack.md#keep-the-state-in-another-directory)).
 
 ## 3. Initialize Seanerstack
 

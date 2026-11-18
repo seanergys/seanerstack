@@ -32,8 +32,8 @@ Seanerstack keeps its Spack, the configuration, the installed software and the c
 
 `init` asks for the password of the secrets file. It installs the Spack version that Seanerstack pins, stores the credentials, configures the project build cache, and checks that every build cache and Git repository can be read. If it reports an access error, correct the token and run it again.
 
-!!! note "Why this directory"
-    `/opt/seanergys/state` is also the directory Seanerstack uses when the variable is unset. Every binary in the build cache contains the path of the compiler that built it, so only a state there reuses those binaries. With another directory in `SEANERSTACK_STATE_DIR` everything works the same, but Spack builds the toolchain and the stack from source; set the variable in your shell profile then, so every shell names the same state.
+!!! note "Another directory"
+    `/opt/seanergys/state` is also the directory Seanerstack uses when the variable is unset. Any other directory you can write to works the same and takes the same binaries from the build cache; set the variable in your shell profile then, so every shell names the same state.
 
 ## 3. Activate the state
 
