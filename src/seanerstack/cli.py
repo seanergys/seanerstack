@@ -16,7 +16,7 @@ from .config import Config, load_config
 from .discovery import describe, detect_packages, find_compilers, load_detected, matching, registered_compilers, save_detected
 from .paths import environments_path, repository_path, share_path
 from .pins import SPACK_VERSION
-from .prepare import prepare_here, prepare_in_container
+from .prepare import pad_install_tree, prepare_here, prepare_in_container
 from .secrets import SecretStore
 from .isolation import (
     activation_script, deactivation_script, layout, prepare_isolation, read_record, recorded_find,
@@ -209,6 +209,12 @@ def build_parser() -> argparse.ArgumentParser:
         "/opt/rh/gcc-toolset-15/root/usr; repeat as needed (default: what init was given before)",
     )
 
+    init_parser.add_argument(
+        "--padded-length", type=int, metavar="N",
+        help="install below a prefix padded to N characters, for a state that builds a cache: its binaries then "
+        "install into any shorter path. 0 removes the padding (default: what the state has)",
+    )
+
     subparsers.add_parser("activate", help="Emit shell code that activates an isolated Seanerstack Spack session.")
     subparsers.add_parser("deactivate", help="Emit shell code that restores the shell state saved by activation.")
 
@@ -389,6 +395,9 @@ def _run_init(args: argparse.Namespace) -> int:
     x, real_spack, command, env = _spack_runtime(args)
     find = args.find if args.find is not None else recorded_find(state_dir)
     write_record(x, config_file=config_file, spack_executable=args.spack_executable or record["spack_executable"], find=find)
+    padded_length = getattr(args, "padded_length", None)
+    if padded_length is not None:
+        pad_install_tree(x.config, padded_length, command=command, env=env)
     print(f"state: {x.state}")
     print(f"spack: {real_spack}")
     print(f"config: {config.path}")
