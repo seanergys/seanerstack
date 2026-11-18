@@ -148,3 +148,17 @@ def test_the_nightly_toolchain_job_builds_below_a_padded_prefix():
     assert int(job["variables"]["PADDED_LENGTH"]) >= 200
     (prepare,) = [step for step in job["script"] if "buildcache prepare" in step]
     assert '--padded-length "$PADDED_LENGTH"' in prepare
+
+
+def test_the_jobs_that_fill_the_cache_build_in_a_long_padded_state_directory():
+    ci = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+    for name in ("build:rocky10", "toolchain"):
+        variables = ci[name]["variables"]
+        # Longer than a user's state directory, and the install prefix padded beyond it.
+        assert 120 <= len(variables["STATE"]) < int(variables["PADDED_LENGTH"]) - len("/spack/store")
+        assert all(len(part) <= 255 for part in variables["STATE"].split("/"))
+    build = _steps(ci["build:rocky10"])
+    assert build.index('export SEANERSTACK_STATE_DIR="$STATE"') < next(index for index, step in enumerate(build) if "init" in step)
+    assert any('init --padded-length "$PADDED_LENGTH"' in step for step in build)
+    assert 'eval "$(seanerstack activate)"' in build
+    assert not any("/opt/seanergys/state/spack/bin" in step for step in build)
