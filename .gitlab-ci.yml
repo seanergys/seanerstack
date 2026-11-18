@@ -289,7 +289,7 @@ how-to:work-on-a-package:
   before_script: *rocky10-setup
   script:
     - seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password init
-    - export PATH="/opt/seanergys/state/spack/bin:$PATH"
+    - eval "$(seanerstack activate)"
     - seanerstack toolchain bootstrap
     # The guide clones a SEANERGYS repository, which a reader does with their
     # own Git access and this job with its token.
