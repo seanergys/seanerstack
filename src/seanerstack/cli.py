@@ -185,6 +185,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     prepare_parser.add_argument("--jobs", type=int, help="parallel jobs per package (default: what the free memory allows)")
     prepare_parser.add_argument("--no-container", action="store_true", help="build here, for a CI job that runs in the image of [toolchain]")
+    prepare_parser.add_argument(
+        "--padded-length", type=int, default=0, metavar="N",
+        help="install below a prefix padded to N characters, so that the binaries of the cache install into any "
+        "shorter path, such as a state directory of the user's choice (default: 0, no padding). The compiler is "
+        "then registered at a padded path, so such a cache is installed from a lockfile, not concretized against",
+    )
 
     init_parser = subparsers.add_parser(
         "init",
@@ -537,12 +543,15 @@ def _run_buildcache(args: argparse.Namespace) -> int:
             return prepare_here(
                 config, secrets, platform=args.platform, command=command, env=env,
                 work=x.environments / "toolchain", jobs=args.jobs,
+                padded_length=args.padded_length, spack_config=x.config,
             )
         state_dir = args.state_dir or Path(os.environ.get("SEANERSTACK_STATE_DIR", "~/.cache/seanerstack"))
         toolchain = config.toolchain
         platforms = list(toolchain.platforms) if args.platform == "all" and toolchain else [args.platform]
         for platform in platforms:
-            prepare_in_container(config, secrets, platform=platform, state_dir=state_dir, jobs=args.jobs)
+            prepare_in_container(
+                config, secrets, platform=platform, state_dir=state_dir, jobs=args.jobs, padded_length=args.padded_length,
+            )
         return 0
     raise ValueError(f"unknown buildcache command: {args.buildcache_command}")
 
