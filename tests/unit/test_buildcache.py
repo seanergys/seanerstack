@@ -205,6 +205,29 @@ def test_buildcache_check_fails_on_an_index_that_a_newer_spack_wrote(monkeypatch
     assert "update-index" in message
 
 
+def test_buildcache_check_reads_a_cache_without_an_index_as_empty(monkeypatch, tmp_path: Path):
+    # What Spack says of a registry repository that nothing was pushed to yet.
+    not_found = (
+        "==> Error: FetchIndexError: Could not fetch manifest from https://registry.example.org/v2/cache/manifests/index.spack, "
+        "due to: GET https://registry.example.org/v2/cache/manifests/index.spack returned 404: Not Found"
+    )
+    refused = not_found.replace("404: Not Found", "401: Unauthorized")
+    answers = iter([not_found, refused])
+    monkeypatch.setattr(
+        buildcache.subprocess, "run",
+        lambda args, **kwargs: subprocess.CompletedProcess(args, 1, stdout="", stderr=next(answers)),
+    )
+    env = {"SEANERSTACK_RESOURCE_REGISTRY_USERNAME": "u", "SEANERSTACK_RESOURCE_REGISTRY_PASSWORD": "p"}
+
+    (empty,) = buildcache.check_buildcaches(_registry_config(tmp_path), SecretStore(None), command=["spack"], base_env=env)
+    (closed,) = buildcache.check_buildcaches(_registry_config(tmp_path), SecretStore(None), command=["spack"], base_env=env)
+
+    assert empty == ("registry", True, buildcache.EMPTY_CACHE_MESSAGE)
+    assert empty[2].startswith("empty: the cache has no index yet")
+    # A request that the registry refuses is still a failure.
+    assert closed[1] is False and "401" in closed[2]
+
+
 def test_buildcache_check_reports_missing_credentials_as_a_failed_cache(monkeypatch, tmp_path: Path):
     calls = []
     monkeypatch.setattr(buildcache.subprocess, "run", lambda args, **kwargs: calls.append(args))
