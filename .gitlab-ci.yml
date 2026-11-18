@@ -475,8 +475,8 @@ toolchain:
       /opt/seanerstack/bin/seanerstack --state-dir "$STATE"
       buildcache prepare --no-container --platform "$PLATFORM" --padded-length "$PADDED_LENGTH" || status=$?
     # Why a night built instead of reusing: each spec of the toolchain against
-    # the cached specs of its name and version, which include the other
-    # platforms and earlier nights. It runs after prepare, which sets the
+    # the cached specs of its name and version for this platform, which
+    # include those of earlier nights. It runs after prepare, which sets the
     # target and the compiler that the specs concretize with, and never fails
     # the job.
     - >-
