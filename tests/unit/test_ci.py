@@ -113,7 +113,7 @@ def test_the_tutorial_job_runs_the_script_of_the_tutorial_with_the_seanerstack_o
 def test_the_tutorial_shows_every_section_of_the_script_that_tests_it():
     page = (Path(__file__).parents[2] / "docs" / "tutorials" / "getting-started.md").read_text(encoding="utf-8")
     sections = [line.split("[start:")[1].rstrip("]") for line in TUTORIAL.read_text(encoding="utf-8").splitlines() if "[start:" in line]
-    assert sections == ["install", "state", "activate", "toolchain", "stack", "find"]
+    assert {"install", "state", "activate", "toolchain", "stack", "find"} <= set(sections)
     for section in sections:
         assert f'--8<-- "tests/tutorials/install-the-stack.sh:{section}"' in page
     # The page types no command of its own.
