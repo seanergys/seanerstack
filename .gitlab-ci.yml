@@ -236,6 +236,13 @@ build:rocky10:
       fi
     - exit "$status"
 
+# A state directory with a random name of a random length. The jobs that
+# install from the build cache use one, so that a binary which installs only
+# in the directory it was built in fails them.
+.random-state: &random-state
+  - export SEANERSTACK_STATE_DIR="$(mktemp -d "/var/tmp/state-$RANDOM.XXXXXXXXXX")"
+  - echo "state directory $SEANERSTACK_STATE_DIR"
+
 # The tutorial, run as it tells a reader to: the page shows the sections of
 # tests/tutorials/install-the-stack.sh, and this job runs that script on Rocky
 # Linux 10 with the Seanerstack of this commit. It installs seanergys-meta
@@ -263,6 +270,7 @@ tutorial:install-the-stack:
       git config --global
       url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.seanergys.fz-juelich.de/".insteadOf
       "https://gitlab.seanergys.fz-juelich.de/"
+    - *random-state
     # The script reads secrets.toml where it runs, and init asks for the
     # vault password, which it reads from standard input without a terminal.
     - cd /tmp
@@ -288,6 +296,7 @@ how-to:work-on-a-package:
     PLATFORM: rocky10
   before_script: *rocky10-setup
   script:
+    - *random-state
     - seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password init
     - eval "$(seanerstack activate)"
     - seanerstack toolchain bootstrap
