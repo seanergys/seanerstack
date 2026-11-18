@@ -83,8 +83,8 @@ def test_the_how_to_job_runs_the_script_of_the_guide_in_a_state_set_up_like_a_us
     job = ci["how-to:work-on-a-package"]
     assert job["before_script"] == ci["build:rocky10"]["before_script"]
     # The state as the tutorial leaves it, then nothing after the script of the guide.
-    first, use, third = (step.split()[0] for step in job["script"][:3])
-    assert (first, third) == ("seanerstack", "seanerstack") and use in ("export", "eval")
+    assert job["script"][1] == 'eval "$(seanerstack activate)"'
+    assert [step.split()[0] for step in job["script"][:3]] == ["seanerstack", "eval", "seanerstack"]
     assert job["script"][-1] == "tests/how-to/work-on-a-package.sh"
     assert HOW_TO.stat().st_mode & 0o111
 
