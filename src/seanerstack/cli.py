@@ -5,6 +5,7 @@ import argparse
 import importlib.metadata
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 
@@ -424,7 +425,12 @@ def _run_init(args: argparse.Namespace) -> int:
         return 1
 
     print()
-    print("Setup complete. Put the Spack of this state on PATH once, for example in ~/.bashrc:")
+    # The default state and one named by SEANERSTACK_STATE_DIR need no option.
+    named = resolve_state_dir(None) == x.state
+    activate = "seanerstack activate" if named else f"seanerstack --state-dir {shlex.quote(str(x.state))} activate"
+    print("Setup complete. Use the Spack of this state in a shell with:")
+    print(f'    eval "$({activate})"')
+    print("or in every shell, by putting it first on PATH, for example in ~/.bashrc:")
     print(f"    export PATH={x.bin}:$PATH")
     print("Then install the compiler of [toolchain], from the build cache where it holds it:")
     print("    seanerstack toolchain bootstrap")
