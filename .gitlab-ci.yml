@@ -236,6 +236,38 @@ build:rocky10:
       fi
     - exit "$status"
 
+# The tutorial, run as it tells a reader to: the page shows the sections of
+# tests/tutorials/install-the-stack.sh, and this job runs that script on Rocky
+# Linux 10 with the Seanerstack of this commit. It installs seanergys-meta
+# from the build cache, and builds what a merge request changed a second time
+# next to build:rocky10, which pushes nothing from a merge request.
+tutorial:install-the-stack:
+  stage: build
+  tags:
+    - docker
+    - seanerstack
+  image: docker.io/rockylinux/rockylinux:10
+  # The first pipeline after a toolchain change builds everything.
+  timeout: 12h
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - when: on_success
+  variables:
+    PLATFORM: rocky10
+  before_script: *rocky10-setup
+  script:
+    # Spack clones the private recipes with Git itself, a reader with their
+    # own Git access and this job with its token.
+    - >-
+      git config --global
+      url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.seanergys.fz-juelich.de/".insteadOf
+      "https://gitlab.seanergys.fz-juelich.de/"
+    # The script reads secrets.toml where it runs, and init asks for the
+    # vault password, which it reads from standard input without a terminal.
+    - cd /tmp
+    - '"$CI_PROJECT_DIR/tests/tutorials/install-the-stack.sh" < /tmp/vault-password'
+
 # The "Work on a package" guide, run as it tells a reader to: the guide shows
 # the sections of tests/how-to/work-on-a-package.sh, and this job runs that
 # script in a state set up like a user's machine, so the guide cannot describe
