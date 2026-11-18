@@ -162,3 +162,13 @@ def test_the_jobs_that_fill_the_cache_build_in_a_long_padded_state_directory():
     assert any('init --padded-length "$PADDED_LENGTH"' in step for step in build)
     assert 'eval "$(seanerstack activate)"' in build
     assert not any("/opt/seanergys/state/spack/bin" in step for step in build)
+
+
+def test_the_toolchain_job_can_be_started_by_hand_on_any_branch():
+    rules = _toolchain_job()["rules"]
+    (by_hand,) = [rule for rule in rules if rule.get("when") == "manual"]
+    assert by_hand["if"] == '$CI_COMMIT_BRANCH && $CI_PIPELINE_SOURCE == "web"'
+    assert by_hand["allow_failure"] is True
+    # Only the schedule of the default branch starts it by itself.
+    (scheduled,) = [rule for rule in rules if "when" not in rule]
+    assert "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH" in scheduled["if"] and '"schedule"' in scheduled["if"]
