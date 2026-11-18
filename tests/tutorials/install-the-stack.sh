@@ -24,13 +24,21 @@ export USER="${USER:-$(id -un)}"
 
 install_seanerstack() {
 # --8<-- [start:install]
-pipx install --python python3.12 --include-deps seanerstack
+pipx install --include-deps seanerstack
 # --8<-- [end:install]
 }
 command -v seanerstack >/dev/null || install_seanerstack
 
-# --8<-- [start:state]
+# A state directory that is named already is used, which is how the job takes
+# a random one: the binaries of the build cache have to install anywhere.
+choose_state_directory() {
+# --8<-- [start:state-directory]
 export SEANERSTACK_STATE_DIR=/opt/seanergys/state
+# --8<-- [end:state-directory]
+}
+[ -n "${SEANERSTACK_STATE_DIR:-}" ] || choose_state_directory
+
+# --8<-- [start:state]
 sudo mkdir -p "$SEANERSTACK_STATE_DIR"
 sudo chown "$USER" "$SEANERSTACK_STATE_DIR"
 seanerstack --secrets-file secrets.toml init

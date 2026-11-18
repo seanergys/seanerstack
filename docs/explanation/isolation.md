@@ -93,6 +93,6 @@ Spack reads the credentials of a build cache only from environment variables, an
 
 ## State-directory selection
 
-The state directory defaults to `/opt/seanergys/state` for every command. That is where the toolchain of the project build cache is built, and the install path of the compiler is part of every binary hash, so only this directory lets a machine reuse those binaries. Another directory can be selected with `--state-dir DIR` or `SEANERSTACK_STATE_DIR`, for example for experiments that do not need the cache.
+The state directory defaults to `/opt/seanergys/state` for every command. Another directory can be selected with `--state-dir DIR` or `SEANERSTACK_STATE_DIR`. The hash of a package does not depend on where it is installed, and the compiler is reused as an installed package (see [Compiler bootstrap](compiler-bootstrap.md#why-the-compiler-is-reused-as-an-installed-package)), so a state in any directory takes the same binaries from the project build cache.
 
 `seanerstack init` records what it was given, the `config.toml` and a Spack executable, in `seanerstack.json` in the state directory. Every later command reads it, so options given to `init` are not repeated; run `init` again to change them.

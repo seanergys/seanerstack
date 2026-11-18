@@ -16,7 +16,7 @@ from .config import Config, load_config
 from .discovery import describe, detect_packages, find_compilers, load_detected, matching, registered_compilers, save_detected
 from .paths import environments_path, repository_path, share_path
 from .pins import SPACK_VERSION
-from .prepare import prepare_here, prepare_in_container
+from .prepare import pad_install_tree, prepare_here, prepare_in_container
 from .secrets import SecretStore
 from .isolation import (
     activation_script, deactivation_script, layout, prepare_isolation, read_record, recorded_find,
@@ -149,12 +149,22 @@ def build_parser() -> argparse.ArgumentParser:
         "explain",
         help="Explain why a spec is built instead of taken from the build caches.",
         description=(
-            "Concretize SPEC as `spack install` would, and compare it with every spec of the same name "
-            "and version in the configured build caches. For each, print the nodes whose own fields "
+            "Concretize SPEC as `spack install` would, and compare it with the specs of the same name "
+            "and version in the configured build caches that are for this operating system. For each, print the nodes whose own fields "
             "differ, such as the CPU target, a variant, the package recipe or the install path of an "
             "external compiler; a node that differs only through a dependency is not repeated."
         ),
     )
+    selection = explain_parser.add_mutually_exclusive_group()
+    selection.add_argument(
+        "--match-target", action="store_const", const="target", dest="match",
+        help="compare only with the cached specs for this operating system and this CPU target",
+    )
+    selection.add_argument(
+        "--all", action="store_const", const="all", dest="match",
+        help="compare with the cached specs for every operating system and target",
+    )
+    explain_parser.set_defaults(match="os")
     explain_parser.add_argument("spec", nargs="+", help="the spec, such as gcc@15.3.0 or rust")
     cache_sub.add_parser("configure", help="Install configured build-cache mirrors into the isolated Spack configuration.")
     cache_sub.add_parser("check", help="Check access to configured build caches using session or vault credentials.")
@@ -185,6 +195,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     prepare_parser.add_argument("--jobs", type=int, help="parallel jobs per package (default: what the free memory allows)")
     prepare_parser.add_argument("--no-container", action="store_true", help="build here, for a CI job that runs in the image of [toolchain]")
+    prepare_parser.add_argument(
+        "--padded-length", type=int, default=0, metavar="N",
+        help="install below a prefix padded to N characters, so that the binaries of the cache install into any "
+        "shorter path, such as a state directory of the user's choice (default: 0, no padding)",
+    )
+    prepare_parser.add_argument("--probe-timeout", type=float, default=DEFAULT_PROBE_TIMEOUT, help=f"seconds to allow the probe before giving up (default: {DEFAULT_PROBE_TIMEOUT:g}); 0 waits indefinitely")
 
     init_parser = subparsers.add_parser(
         "init",
@@ -202,6 +218,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--find", action="append", type=Path, metavar="PREFIX",
         help="also look for compilers and packages below PREFIX, an installation off PATH such as "
         "/opt/rh/gcc-toolset-15/root/usr; repeat as needed (default: what init was given before)",
+    )
+
+    init_parser.add_argument(
+        "--padded-length", type=int, metavar="N",
+        help="install below a prefix padded to N characters, for a state that builds a cache: its binaries then "
+        "install into any shorter path. 0 removes the padding (default: what the state has)",
     )
 
     subparsers.add_parser("activate", help="Emit shell code that activates an isolated Seanerstack Spack session.")
@@ -268,7 +290,7 @@ def _spack_runtime(args: argparse.Namespace):
 def _probe_warning(result) -> str:
     if result.external:
         return f"warning: the probe is not compiled by the compiler in {result.external}"
-    return "warning: compiler name not visible in probe output"
+    return f"warning: the probe is not compiled by the installed compiler /{(result.hash or '')[:7]}"
 
 
 def _only(found: list, wanted: str, option: str, kind: str, among: list) -> object:
@@ -326,7 +348,7 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
         raise ValueError(f"{config.path}: [toolchain] is missing; give --compiler")
 
     if target and not args.dry_run:
-        require_target(command, target, env)
+        require_target(x.config, target)
     result = bootstrap(
         compiler,
         languages=languages,
@@ -338,6 +360,8 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
         probe_timeout=args.probe_timeout or None,
         external=external_compiler.prefix if external_compiler else None,
         source_compiler=source,
+        environment=x.environments / "compiler",
+        spack_config=x.config,
     )
     if args.dry_run:
         if result.external:
@@ -349,7 +373,10 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
         return 0
     built = f" in {result.external}" if result.external else f", built with {source}" if source else ""
     print(f"compiler: {result.compiler}{built}")
-    print(f"registered as external: {'yes' if result.registered else 'no'}")
+    if result.external:
+        print("used as: an external of this machine")
+    else:
+        print(f"used as: the installed package /{(result.hash or '')[:7]}")
     print(f"languages: {', '.join(result.languages)}")
     print(f"compiler probe ({result.probe}): {'ok' if result.probe_ok else _probe_warning(result)}")
     if not result.probe_ok:
@@ -379,6 +406,9 @@ def _run_init(args: argparse.Namespace) -> int:
     x, real_spack, command, env = _spack_runtime(args)
     find = args.find if args.find is not None else recorded_find(state_dir)
     write_record(x, config_file=config_file, spack_executable=args.spack_executable or record["spack_executable"], find=find)
+    padded_length = getattr(args, "padded_length", None)
+    if padded_length is not None:
+        pad_install_tree(x.config, padded_length, command=command, env=env)
     print(f"state: {x.state}")
     print(f"spack: {real_spack}")
     print(f"config: {config.path}")
@@ -397,7 +427,7 @@ def _run_init(args: argparse.Namespace) -> int:
     configure_buildcaches(config, command=command, env=env)
     print(f"build caches: {', '.join(cache.name for cache in buildcaches(config)) or 'none'}")
     if config.toolchain is not None:
-        require_target(command, config.toolchain.target, env)
+        require_target(x.config, config.toolchain.target)
         print(f"target: {config.toolchain.target}")
 
     find_compilers(command, env, find)
@@ -505,7 +535,10 @@ def _run_buildcache(args: argparse.Namespace) -> int:
     if args.buildcache_command == "explain":
         from .buildcache import buildcache_environment, explain
         _, _, command, env = _spack_runtime(args)
-        return explain(" ".join(args.spec), command=command, env=buildcache_environment(config, secrets, env))
+        return explain(
+            " ".join(args.spec), command=command, env=buildcache_environment(config, secrets, env),
+            match=getattr(args, "match", "os"),
+        )
     if args.buildcache_command == "configure":
         _, _, command, env = _spack_runtime(args)
         configure_buildcaches(config, command=command, env=env)
@@ -537,12 +570,16 @@ def _run_buildcache(args: argparse.Namespace) -> int:
             return prepare_here(
                 config, secrets, platform=args.platform, command=command, env=env,
                 work=x.environments / "toolchain", jobs=args.jobs,
+                padded_length=args.padded_length, spack_config=x.config, probe_timeout=args.probe_timeout or None,
             )
         state_dir = args.state_dir or Path(os.environ.get("SEANERSTACK_STATE_DIR", "~/.cache/seanerstack"))
         toolchain = config.toolchain
         platforms = list(toolchain.platforms) if args.platform == "all" and toolchain else [args.platform]
         for platform in platforms:
-            prepare_in_container(config, secrets, platform=platform, state_dir=state_dir, jobs=args.jobs)
+            prepare_in_container(
+                config, secrets, platform=platform, state_dir=state_dir, jobs=args.jobs, padded_length=args.padded_length,
+                probe_timeout=args.probe_timeout,
+            )
         return 0
     raise ValueError(f"unknown buildcache command: {args.buildcache_command}")
 

@@ -11,6 +11,14 @@ def _toolchain_job() -> dict:
     return ci["toolchain"]
 
 
+def _steps(job: dict) -> list[str]:
+    """The script of a job, with the steps of the anchors it includes."""
+    steps: list[str] = []
+    for step in job["script"]:
+        steps += step if isinstance(step, list) else [step]
+    return steps
+
+
 def _matrix_platforms(job: dict) -> list[str]:
     # An entry names one platform, or several that share everything else.
     names: list[str] = []
@@ -83,9 +91,10 @@ def test_the_how_to_job_runs_the_script_of_the_guide_in_a_state_set_up_like_a_us
     job = ci["how-to:work-on-a-package"]
     assert job["before_script"] == ci["build:rocky10"]["before_script"]
     # The state as the tutorial leaves it, then nothing after the script of the guide.
-    assert job["script"][1] == 'eval "$(seanerstack activate)"'
-    assert [step.split()[0] for step in job["script"][:3]] == ["seanerstack", "eval", "seanerstack"]
-    assert job["script"][-1] == "tests/how-to/work-on-a-package.sh"
+    steps = _steps(job)
+    init = next(index for index, step in enumerate(steps) if step.startswith("seanerstack --secrets-file"))
+    assert init < steps.index('eval "$(seanerstack activate)"') < steps.index("seanerstack toolchain bootstrap")
+    assert steps[-1] == "tests/how-to/work-on-a-package.sh"
     assert HOW_TO.stat().st_mode & 0o111
 
 
@@ -106,15 +115,60 @@ def test_the_tutorial_job_runs_the_script_of_the_tutorial_with_the_seanerstack_o
     # The same preparation as build:rocky10, which installs the checkout.
     assert job["before_script"] == ci["build:rocky10"]["before_script"]
     # In the directory of secrets.toml, with the vault password on standard input.
-    assert job["script"][-2:] == ["cd /tmp", '"$CI_PROJECT_DIR/tests/tutorials/install-the-stack.sh" < /tmp/vault-password']
+    assert _steps(job)[-2:] == ["cd /tmp", '"$CI_PROJECT_DIR/tests/tutorials/install-the-stack.sh" < /tmp/vault-password']
     assert TUTORIAL.stat().st_mode & 0o111
 
 
 def test_the_tutorial_shows_every_section_of_the_script_that_tests_it():
     page = (Path(__file__).parents[2] / "docs" / "tutorials" / "getting-started.md").read_text(encoding="utf-8")
     sections = [line.split("[start:")[1].rstrip("]") for line in TUTORIAL.read_text(encoding="utf-8").splitlines() if "[start:" in line]
-    assert sections == ["install", "state", "activate", "toolchain", "stack", "find"]
+    assert {"install", "state", "activate", "toolchain", "stack", "find"} <= set(sections)
     for section in sections:
         assert f'--8<-- "tests/tutorials/install-the-stack.sh:{section}"' in page
     # The page types no command of its own.
     assert "```console" not in page
+
+
+def test_the_jobs_that_install_from_the_cache_use_a_random_state_directory():
+    ci = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+    for name in ("tutorial:install-the-stack", "how-to:work-on-a-package"):
+        steps = _steps(ci[name])
+        (choose,) = [index for index, step in enumerate(steps) if step.startswith("export SEANERSTACK_STATE_DIR=")]
+        assert "mktemp -d" in steps[choose] and "$RANDOM" in steps[choose]
+        # Before anything sets the state up, and nothing names the default directory after it.
+        assert not any("seanerstack" in step.split("=")[0] for step in steps[:choose] if "git config" not in step)
+        assert not any("/opt/seanergys/state" in step for step in steps)
+    # The tutorial script keeps a directory that is named, and only then chooses the documented one.
+    script = TUTORIAL.read_text(encoding="utf-8")
+    assert '[ -n "${SEANERSTACK_STATE_DIR:-}" ] || choose_state_directory' in script
+
+
+def test_the_nightly_toolchain_job_builds_below_a_padded_prefix():
+    job = _toolchain_job()
+    assert int(job["variables"]["PADDED_LENGTH"]) >= 200
+    (prepare,) = [step for step in job["script"] if "buildcache prepare" in step]
+    assert '--padded-length "$PADDED_LENGTH"' in prepare
+
+
+def test_the_jobs_that_fill_the_cache_build_in_a_long_padded_state_directory():
+    ci = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+    for name in ("build:rocky10", "toolchain"):
+        variables = ci[name]["variables"]
+        # Longer than a user's state directory, and the install prefix padded beyond it.
+        assert 120 <= len(variables["STATE"]) < int(variables["PADDED_LENGTH"]) - len("/spack/store")
+        assert all(len(part) <= 255 for part in variables["STATE"].split("/"))
+    build = _steps(ci["build:rocky10"])
+    assert build.index('export SEANERSTACK_STATE_DIR="$STATE"') < next(index for index, step in enumerate(build) if "init" in step)
+    assert any('init --padded-length "$PADDED_LENGTH"' in step for step in build)
+    assert 'eval "$(seanerstack activate)"' in build
+    assert not any("/opt/seanergys/state/spack/bin" in step for step in build)
+
+
+def test_the_toolchain_job_can_be_started_by_hand_on_any_branch():
+    rules = _toolchain_job()["rules"]
+    (by_hand,) = [rule for rule in rules if rule.get("when") == "manual"]
+    assert by_hand["if"] == '$CI_COMMIT_BRANCH && $CI_PIPELINE_SOURCE == "web"'
+    assert by_hand["allow_failure"] is True
+    # Only the schedule of the default branch starts it by itself.
+    (scheduled,) = [rule for rule in rules if "when" not in rule]
+    assert "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH" in scheduled["if"] and '"schedule"' in scheduled["if"]

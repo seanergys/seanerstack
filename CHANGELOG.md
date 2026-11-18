@@ -9,6 +9,9 @@ and release process.
 
 ### Added
 
+- `seanerstack buildcache prepare --probe-timeout SECONDS` sets how long the
+  compiler probe may take, as `init` and `toolchain bootstrap` already do; 0
+  waits indefinitely. In a container, the build inside gets the same limit.
 - `seanerstack toolchain bootstrap --external gcc@16` makes a compiler that
   `init` found, such as the GCC 16 of `/usr`, the project compiler without
   building one. Seanerstack checks that the spec resolves to that installation
@@ -49,6 +52,11 @@ and release process.
 
 ### Changed
 
+- `buildcache prepare` pushes the compiler and updates the index of the cache
+  as soon as the compiler is built, before the probe and the packages of the
+  toolchain. A later failure no longer costs the build of the compiler again.
+  When Spack does not use the compiler, the error names the probe and the
+  installed compiler.
 - The `demobus` package is now `seanerbus`, and the `demobus-dev` environment is
   now `seanerbus-dev`. The upstream repository keeps its name.
 - `seanerbus` package is now a bundle packages which installs the broker as the
@@ -74,6 +82,17 @@ and release process.
 
 ### Fixed
 
+- `toolchain bootstrap` and `buildcache prepare` no longer stop at a compiler
+  probe that never finishes. The compiler was required on the languages `c`,
+  `cxx` and `fortran`, which Spack also applies to the compiler's own
+  dependencies, built by the system compiler, so nothing could satisfy it. It
+  is now required on every package that takes a language from that compiler.
+- `seanerstack init` run again keeps the compiler rule that `toolchain
+  bootstrap` wrote. Setting the target removed every requirement on all
+  packages before.
+- A compiler probe that runs out of time reports what Spack printed until then
+  and how to tell a slow solve from a requirement without a solution. It no
+  longer names the requirement as the cause, which it had not checked.
 - `toolchain bootstrap` stops with an error that names the build cache when an
   OCI cache refuses its request, such as a private registry asked with missing
   or expired credentials. Spack reports that as "no binary available" and builds

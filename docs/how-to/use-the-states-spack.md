@@ -34,8 +34,8 @@ eval "$(seanerstack activate)"
 
 `SEANERSTACK_STATE_DIR` names the state directory for every `seanerstack` command; put the line into your shell profile so that later shells name the same state. `--state-dir DIR` before the command does the same for one command.
 
-!!! warning "Another directory builds from source"
-    Every binary of the project build cache contains the install path of the compiler that built it, which is below `/opt/seanergys/state`. In any other directory the hashes differ, nothing from the cache matches, and Spack builds the toolchain and the stack from source, which takes hours.
+!!! note "How long the path may be"
+    The hash of a package does not depend on where it is installed, so a state in another directory takes the same binaries from the project build cache. Spack rewrites the install prefix inside a binary only into a path that is no longer than the one it was built in. The project cache is built below a prefix padded to 256 characters, so keep the path of the state directory well below that.
 
 Several states can exist side by side, each in its own directory; activate the one a shell should use.
 

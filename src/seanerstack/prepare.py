@@ -26,7 +26,7 @@ import urllib.request
 import yaml
 
 from .auth import spack_resource_environment
-from .bootstrap import bootstrap, require_target
+from .bootstrap import DEFAULT_PROBE_TIMEOUT, bootstrap, require_target
 from .buildcache import buildcaches, configure_buildcaches, update_index
 from .config import Config, Platform, Resource, Toolchain
 from .isolation import DEFAULT_STATE_DIR
@@ -163,10 +163,59 @@ def _output(args: list[str], env) -> str:
     return subprocess.run(args, check=True, text=True, capture_output=True, env=env).stdout
 
 
+PADDING = re.compile(r"^    padded_length: *(\d+)\n", re.MULTILINE)
+
+
+def pad_install_tree(spack_config: Path, length: int, *, command: list[str], env) -> None:
+    """Install below a prefix padded to `length` characters, or unpadded for 0.
+
+    Spack rewrites the install prefix in a binary only into a path that is no
+    longer than the one it was built in. Built below a padded prefix, the
+    binaries of a cache install into any shorter path, such as a state
+    directory of the user's choice. The setting is written into the state's
+    own config.yaml, because `spack config add` drops the `config::` that
+    keeps other configuration out.
+
+    A state that already holds installations keeps the padding they were
+    installed with, because their prefixes are recorded.
+
+    @param spack_config: the Spack configuration directory of the state
+    @param length: the padded length of the install prefix; 0 for none
+    @param command: the isolated Spack command
+    @param env: its environment
+    @return: nothing; raises when the state has installations with another padding
+    """
+    if length < 0:
+        raise ValueError("--padded-length takes a number of characters, 0 or more")
+    path = spack_config / "config.yaml"
+    text = path.read_text(encoding="utf-8")
+    found = PADDING.search(text)
+    current = int(found.group(1)) if found else 0
+    if current == length:
+        return
+    if _output([*command, "find", "--format", "/{hash}"], env).split():
+        raise RuntimeError(
+            f"this state holds installations with a padded length of {current}, and cannot change to {length}; "
+            "use another --state-dir for the padded build"
+        )
+    text = PADDING.sub("", text)
+    if length:
+        text, count = re.subn(r"^(    root: .*\n)", rf"\g<1>    padded_length: {length}\n", text, count=1, flags=re.MULTILINE)
+        if not count:
+            raise RuntimeError(f"{path} names no install_tree root to pad")
+    path.write_text(text, encoding="utf-8")
+
+
 def prepare_here(
-    config: Config, secrets: SecretStore, *, platform: str, command: list[str], env, work: Path, jobs: int | None = None
+    config: Config, secrets: SecretStore, *, platform: str, command: list[str], env, work: Path, jobs: int | None = None,
+    padded_length: int = 0, spack_config: Path | None = None, probe_timeout: float | None = DEFAULT_PROBE_TIMEOUT,
 ) -> int:
-    """Build the toolchain in this operating system, which has to be `platform`, and push it."""
+    """Build the toolchain in this operating system, which has to be `platform`, and push it.
+
+    With `spack_config`, the configuration directory of the state, the install
+    prefix is padded to `padded_length` characters first, or left unpadded.
+    The compiler probe gets `probe_timeout` seconds, or any time with None.
+    """
     toolchain, target = _toolchain(config)
     wanted = toolchain.platform(platform)
     caches, credentials = _session(config, secrets, env)
@@ -181,13 +230,37 @@ def prepare_here(
             "run without --no-container"
         )
 
+    if spack_config is not None:
+        pad_install_tree(spack_config, padded_length, command=command, env=env)
+
     # Every finished package goes out at once, so a failure hours in keeps them.
     resources = {name: replace(cache, autopush=name == target.name) for name, cache in caches.items()}
     configure_buildcaches(replace(config, resources=resources), command=command, env=env)
-    require_target(command, toolchain.target, env)
-    result = bootstrap(toolchain.compiler, command=command, env=env)
+    if spack_config is not None:
+        require_target(spack_config, toolchain.target)
+    def push() -> None:
+        # Also what came from another cache, so that this one is complete by itself.
+        specs = _output([*command, "find", "--format", "/{hash}"], env).split()
+        _stream([*command, "buildcache", "push", "--only", "package", target.name, *specs], env)
+        # Concretization finds binaries through the index alone. Autopush has
+        # already pushed what was built, and `push --update-index` updates an OCI
+        # index only when it pushed something itself, so the new binaries would
+        # stay invisible. This also replaces an index that a newer Spack wrote,
+        # leaving out the specs this one cannot read.
+        update_index(target, command=command, env=env)
+
+    # The compiler is in the cache, index included, before anything is asked of
+    # it: a probe or a package that fails afterwards does not cost its build
+    # again, here or on any other machine.
+    result = bootstrap(
+        toolchain.compiler, command=command, env=env, environment=work.parent / "compiler", spack_config=spack_config,
+        installed_compiler=push, probe_timeout=probe_timeout,
+    )
     if not result.probe_ok:
-        raise RuntimeError(f"Spack does not use {toolchain.compiler}")
+        raise RuntimeError(
+            f"Spack does not use {toolchain.compiler}: the probe {result.probe} is not compiled by the installed "
+            f"compiler /{(result.hash or '')[:7]}. `spack spec {result.probe}` shows the compiler it takes instead."
+        )
 
     work.mkdir(parents=True, exist_ok=True)
     (work / "spack.yaml").write_text(
@@ -197,15 +270,7 @@ def prepare_here(
     _output([*command, "-e", str(work), "concretize", "--force"], env)
     _stream([*command, "-e", str(work), "install", "--jobs", str(jobs or default_jobs())], env)
 
-    # Also what came from another cache, so that this one is complete by itself.
-    specs = _output([*command, "find", "--format", "/{hash}"], env).split()
-    _stream([*command, "buildcache", "push", "--only", "package", target.name, *specs], env)
-    # Concretization finds binaries through the index alone. Autopush has
-    # already pushed what was built, and `push --update-index` updates an OCI
-    # index only when it pushed something itself, so the new binaries would
-    # stay invisible. This also replaces an index that a newer Spack wrote,
-    # leaving out the specs this one cannot read.
-    update_index(target, command=command, env=env)
+    push()
     print(f"the toolchain for {wanted.name} is in {target.url}")
     return 0
 
@@ -222,13 +287,19 @@ def install_command(platform: Platform) -> str:
     raise ValueError(f"unknown package manager {platform.package_manager!r}")
 
 
-def container_script(platform: Platform, *, jobs: int, source: bool, uid: int, gid: int, version: str) -> str:
+def container_script(
+    platform: Platform, *, jobs: int, source: bool, uid: int, gid: int, version: str, padded_length: int = 0,
+    probe_timeout: float = DEFAULT_PROBE_TIMEOUT,
+) -> str:
     spack = f"{CONTAINER_STATE}/spack-{SPACK_VERSION}"
     package = CONTAINER_SOURCE if source else f"seanerstack=={version}"
     seanerstack = (
         f"/opt/seanerstack/bin/seanerstack --config-file {CONTAINER_CONFIG} --state-dir {CONTAINER_STATE} "
         f"--spack-executable {spack}/bin/spack buildcache prepare --no-container "
         f"--platform {shlex.quote(platform.name)} --jobs {jobs}"
+        + (f" --padded-length {padded_length}" if padded_length else "")
+        # 0 waits indefinitely, so it is passed on like any other value.
+        + (f" --probe-timeout {probe_timeout:g}" if probe_timeout != DEFAULT_PROBE_TIMEOUT else "")
     )
     return "\n".join(
         [
@@ -279,7 +350,8 @@ def _stage_input(config: Config, checkout: Path | None, stage: Path) -> None:
 
 
 def prepare_in_container(
-    config: Config, secrets: SecretStore, *, platform: str, state_dir: Path, jobs: int | None = None
+    config: Config, secrets: SecretStore, *, platform: str, state_dir: Path, jobs: int | None = None,
+    padded_length: int = 0, probe_timeout: float = DEFAULT_PROBE_TIMEOUT,
 ) -> int:
     """Build the toolchain in the image of `platform`, so that any desktop can do it."""
     toolchain, target = _toolchain(config)
@@ -314,7 +386,8 @@ def prepare_in_container(
         argv += ["-e", variable]
     script = container_script(
         wanted, jobs=jobs or default_jobs(), source=checkout is not None,
-        uid=os.getuid(), gid=os.getgid(), version=metadata.version("seanerstack"),
+        uid=os.getuid(), gid=os.getgid(), version=metadata.version("seanerstack"), padded_length=padded_length,
+        probe_timeout=probe_timeout,
     )
     try:
         _stream([*argv, wanted.image, "/bin/bash", "-c", script], env)

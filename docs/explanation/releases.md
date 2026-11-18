@@ -40,12 +40,12 @@ Besides tagged releases, every push to the default branch publishes a developmen
 ## Installing releases
 
 ```console
-pipx install --python python3.12 --include-deps seanerstack
+pipx install --include-deps seanerstack
 pipx upgrade seanerstack
 ```
 
 When reproducibility requires an exact Seanerstack release, pin the version:
 
 ```console
-pipx install --python python3.12 --include-deps seanerstack==0.1.0
+pipx install --include-deps seanerstack==0.1.0
 ```

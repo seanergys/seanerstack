@@ -93,7 +93,7 @@ def _init_world(monkeypatch, tmp_path: Path, *, buildcache_ok=True, git_ok=True)
     monkeypatch.setattr(cli, "load_config", lambda path: Config(path=path or tmp_path / "shipped.toml", resources={"cache": cache}, toolchain=toolchain))
     monkeypatch.setattr(cli, "_spack_runtime", lambda args: (x, tmp_path / "spack", ["spack"], {}))
     monkeypatch.setattr(cli, "configure_buildcaches", lambda config, **kwargs: calls.append("configure"))
-    monkeypatch.setattr(cli, "require_target", lambda command, target, env: calls.append(f"target={target}"))
+    monkeypatch.setattr(cli, "require_target", lambda spack_config, target: calls.append(f"target={target}"))
     # The build caches answer; the tests of the access check cover a refusal.
     monkeypatch.setattr(cli, "require_cache_access", lambda command, env: None, raising=False)
     monkeypatch.setattr(cli, "check_buildcaches", lambda config, secrets, **kwargs: calls.append("check") or [("cache", buildcache_ok, "")])
@@ -402,3 +402,17 @@ def test_buildcache_update_index_rebuilds_the_toolchain_cache(monkeypatch, tmp_p
 
     assert cli._run_buildcache(args) == 0
     assert rebuilt == [("cache", {"SEANERSTACK_RESOURCE_CACHE_PASSWORD": "glpat"})]
+
+
+def test_init_pads_the_state_only_when_told_to(monkeypatch, tmp_path: Path):
+    x, _ = _init_world(monkeypatch, tmp_path)
+    padded = []
+    monkeypatch.setattr(cli, "pad_install_tree", lambda config, length, **kwargs: padded.append((config, length)))
+
+    cli._run_init(_init_args(tmp_path))
+    assert padded == []
+    cli._run_init(_init_args(tmp_path, padded_length=256))
+    cli._run_init(_init_args(tmp_path, padded_length=0))
+    assert padded == [(x.config, 256), (x.config, 0)]
+    assert build_parser().parse_args(["init", "--padded-length", "256"]).padded_length == 256
+    assert build_parser().parse_args(["init"]).padded_length is None

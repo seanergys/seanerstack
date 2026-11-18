@@ -42,7 +42,9 @@ class Spack:
 
     def __init__(self, monkeypatch, system="rocky10"):
         self.calls = []
+        self.targets = []
         self.system = system
+        monkeypatch.setattr(_prepare, "require_target", lambda spack_config, target: self.targets.append((spack_config, target)))
         monkeypatch.setattr(_prepare, "check_push_access", lambda resource, env: None)
         monkeypatch.setattr(_prepare, "configure_buildcaches", self.configure)
         monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: type("Result", (), {"probe_ok": True}))
@@ -67,12 +69,20 @@ def run_here(tmp_path, platform="rocky10", **extra):
 def test_prepare_builds_the_toolchain_and_then_pushes_it(monkeypatch, tmp_path):
     spack = Spack(monkeypatch)
     assert run_here(tmp_path, jobs=3) == 0
-    assert ["spack", "config", "add", "packages:all:require:target=x86_64_v3"] in spack.calls
     assert yaml.safe_load((tmp_path / "toolchain/spack.yaml").read_text())["spack"]["specs"] == ["rust", "capnproto"]
     install = ["spack", "-e", str(tmp_path / "toolchain"), "install", "--jobs", "3"]
     (push,) = [call for call in spack.calls if call[1:3] == ["buildcache", "push"]]
     assert push[-3:] == ["target", "/aaa", "/bbb"]
     assert spack.calls.index(install) < spack.calls.index(push)
+
+
+def test_prepare_requires_the_target_of_the_toolchain(monkeypatch, tmp_path):
+    spack = Spack(monkeypatch)
+    monkeypatch.setattr(_prepare, "pad_install_tree", lambda path, length, **kwargs: None)
+
+    assert run_here(tmp_path, spack_config=tmp_path / "config") == 0
+
+    assert spack.targets == [(tmp_path / "config", "x86_64_v3")]
 
 
 def test_prepare_pushes_every_package_as_soon_as_it_is_built(monkeypatch, tmp_path):
@@ -397,3 +407,143 @@ def test_prepare_always_updates_the_index_after_the_push(monkeypatch, tmp_path):
     # Spack's own update-index, or Seanerstack's script run by `spack python`.
     (update,) = [call for call in spack.calls if call[-1] == "target" and ("update-index" in call or call[1] == "python")]
     assert spack.calls.index(push) < spack.calls.index(update)
+
+
+def test_prepare_pushes_and_indexes_the_compiler_before_it_is_probed(monkeypatch, tmp_path):
+    spack = Spack(monkeypatch)
+
+    def bootstrap(compiler, *, installed_compiler, **kwargs):
+        spack.calls.append(["spack", "installed the compiler"])
+        installed_compiler()
+        spack.calls.append(["spack", "probe"])
+        return type("Result", (), {"probe_ok": True})
+
+    monkeypatch.setattr(_prepare, "bootstrap", bootstrap)
+    run_here(tmp_path)
+
+    steps = [
+        "push" if call[1:3] == ["buildcache", "push"]
+        else "index" if call[-1] == "target" and ("update-index" in call or call[1] == "python")
+        else call[1] if call[1] in ("installed the compiler", "probe") else "install" if call[-3:-2] == ["install"] else None
+        for call in spack.calls
+    ]
+    assert [step for step in steps if step] == ["installed the compiler", "push", "index", "probe", "install", "push", "index"]
+
+
+def test_a_probe_that_fails_keeps_the_compiler_in_the_cache(monkeypatch, tmp_path):
+    spack = Spack(monkeypatch)
+
+    def bootstrap(compiler, *, installed_compiler, **kwargs):
+        installed_compiler()
+        raise RuntimeError("Spack did not concretize compiler probe")
+
+    monkeypatch.setattr(_prepare, "bootstrap", bootstrap)
+    with pytest.raises(RuntimeError, match="did not concretize"):
+        run_here(tmp_path)
+    assert [call[-3:] for call in spack.calls if call[1:3] == ["buildcache", "push"]] == [["target", "/aaa", "/bbb"]]
+
+
+def test_prepare_names_the_probe_and_the_compiler_that_spack_does_not_use(monkeypatch, tmp_path):
+    Spack(monkeypatch)
+    result = type("Result", (), {"probe_ok": False, "probe": "zlib", "hash": "abcdefabcdef"})
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: result)
+    with pytest.raises(RuntimeError, match="Spack does not use gcc@15: the probe zlib is not compiled by the installed compiler /abcdefa"):
+        run_here(tmp_path)
+
+
+def test_prepare_gives_the_probe_the_time_it_was_given(monkeypatch, tmp_path):
+    Spack(monkeypatch)
+    given = []
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: given.append(kwargs["probe_timeout"]) or type("Result", (), {"probe_ok": True}))
+
+    run_here(tmp_path)
+    run_here(tmp_path, probe_timeout=900)
+    run_here(tmp_path, probe_timeout=None)
+
+    assert given == [300, 900, None]
+
+
+def test_prepare_takes_a_probe_timeout_and_waits_indefinitely_for_zero(monkeypatch, tmp_path):
+    arguments = ["buildcache", "prepare", "--platform", "rocky10"]
+    assert build_parser().parse_args(arguments).probe_timeout == 300
+    assert build_parser().parse_args([*arguments, "--probe-timeout", "0"]).probe_timeout == 0
+
+
+def test_the_container_builds_with_the_probe_timeout_it_was_given():
+    script = lambda **extra: _prepare.container_script(ROCKY10, jobs=1, source=False, uid=0, gid=0, version="1", **extra)
+    assert "--probe-timeout" not in script()
+    assert "--platform rocky10 --jobs 1 --probe-timeout 900" in script(probe_timeout=900)
+    # 0 waits indefinitely, and is not the default.
+    assert "--jobs 1 --padded-length 200 --probe-timeout 0" in script(padded_length=200, probe_timeout=0)
+
+
+CONFIG_YAML = "config::\n  install_tree:\n    root: /state/spack/store\n  build_stage:\n  - /state/spack/stage\n"
+
+
+def _state_config(tmp_path, text=CONFIG_YAML):
+    (tmp_path / "config.yaml").write_text(text, encoding="utf-8")
+    return tmp_path
+
+
+def test_padding_goes_below_the_install_root_and_keeps_the_override(monkeypatch, tmp_path):
+    monkeypatch.setattr(_prepare, "_output", lambda args, env: "")
+
+    _prepare.pad_install_tree(_state_config(tmp_path), 200, command=["spack"], env={})
+
+    text = (tmp_path / "config.yaml").read_text()
+    assert text.startswith("config::\n  install_tree:\n    root: /state/spack/store\n    padded_length: 200\n  build_stage:")
+    # Again with the same length, and back to none.
+    _prepare.pad_install_tree(tmp_path, 200, command=["spack"], env={})
+    assert (tmp_path / "config.yaml").read_text() == text
+    _prepare.pad_install_tree(tmp_path, 0, command=["spack"], env={})
+    assert (tmp_path / "config.yaml").read_text() == CONFIG_YAML
+
+
+def test_a_state_with_installations_keeps_its_padding(monkeypatch, tmp_path):
+    monkeypatch.setattr(_prepare, "_output", lambda args, env: "/aaa\n/bbb\n")
+
+    with pytest.raises(RuntimeError, match="holds installations with a padded length of 0, and cannot change to 200"):
+        _prepare.pad_install_tree(_state_config(tmp_path), 200, command=["spack"], env={})
+    assert (tmp_path / "config.yaml").read_text() == CONFIG_YAML
+    # The same padding as before is no change, whatever is installed.
+    padded = CONFIG_YAML.replace("store\n", "store\n    padded_length: 128\n")
+    _prepare.pad_install_tree(_state_config(tmp_path, padded), 128, command=["spack"], env={})
+    with pytest.raises(RuntimeError, match="padded length of 128, and cannot change to 0"):
+        _prepare.pad_install_tree(tmp_path, 0, command=["spack"], env={})
+
+
+def test_prepare_pads_before_anything_is_installed(monkeypatch, tmp_path):
+    spack = Spack(monkeypatch)
+    order = []
+    monkeypatch.setattr(_prepare, "pad_install_tree", lambda path, length, **kwargs: order.append(("pad", path, length)))
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: order.append("bootstrap") or type("Result", (), {"probe_ok": True}))
+
+    assert run_here(tmp_path, padded_length=200, spack_config=tmp_path / "config") == 0
+
+    assert order == [("pad", tmp_path / "config", 200), "bootstrap"]
+    assert spack.calls
+
+
+def test_the_container_builds_with_the_padding_it_was_given():
+    plain = _prepare.container_script(ROCKY10, jobs=1, source=False, uid=0, gid=0, version="1")
+    padded = _prepare.container_script(ROCKY10, jobs=1, source=False, uid=0, gid=0, version="1", padded_length=200)
+    assert "--padded-length" not in plain
+    assert "buildcache prepare --no-container --platform rocky10 --jobs 1 --padded-length 200" in padded
+
+
+def test_prepare_takes_a_padded_length_and_pads_nothing_without_it():
+    arguments = ["buildcache", "prepare", "--platform", "rocky10"]
+    assert build_parser().parse_args(arguments).padded_length == 0
+    assert build_parser().parse_args([*arguments, "--padded-length", "200"]).padded_length == 200
+
+
+def test_prepare_builds_the_compiler_in_the_environment_next_to_the_toolchain(monkeypatch, tmp_path):
+    Spack(monkeypatch)
+    given = {}
+    monkeypatch.setattr(_prepare, "pad_install_tree", lambda path, length, **kwargs: None)
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: given.update(kwargs) or type("Result", (), {"probe_ok": True}))
+
+    assert run_here(tmp_path, spack_config=tmp_path / "config") == 0
+
+    assert given["environment"] == tmp_path / "compiler"
+    assert given["spack_config"] == tmp_path / "config"
