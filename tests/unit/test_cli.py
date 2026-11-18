@@ -141,6 +141,8 @@ def test_init_ends_with_how_to_activate_the_state_it_set_up(monkeypatch, tmp_pat
     # Neither the default nor named by the variable, so activation names it.
     out = capsys.readouterr().out
     assert f'eval "$(seanerstack --state-dir {x.state} activate)"' in out
+    # One instruction: the line for the shell profile is not offered next to it.
+    assert "export PATH=" not in out
 
 
 def test_init_needs_no_option_to_activate_the_state_that_the_variable_names(monkeypatch, tmp_path: Path, capsys):
