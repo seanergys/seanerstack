@@ -218,6 +218,28 @@ def test_a_probe_that_printed_nothing_says_so(monkeypatch, tmp_path):
         bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", probe_timeout=1, **state)
 
 
+def test_bootstrap_says_when_the_compiler_is_installed_before_anything_requires_it(monkeypatch, tmp_path):
+    for name, installed in (("built", False), ("found", True)):
+        calls, state = _toolchain_spack(monkeypatch, tmp_path / name, installed=installed)
+        bootstrap_module.bootstrap(
+            "gcc@15", languages=("c",), probe="zlib", installed_compiler=lambda: calls.append([*COMMAND, "told"]), **state
+        )
+        steps = _steps(calls)
+        assert steps.count("told") == 1
+        if not installed:
+            assert steps.index("install") < steps.index("told")
+        assert steps.index("told") < steps.index("config add packages:c:require:gcc@15") < steps.index("spec --json zlib")
+
+
+def test_a_dry_run_installs_nothing_to_tell_of(monkeypatch, tmp_path):
+    calls, state = _toolchain_spack(monkeypatch, tmp_path)
+    told = []
+    bootstrap_module.bootstrap(
+        "gcc@15", languages=("c",), probe="zlib", dry_run=True, installed_compiler=lambda: told.append(1), **state
+    )
+    assert told == []
+
+
 def test_bootstrap_dry_run_changes_nothing(monkeypatch, tmp_path):
     calls, state = _toolchain_spack(monkeypatch, tmp_path)
 

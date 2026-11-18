@@ -399,6 +399,48 @@ def test_prepare_always_updates_the_index_after_the_push(monkeypatch, tmp_path):
     assert spack.calls.index(push) < spack.calls.index(update)
 
 
+def test_prepare_pushes_and_indexes_the_compiler_before_it_is_probed(monkeypatch, tmp_path):
+    spack = Spack(monkeypatch)
+
+    def bootstrap(compiler, *, installed_compiler, **kwargs):
+        spack.calls.append(["spack", "installed the compiler"])
+        installed_compiler()
+        spack.calls.append(["spack", "probe"])
+        return type("Result", (), {"probe_ok": True})
+
+    monkeypatch.setattr(_prepare, "bootstrap", bootstrap)
+    run_here(tmp_path)
+
+    steps = [
+        "push" if call[1:3] == ["buildcache", "push"]
+        else "index" if call[-1] == "target" and ("update-index" in call or call[1] == "python")
+        else call[1] if call[1] in ("installed the compiler", "probe") else "install" if call[-3:-2] == ["install"] else None
+        for call in spack.calls
+    ]
+    assert [step for step in steps if step] == ["installed the compiler", "push", "index", "probe", "install", "push", "index"]
+
+
+def test_a_probe_that_fails_keeps_the_compiler_in_the_cache(monkeypatch, tmp_path):
+    spack = Spack(monkeypatch)
+
+    def bootstrap(compiler, *, installed_compiler, **kwargs):
+        installed_compiler()
+        raise RuntimeError("Spack did not concretize compiler probe")
+
+    monkeypatch.setattr(_prepare, "bootstrap", bootstrap)
+    with pytest.raises(RuntimeError, match="did not concretize"):
+        run_here(tmp_path)
+    assert [call[-3:] for call in spack.calls if call[1:3] == ["buildcache", "push"]] == [["target", "/aaa", "/bbb"]]
+
+
+def test_prepare_names_the_probe_and_the_compiler_that_spack_does_not_use(monkeypatch, tmp_path):
+    Spack(monkeypatch)
+    result = type("Result", (), {"probe_ok": False, "probe": "zlib", "hash": "abcdefabcdef"})
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: result)
+    with pytest.raises(RuntimeError, match="Spack does not use gcc@15: the probe zlib is not compiled by the installed compiler /abcdefa"):
+        run_here(tmp_path)
+
+
 CONFIG_YAML = "config::\n  install_tree:\n    root: /state/spack/store\n  build_stage:\n  - /state/spack/stage\n"
 
 
