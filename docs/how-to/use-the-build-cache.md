@@ -107,6 +107,8 @@ Spack rewrites the install prefix inside a binary only into a path that is no lo
 seanerstack --secrets-file credentials.toml buildcache prepare --platform rocky10 --padded-length 256
 ```
 
+After the compiler is built, Seanerstack concretizes a small probe to check that Spack uses it, and gives up after 300 seconds. Where that solve takes longer, `--probe-timeout SECONDS` allows more, and `--probe-timeout 0` waits for as long as it takes.
+
 The `toolchain` and `build:rocky10` jobs, which fill the project cache, build in a state directory with a path of about 150 characters and pad the install prefix to 256 on top. `build:rocky10` sets the padding with `seanerstack init --padded-length 256`, because it builds with plain `spack` commands and not with `buildcache prepare`. Padding changes no hash, because the install path is not part of one.
 
 A state keeps the padding of its first build. `buildcache prepare` refuses another padded length for a state that already holds installations; give such a build a state directory of its own.
