@@ -49,6 +49,11 @@ and release process.
 
 ### Changed
 
+- `buildcache prepare` pushes the compiler and updates the index of the cache
+  as soon as the compiler is built, before the probe and the packages of the
+  toolchain. A later failure no longer costs the build of the compiler again.
+  When Spack does not use the compiler, the error names the probe and the
+  installed compiler.
 - The `demobus` package is now `seanerbus`, and the `demobus-dev` environment is
   now `seanerbus-dev`. The upstream repository keeps its name.
 - `seanerbus` package is now a bundle packages which installs the broker as the

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 import json
 import os
@@ -268,6 +269,7 @@ def bootstrap(
     source_compiler: str | None = None,
     environment: Path | None = None,
     spack_config: Path | None = None,
+    installed_compiler: Callable[[], None] | None = None,
 ) -> BootstrapResult:
     """Make COMPILER the compiler of every SEANERGYS build.
 
@@ -280,6 +282,9 @@ def bootstrap(
 
     @param environment: the directory of the compiler environment in the state
     @param spack_config: the Spack configuration directory of the state
+    @param installed_compiler: called once the compiler environment holds the
+        compiler, before anything requires or probes it, so that a caller can
+        keep the build whatever happens next; not called for an external
     """
     command = command or ["spack"]
     if not languages:
@@ -308,6 +313,8 @@ def bootstrap(
     if not dry_run:
         if installed is None:
             raise RuntimeError(f"the compiler environment {environment} holds no installation of {compiler!r}")
+        if installed_compiler is not None:
+            installed_compiler()
         # Before the requirements: only a compiler that the concretizer may
         # reuse can satisfy them.
         _reuse_environment(spack_config, environment)

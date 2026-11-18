@@ -236,11 +236,29 @@ def prepare_here(
     resources = {name: replace(cache, autopush=name == target.name) for name, cache in caches.items()}
     configure_buildcaches(replace(config, resources=resources), command=command, env=env)
     require_target(command, toolchain.target, env)
+    def push() -> None:
+        # Also what came from another cache, so that this one is complete by itself.
+        specs = _output([*command, "find", "--format", "/{hash}"], env).split()
+        _stream([*command, "buildcache", "push", "--only", "package", target.name, *specs], env)
+        # Concretization finds binaries through the index alone. Autopush has
+        # already pushed what was built, and `push --update-index` updates an OCI
+        # index only when it pushed something itself, so the new binaries would
+        # stay invisible. This also replaces an index that a newer Spack wrote,
+        # leaving out the specs this one cannot read.
+        update_index(target, command=command, env=env)
+
+    # The compiler is in the cache, index included, before anything is asked of
+    # it: a probe or a package that fails afterwards does not cost its build
+    # again, here or on any other machine.
     result = bootstrap(
         toolchain.compiler, command=command, env=env, environment=work.parent / "compiler", spack_config=spack_config,
+        installed_compiler=push,
     )
     if not result.probe_ok:
-        raise RuntimeError(f"Spack does not use {toolchain.compiler}")
+        raise RuntimeError(
+            f"Spack does not use {toolchain.compiler}: the probe {result.probe} is not compiled by the installed "
+            f"compiler /{(result.hash or '')[:7]}. `spack spec {result.probe}` shows the compiler it takes instead."
+        )
 
     work.mkdir(parents=True, exist_ok=True)
     (work / "spack.yaml").write_text(
@@ -250,15 +268,7 @@ def prepare_here(
     _output([*command, "-e", str(work), "concretize", "--force"], env)
     _stream([*command, "-e", str(work), "install", "--jobs", str(jobs or default_jobs())], env)
 
-    # Also what came from another cache, so that this one is complete by itself.
-    specs = _output([*command, "find", "--format", "/{hash}"], env).split()
-    _stream([*command, "buildcache", "push", "--only", "package", target.name, *specs], env)
-    # Concretization finds binaries through the index alone. Autopush has
-    # already pushed what was built, and `push --update-index` updates an OCI
-    # index only when it pushed something itself, so the new binaries would
-    # stay invisible. This also replaces an index that a newer Spack wrote,
-    # leaving out the specs this one cannot read.
-    update_index(target, command=command, env=env)
+    push()
     print(f"the toolchain for {wanted.name} is in {target.url}")
     return 0
 
