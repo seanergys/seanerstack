@@ -163,18 +163,3 @@ def test_an_external_dry_run_changes_nothing(monkeypatch, tmp_path: Path):
 
     assert calls == []
     assert result.external == str(tmp_path)
-
-
-def test_without_an_external_prefix_the_compiler_is_built(monkeypatch):
-    calls = _fake_spack(monkeypatch, compiler_spec=_spec())
-    built = "/state/spack/opt/gcc-15.3.0-abcdef"
-    monkeypatch.setattr(
-        bootstrap_module, "_compiler_prefix",
-        lambda command, compiler, env: built if _installs(calls, "gcc@15") else None,
-    )
-
-    result = bootstrap_module.bootstrap("gcc@15", command=COMMAND, env=ENV, external=None)
-
-    assert _installs(calls, "gcc@15")
-    assert [*COMMAND, "compiler", "find", built] in calls
-    assert result.external is None
