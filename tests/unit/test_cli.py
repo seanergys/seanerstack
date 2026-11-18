@@ -402,3 +402,17 @@ def test_buildcache_update_index_rebuilds_the_toolchain_cache(monkeypatch, tmp_p
 
     assert cli._run_buildcache(args) == 0
     assert rebuilt == [("cache", {"SEANERSTACK_RESOURCE_CACHE_PASSWORD": "glpat"})]
+
+
+def test_init_pads_the_state_only_when_told_to(monkeypatch, tmp_path: Path):
+    x, _ = _init_world(monkeypatch, tmp_path)
+    padded = []
+    monkeypatch.setattr(cli, "pad_install_tree", lambda config, length, **kwargs: padded.append((config, length)))
+
+    cli._run_init(_init_args(tmp_path))
+    assert padded == []
+    cli._run_init(_init_args(tmp_path, padded_length=256))
+    cli._run_init(_init_args(tmp_path, padded_length=0))
+    assert padded == [(x.config, 256), (x.config, 0)]
+    assert build_parser().parse_args(["init", "--padded-length", "256"]).padded_length == 256
+    assert build_parser().parse_args(["init"]).padded_length is None
