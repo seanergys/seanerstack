@@ -394,7 +394,8 @@ publish:dev:
 # only checks that the cache holds everything.
 #
 # It runs in a pipeline schedule of the default branch (Build > Pipeline
-# schedules), or by hand from Build > Pipelines > Run pipeline. The job token
+# schedules), or by hand from Build > Pipelines > Run pipeline, on the default
+# branch or another one. The job token
 # may push to the container registry of this project, which holds the cache.
 #
 # Each job runs in the image of its platform, the same image as in config.toml
@@ -410,7 +411,10 @@ toolchain:
   timeout: 12h
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "schedule"'
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "web"'
+    # By hand, also on another branch: a change to how the toolchain is built
+    # gives new hashes, and its own pipeline finds them in the cache only
+    # after this job has built them from that branch.
+    - if: '$CI_COMMIT_BRANCH && $CI_PIPELINE_SOURCE == "web"'
       when: manual
       allow_failure: true
   parallel:
