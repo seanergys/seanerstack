@@ -82,7 +82,10 @@ def test_the_how_to_job_runs_the_script_of_the_guide_in_a_state_set_up_like_a_us
     ci = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))
     job = ci["how-to:work-on-a-package"]
     assert job["before_script"] == ci["build:rocky10"]["before_script"]
-    assert [step.split()[0] for step in job["script"]] == ["seanerstack", "export", "seanerstack", "tests/how-to/work-on-a-package.sh"]
+    # The state as the tutorial leaves it, then nothing after the script of the guide.
+    assert job["script"][1] == 'eval "$(seanerstack activate)"'
+    assert [step.split()[0] for step in job["script"][:3]] == ["seanerstack", "eval", "seanerstack"]
+    assert job["script"][-1] == "tests/how-to/work-on-a-package.sh"
     assert HOW_TO.stat().st_mode & 0o111
 
 
@@ -92,3 +95,26 @@ def test_the_guide_shows_every_section_of_the_script_that_tests_it():
     assert sections == ["checkout", "activate", "develop", "install", "check", "deactivate"]
     for section in sections:
         assert f'--8<-- "tests/how-to/work-on-a-package.sh:{section}"' in guide
+
+
+TUTORIAL = Path(__file__).parents[2] / "tests" / "tutorials" / "install-the-stack.sh"
+
+
+def test_the_tutorial_job_runs_the_script_of_the_tutorial_with_the_seanerstack_of_the_commit():
+    ci = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+    job = ci["tutorial:install-the-stack"]
+    # The same preparation as build:rocky10, which installs the checkout.
+    assert job["before_script"] == ci["build:rocky10"]["before_script"]
+    # In the directory of secrets.toml, with the vault password on standard input.
+    assert job["script"][-2:] == ["cd /tmp", '"$CI_PROJECT_DIR/tests/tutorials/install-the-stack.sh" < /tmp/vault-password']
+    assert TUTORIAL.stat().st_mode & 0o111
+
+
+def test_the_tutorial_shows_every_section_of_the_script_that_tests_it():
+    page = (Path(__file__).parents[2] / "docs" / "tutorials" / "getting-started.md").read_text(encoding="utf-8")
+    sections = [line.split("[start:")[1].rstrip("]") for line in TUTORIAL.read_text(encoding="utf-8").splitlines() if "[start:" in line]
+    assert sections == ["install", "state", "activate", "toolchain", "stack", "find"]
+    for section in sections:
+        assert f'--8<-- "tests/tutorials/install-the-stack.sh:{section}"' in page
+    # The page types no command of its own.
+    assert "```console" not in page

@@ -1,12 +1,12 @@
 # Work on a package
 
-Use this procedure to build a SEANERGYS package from a local checkout. It assumes that the state is set up, the toolchain is installed and the state's `spack` is on `PATH`, as after the [tutorial](../tutorials/getting-started.md).
+Use this procedure to build a SEANERGYS package from a local checkout. It assumes that the state is set up, the toolchain is installed and the state is active in the shell, as after the [tutorial](../tutorials/getting-started.md).
 
-The example package is `properdocs`. Every command on this page comes from `tests/how-to/work-on-a-package.sh`, which the `how-to:work-on-a-package` job of the CI pipeline runs from start to end, so the procedure is tested with every change.
+The example package is `priorisea`, the job priority manager. Every command on this page comes from `tests/how-to/work-on-a-package.sh`, which the `how-to:work-on-a-package` job of the CI pipeline runs from start to end, so the procedure is tested with every change.
 
 ## 1. Get the checkout
 
-Clone the package and change into the checkout. `$SOURCES` is the directory where you keep your sources:
+Clone the package with its submodules and change into the checkout. `$SOURCES` is the directory where you keep your sources. The repository is in the SEANERGYS GitLab, so Git asks for your GitLab credentials unless it has them already:
 
 ```bash
 --8<-- "tests/how-to/work-on-a-package.sh:checkout"
@@ -22,7 +22,7 @@ Seanerstack ships a Spack environment for the development of each package, and `
 
 ## 3. Bind the checkout
 
-Tell Spack that `properdocs@master` is built from the checkout:
+Tell Spack that `priorisea@main` is built from the checkout:
 
 ```bash
 --8<-- "tests/how-to/work-on-a-package.sh:develop"
@@ -36,7 +36,7 @@ The path of a checkout differs between machines, so it is recorded on your machi
 --8<-- "tests/how-to/work-on-a-package.sh:install"
 ```
 
-Spack takes the dependencies from the build cache and builds `properdocs` from the checkout. After a change to the sources, the recipe or the dependencies, run the two commands again.
+Spack takes the dependencies from the build cache and builds `priorisea` from the checkout. After a change to the sources, the recipe or the dependencies, run the two commands again.
 
 The installed package names the checkout it was built from, and the active environment puts its command on `PATH`:
 
@@ -44,9 +44,10 @@ The installed package names the checkout it was built from, and the active envir
 --8<-- "tests/how-to/work-on-a-package.sh:check"
 ```
 
+The first command prints the line below, and the second the help of the `priorisea` built from your sources:
+
 ```text
-properdocs@master dev_path=/home/you/src/properdocs
-properdocs, version 1.6.7 from ... (Python 3.14)
+priorisea@main dev_path=/home/you/src/priorisea
 ```
 
 ## 5. Leave the environment
@@ -62,7 +63,7 @@ In a later shell, change into the checkout and repeat step 2; the binding and th
 `seanergys-meta` is the package that brings in the SEANERGYS software stack, and the `build:rocky10` job builds it in every pipeline. A new recipe is not part of it at first, so a recipe that does not build yet does not fail the pipelines of everyone else. Once the package builds with the project toolchain on Rocky Linux 10, add it to `packages/seanergys_meta/package.py`, in alphabetical order:
 
 ```python
-    depends_on("properdocs", type="run")
+    depends_on("priorisea", type="run")
 ```
 
 From then on every pipeline builds it, and the default branch puts it into the project build cache.

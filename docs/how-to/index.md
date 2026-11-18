@@ -8,7 +8,7 @@ Each guide gives one procedure for one task. Options beyond that procedure are i
 | --- | --- |
 | [Set up a workstation](set-up-a-workstation.md) | Install Seanerstack, set up the state and install the toolchain, with the choices each step has. |
 | [Create a secrets file](create-a-secrets-file.md) | Write and encrypt the file with the GitLab and registry tokens. |
-| [Use the state's Spack](use-the-states-spack.md) | Run plain `spack` commands in the Seanerstack state, and activate environments. |
+| [Use the state's Spack](use-the-states-spack.md) | Run plain `spack` commands in the state, and keep the state in another directory. |
 
 ## Build
 

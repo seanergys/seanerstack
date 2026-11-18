@@ -33,11 +33,12 @@ Update it with `uv tool upgrade seanerstack`.
 Seanerstack keeps its Spack, configuration, install store, stages, caches, and managed environments in one state directory, by default `/opt/seanergys/state`. Use that directory: every binary hash contains the install path of the compiler that built it, so only a machine with the same state directory reuses the binaries of the project build cache. Create it once and make it yours:
 
 ```console
-sudo mkdir -p /opt/seanergys/state
-sudo chown "$USER" /opt/seanergys/state
+export SEANERSTACK_STATE_DIR=/opt/seanergys/state
+sudo mkdir -p "$SEANERSTACK_STATE_DIR"
+sudo chown "$USER" "$SEANERSTACK_STATE_DIR"
 ```
 
-Another directory can be given with `--state-dir DIR` or `SEANERSTACK_STATE_DIR`, but then nothing from the project build cache matches.
+`SEANERSTACK_STATE_DIR` names the state directory for every `seanerstack` command, and `--state-dir DIR` does the same for one command. Unset, it is `/opt/seanergys/state`. To keep the state elsewhere, set another directory here and in your shell profile; nothing from the project build cache matches then, and Spack builds from source (see [Keep the state in another directory](use-the-states-spack.md#keep-the-state-in-another-directory)).
 
 ## 3. Initialize Seanerstack
 
@@ -67,15 +68,13 @@ A compiler off `PATH`, such as a gcc-toolset, is found with `--find /opt/rh/gcc-
 
 Seanerstack uses its pinned Spack, and refuses one given with `--spack-executable` or `SEANERSTACK_REAL_SPACK` that has another version: a different Spack writes build-cache indexes and specs that the pinned one cannot read, and its hashes match nothing in the cache. `seanerstack --version` names both versions.
 
-## 4. Put the state's spack on PATH
-
-`init` ends by printing the line that puts the state's `spack` wrapper first on `PATH`. Add it to your shell profile, such as `~/.bashrc`:
+## 4. Activate the state
 
 ```console
-export PATH=/opt/seanergys/state/spack/bin:$PATH
+eval "$(seanerstack activate)"
 ```
 
-Plain `spack` commands then use the Seanerstack state in every shell, with its credentials, and not the normal user or system Spack configuration. To use it in one shell only, run `eval "$(seanerstack activate)"` instead. See [Use the state's Spack](use-the-states-spack.md).
+`spack` is then the Spack of the state in this shell, with its configuration and credentials. Other shells keep whatever Spack they had. Run the line in each shell that works with the state, and leave it with `eval "$(seanerstack deactivate)"`. See [Use the state's Spack](use-the-states-spack.md).
 
 ## 5. Install the toolchain
 
