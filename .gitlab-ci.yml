@@ -421,9 +421,11 @@ toolchain:
   variables:
     SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME: "gitlab-ci-token"
     SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD: "$CI_JOB_TOKEN"
-    # Where seanerctl builds and the services install. Spack cannot relocate a
-    # binary to a longer path, so the cache is built here, as in the container.
     STATE: /opt/seanergys/state
+    # Spack rewrites an install prefix only into a path that is no longer, so
+    # the toolchain is built below a padded prefix and installs into a state
+    # directory of any shorter path.
+    PADDED_LENGTH: "256"
   before_script:
     # Just enough Python for Seanerstack, which then installs the system
     # packages of the platform from config.toml.
@@ -455,7 +457,7 @@ toolchain:
     - >-
       status=0;
       /opt/seanerstack/bin/seanerstack --state-dir "$STATE"
-      buildcache prepare --no-container --platform "$PLATFORM" || status=$?
+      buildcache prepare --no-container --platform "$PLATFORM" --padded-length "$PADDED_LENGTH" || status=$?
     # Why a night built instead of reusing: each spec of the toolchain against
     # the cached specs of its name and version, which include the other
     # platforms and earlier nights. It runs after prepare, which sets the
