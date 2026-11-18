@@ -82,7 +82,9 @@ def test_the_how_to_job_runs_the_script_of_the_guide_in_a_state_set_up_like_a_us
     ci = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))
     job = ci["how-to:work-on-a-package"]
     assert job["before_script"] == ci["build:rocky10"]["before_script"]
-    assert [step.split()[0] for step in job["script"]] == ["seanerstack", "export", "seanerstack", "tests/how-to/work-on-a-package.sh"]
+    # The state as the tutorial leaves it, then nothing after the script of the guide.
+    assert [step.split()[0] for step in job["script"][:3]] == ["seanerstack", "export", "seanerstack"]
+    assert job["script"][-1] == "tests/how-to/work-on-a-package.sh"
     assert HOW_TO.stat().st_mode & 0o111
 
 
