@@ -38,6 +38,87 @@ def test_the_target_requirement_replaces_an_earlier_one(tmp_path):
     assert _packages(tmp_path) == {"all": {"require": ["target=x86_64_v3"]}}
 
 
+def _rule(language, compiler="gcc@15", name="gcc"):
+    return {"any_of": [f"%{language}={compiler}"] * 2, "when": f"%{language}={name}"}
+
+
+def test_the_target_requirement_keeps_the_compiler_rule(tmp_path):
+    # init sets the target again after bootstrap has written the rule.
+    bootstrap_module.require_target(tmp_path, "x86_64_v2")
+    bootstrap_module._require_compiler_where_used(tmp_path, ("c", "cxx"), "gcc@15")
+
+    bootstrap_module.require_target(tmp_path, "x86_64_v3")
+
+    assert _packages(tmp_path)["all"]["require"] == ["target=x86_64_v3", _rule("c"), _rule("cxx")]
+
+
+def test_the_compiler_is_required_on_every_package_that_takes_a_language_from_it(tmp_path):
+    bootstrap_module._require_compiler_where_used(tmp_path, ("c", "cxx", "fortran"), "gcc@15")
+
+    # The condition names the compiler on the edge: the bare %cxx also holds for a
+    # C library built with CMake. Twice the same spec, because Spack warns about one.
+    assert _packages(tmp_path) == {"all": {"require": [_rule("c"), _rule("cxx"), _rule("fortran")]}}
+
+
+def test_the_compiler_rule_replaces_an_earlier_one_and_the_requirement_on_the_language(tmp_path):
+    earlier = {
+        "packages": {
+            "all": {"require": ["target=x86_64_v3", _rule("c", "gcc@14"), {"spec": "+pic", "when": "+shared"}]},
+            # What Seanerstack wrote before, which has no solution with a reused compiler.
+            "c": {"require": ["gcc@14"]},
+            "cxx": {"require": ["gcc@14"], "prefer": ["gcc@14"]},
+            "gcc": {"externals": [{"spec": "gcc@14.4.1", "prefix": "/usr"}]},
+        }
+    }
+    (tmp_path / "packages.yaml").write_text(yaml.safe_dump(earlier))
+
+    bootstrap_module._require_compiler_where_used(tmp_path, ("c",), "gcc@15")
+    bootstrap_module._require_compiler_where_used(tmp_path, ("c",), "gcc@15")
+
+    assert _packages(tmp_path) == {
+        "all": {"require": ["target=x86_64_v3", {"spec": "+pic", "when": "+shared"}, _rule("c")]},
+        "cxx": {"prefer": ["gcc@14"]},
+        "gcc": {"externals": [{"spec": "gcc@14.4.1", "prefix": "/usr"}]},
+    }
+
+
+def test_the_compiler_rule_names_the_package_of_the_compiler(tmp_path):
+    bootstrap_module._require_compiler_where_used(tmp_path, ("c",), "llvm@19+clang")
+    assert _packages(tmp_path)["all"]["require"] == [_rule("c", "llvm@19+clang", "llvm")]
+    with pytest.raises(ValueError, match="cannot determine compiler package name"):
+        bootstrap_module._require_compiler_where_used(tmp_path, ("c",), "@15")
+
+
+def test_a_single_requirement_on_every_package_is_kept(tmp_path):
+    (tmp_path / "packages.yaml").write_text("packages:\n  all:\n    require: target=x86_64_v3\n")
+    bootstrap_module._require_compiler_where_used(tmp_path, ("c",), "gcc@15")
+    assert _packages(tmp_path)["all"]["require"] == ["target=x86_64_v3", _rule("c")]
+
+
+def test_bootstrap_writes_the_compiler_rule_and_no_requirement_on_the_language(monkeypatch, tmp_path):
+    calls, state = _toolchain_spack(monkeypatch, tmp_path)
+
+    bootstrap_module.bootstrap("gcc@15", languages=("c", "cxx"), probe="zlib", **state)
+
+    assert _packages(state["spack_config"]) == {"all": {"require": [_rule("c"), _rule("cxx")]}}
+    assert not any("require" in " ".join(call) and "config" in call for call in calls)
+
+
+def test_an_external_compiler_removes_the_rule_of_a_built_one(monkeypatch, tmp_path):
+    # An external has no tree of its own, and is required on the language.
+    _fake_spack(monkeypatch)
+    bootstrap_module.require_target(tmp_path, "x86_64_v3")
+    bootstrap_module._require_compiler_where_used(tmp_path, ("c",), "gcc@15")
+    monkeypatch.setattr(bootstrap_module, "_bootstrap_external", lambda *args, **kwargs: "external")
+
+    result = bootstrap_module.bootstrap(
+        "gcc@16", languages=("c",), probe="zlib", command=COMMAND, env=ENV, external=str(tmp_path), spack_config=tmp_path
+    )
+
+    assert result == "external"
+    assert _packages(tmp_path) == {"all": {"require": ["target=x86_64_v3"]}}
+
+
 def test_an_external_compiler_takes_no_source_compiler(monkeypatch):
     _fake_spack(monkeypatch)
     with pytest.raises(ValueError, match="takes no source compiler"):
