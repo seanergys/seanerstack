@@ -115,6 +115,8 @@ It builds the compiler in two stages, pushes it, and once the probe has accepted
 compiler lockfile: compiler-gcc-15-rocky10-x86_64_v3-2efee779f543 in oci://registry.seanergys.fz-juelich.de/software/seanerstack/buildcache
 ```
 
+In a state set up with `seanerstack toolchain bootstrap` instead, `seanerstack toolchain publish` does the same once the compiler is in the build cache: it pushes the first stage to the bootstrap cache and publishes the lockfile. `build:rocky10` runs it while its variable `PUBLISH_TOOLCHAIN` is `true`.
+
 A tag that exists is left as it is, and the line says so. To replace a lockfile, delete its tag in the registry (Deploy > Container registry); the next `prepare` concretizes the compiler and publishes a new one.
 
 The lockfile names the first stage of the compiler by its path, `<state>/bootstrap/store/gcc-VERSION`. Publish it from the state directory where the cache is filled, which is that of the `toolchain` job of the pipeline: there `buildcache prepare` can build the compiler of the lockfile again, and anywhere else it refuses to. Every other machine only installs it from the cache.
