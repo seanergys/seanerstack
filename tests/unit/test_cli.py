@@ -647,3 +647,25 @@ def test_publish_leaves_out_what_the_state_or_the_config_does_not_have(monkeypat
 def test_toolchain_publish_is_a_command():
     args = build_parser().parse_args(["toolchain", "publish"])
     assert (args.command, args.toolchain_command) == ("toolchain", "publish")
+
+
+def test_bootstrap_builds_with_the_jobs_the_machine_allows_unless_told(monkeypatch, tmp_path: Path):
+    _bootstrap_world(monkeypatch, tmp_path)
+    given = []
+    monkeypatch.setattr(cli, "default_jobs", lambda: 7)
+    monkeypatch.setattr(
+        cli, "bootstrap",
+        lambda compiler, **kwargs: given.append(("bootstrap", kwargs["jobs"])) or BootstrapResult(
+            compiler=compiler, installed=True, registered=False, languages=("c",), probe="zlib", probe_ok=True
+        ),
+    )
+    monkeypatch.setattr(cli, "install_packages", lambda command, packages, env, jobs=None: given.append(("packages", jobs)))
+
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path)) == 0
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path, jobs=3)) == 0
+
+    assert given == [("bootstrap", 7), ("packages", 7), ("bootstrap", 3), ("packages", 3)]
+
+
+def test_toolchain_bootstrap_takes_jobs():
+    assert build_parser().parse_args(["toolchain", "bootstrap", "--jobs", "12"]).jobs == 12

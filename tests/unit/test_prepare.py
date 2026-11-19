@@ -663,3 +663,15 @@ def test_a_cache_outside_a_registry_gets_no_lockfile(monkeypatch, tmp_path):
         env={}, work=tmp_path / "toolchain",
     )
     assert spack.published == []
+
+
+def test_prepare_builds_the_compiler_with_its_jobs(monkeypatch, tmp_path):
+    Spack(monkeypatch)
+    given = []
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: given.append(kwargs["jobs"]) or type("Result", (), {"probe_ok": True}))
+    monkeypatch.setattr(_prepare, "default_jobs", lambda: 7)
+
+    run_here(tmp_path)
+    run_here(tmp_path, jobs=48)
+
+    assert given == [7, 48]
