@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from seanerstack import cli as _cli
+from seanerstack import jobs
 from seanerstack import prepare as _prepare
 from seanerstack.cli import build_parser
 from seanerstack.config import Config, Platform, Resource, Toolchain, load_config
@@ -129,16 +130,6 @@ def test_prepare_needs_credentials_for_its_target(monkeypatch, tmp_path):
         )
 
 
-def test_jobs_follow_the_free_memory(monkeypatch):
-    monkeypatch.setattr(_prepare.os, "cpu_count", lambda: 16)
-    monkeypatch.setattr(_prepare, "_available_memory", lambda: 4 * _prepare.GIB)
-    assert _prepare.default_jobs() == 2
-    monkeypatch.setattr(_prepare, "_available_memory", lambda: _prepare.GIB)
-    assert _prepare.default_jobs() == 1
-    monkeypatch.setattr(_prepare, "_available_memory", lambda: None)
-    assert _prepare.default_jobs() == 16
-
-
 def test_the_container_reaches_prepare_through_a_checkout_or_a_release():
     arguments = dict(jobs=2, uid=1000, gid=1000, version="1.2.3")
     source = _prepare.container_script(ROCKY10, source=True, **arguments)
@@ -175,7 +166,8 @@ def test_no_token_is_on_the_command_line_of_the_container(monkeypatch, tmp_path)
     calls = []
     monkeypatch.setattr(_prepare, "check_push_access", lambda resource, env: None)
     monkeypatch.setattr(_prepare, "_container_runtime", lambda: "docker")
-    monkeypatch.setattr(_prepare, "_available_memory", lambda: 8 * _prepare.GIB)
+    monkeypatch.setattr(_prepare, "_available_memory", lambda: 8 * jobs.GIB, raising=False)
+    monkeypatch.setattr(_prepare, "available_memory", lambda: 8 * jobs.GIB, raising=False)
     monkeypatch.setattr(_prepare, "_stream", lambda args, env: calls.append((args, env)))
     monkeypatch.setattr(_prepare.subprocess, "run", lambda *a, **k: None)
     monkeypatch.setattr(_prepare, "_session", lambda *a: ({"target": config(tmp_path).resources["target"]}, {TOKEN: "secret"}))
@@ -185,7 +177,7 @@ def test_no_token_is_on_the_command_line_of_the_container(monkeypatch, tmp_path)
     assert "secret" not in " ".join(argv)
     assert env[TOKEN] == "secret"
     assert argv[argv.index("-e") + 1] == TOKEN
-    assert argv[argv.index("--memory") + 1] == argv[argv.index("--memory-swap") + 1] == str(int(8 * _prepare.GIB * 0.85))
+    assert argv[argv.index("--memory") + 1] == argv[argv.index("--memory-swap") + 1] == str(int(8 * jobs.GIB * 0.85))
     assert (tmp_path / "buildcache-prepare/rocky9").is_dir()
     assert "rocky:9" in argv
 
@@ -365,7 +357,8 @@ def test_the_container_gets_its_input_by_copy_not_by_mount(monkeypatch, tmp_path
 
     monkeypatch.setattr(_prepare, "check_push_access", lambda resource, env: None)
     monkeypatch.setattr(_prepare, "_container_runtime", lambda: "docker")
-    monkeypatch.setattr(_prepare, "_available_memory", lambda: None)
+    monkeypatch.setattr(_prepare, "_available_memory", lambda: None, raising=False)
+    monkeypatch.setattr(_prepare, "available_memory", lambda: None, raising=False)
     monkeypatch.setattr(_prepare, "_stream", stream)
     monkeypatch.setattr(_prepare.subprocess, "run", lambda args, **kwargs: removed.append(args))
     monkeypatch.setattr(_prepare, "_session", lambda *a: ({"target": config(tmp_path).resources["target"]}, {}))
@@ -390,7 +383,8 @@ def test_credentials_from_the_environment_reach_the_container(monkeypatch, tmp_p
     calls = []
     monkeypatch.setattr(_prepare, "check_push_access", lambda resource, env: None)
     monkeypatch.setattr(_prepare, "_container_runtime", lambda: "docker")
-    monkeypatch.setattr(_prepare, "_available_memory", lambda: None)
+    monkeypatch.setattr(_prepare, "_available_memory", lambda: None, raising=False)
+    monkeypatch.setattr(_prepare, "available_memory", lambda: None, raising=False)
     monkeypatch.setattr(_prepare, "_stream", lambda args, env: calls.append(args))
     monkeypatch.setattr(_prepare.subprocess, "run", lambda *a, **k: None)
     monkeypatch.setenv(USER, "gitlab-ci-token")
