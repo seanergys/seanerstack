@@ -333,3 +333,27 @@ def test_a_config_without_the_bootstrap_cache_it_names_has_none(tmp_path: Path):
     without = replace(config, resources={name: value for name, value in config.resources.items() if name != "bootstrap"})
     assert buildcache.bootstrap_buildcache(without) is None
     assert [resource.name for resource in buildcache.buildcaches(without)] == ["registry"]
+
+
+def test_everything_an_instance_installed_is_pushed_and_indexed(monkeypatch, tmp_path: Path):
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "/aaa\n/bbb\n" if "find" in args else "", "")
+
+    monkeypatch.setattr(buildcache.subprocess, "run", fake_run)
+    resource = buildcache.bootstrap_buildcache(_with_bootstrap_cache(tmp_path))
+
+    assert buildcache.push_installed(resource, command=["bspack"], env={}) == 2
+
+    assert calls[1] == ["bspack", "buildcache", "push", "--only", "package", "bootstrap", "/aaa", "/bbb"]
+    assert calls[2][:2] == ["bspack", "python"] and calls[2][-1] == "bootstrap"
+
+
+def test_an_instance_with_nothing_installed_sends_nothing(monkeypatch, tmp_path: Path):
+    calls = []
+    monkeypatch.setattr(buildcache.subprocess, "run", lambda args, **kwargs: calls.append(args) or subprocess.CompletedProcess(args, 0, "", ""))
+    resource = buildcache.bootstrap_buildcache(_with_bootstrap_cache(tmp_path))
+    assert buildcache.push_installed(resource, command=["bspack"], env={}) == 0
+    assert calls == [["bspack", "find", "--format", "/{hash}"]]
