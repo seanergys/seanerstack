@@ -45,12 +45,15 @@ class BootstrapInstance:
     @param env: the environment of that command
     @param environment: the directory of its environment for the first stage
     @param store: its install tree, where the first stage is installed
+    @param find: the directories off PATH where init searched for compilers,
+        searched in both instances, so that both know the compilers init found
     """
 
     command: list[str]
     env: dict
     environment: Path
     store: Path
+    find: tuple[str, ...] = ()
 
 
 def _run(
@@ -115,16 +118,23 @@ def _environment_compiler(command: list[str], environment: Path, compiler: str, 
     return hashes[0]
 
 
-def _ensure_system_compiler(command: list[str], env) -> None:
-    """Register whatever compiler is visible on PATH as a Spack external.
+def _ensure_system_compiler(command: list[str], env, directories: tuple[str, ...] = ()) -> None:
+    """Register the compilers on PATH, and those in `directories`, as Spack externals.
 
     Seanerstack's isolated packages.yaml starts out empty, so on a fresh state
     directory nothing provides the `c`/`cxx` virtuals that building the
     project's own compiler itself requires: concretizing `install COMPILER`
     fails outright with "Only external, or concrete, compilers are allowed".
     A no-op when a compiler is already registered.
+
+    @param command: the isolated Spack command
+    @param env: the environment of the command
+    @param directories: where init also searched, below its --find prefixes
+    @return: nothing
     """
     _run([*command, "compiler", "find"], check=False, env=env)
+    if directories:
+        _run([*command, "compiler", "find", *directories], check=False, env=env)
 
 
 def _register_compiler(command: list[str], prefix: str, env) -> None:
@@ -291,7 +301,7 @@ def _build_first_stage(instance: BootstrapInstance, compiler: str, source: str |
     @return: the prefix of the first stage
     """
     command, env, environment = instance.command, instance.env, instance.environment
-    _ensure_system_compiler(command, env)
+    _ensure_system_compiler(command, env, instance.find)
     environment.mkdir(parents=True, exist_ok=True)
     root = _first_stage_root(compiler, source)
     manifest = {"spack": {"specs": [root], "view": False, "concretizer": {"unify": True}}}
@@ -672,7 +682,7 @@ def bootstrap(
             # The first stage only built the compiler. The system compilers come
             # back, for --source-compiler, and the rule keeps them from the stack.
             _run([*command, "compiler", "remove", "-a", _package_name(compiler)], check=False, env=env)
-            _ensure_system_compiler(command, env)
+            _ensure_system_compiler(command, env, bootstrap_instance.find)
         # Before the rule: only a compiler that the concretizer may reuse can
         # satisfy it.
         _reuse_environment(spack_config, environment, compiler)

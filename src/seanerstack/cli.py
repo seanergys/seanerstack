@@ -16,7 +16,9 @@ from .bootstrap import (
 )
 from .buildcache import buildcache_environment, buildcaches, check_buildcaches, configure_buildcaches, require_cache_access, update_index
 from .config import Config, load_config
-from .discovery import describe, detect_packages, find_compilers, load_detected, matching, registered_compilers, save_detected
+from .discovery import (
+    describe, detect_packages, find_compilers, load_detected, matching, registered_compilers, save_detected, search_directories,
+)
 from .paths import environments_path, repository_path, share_path, toolchain_lockfile
 from .prepare import pad_install_tree, prepare_here, prepare_in_container
 from .secrets import SecretStore
@@ -309,7 +311,10 @@ def _bootstrap_instance(x, real_spack: Path, env) -> BootstrapInstance:
     @return: the bootstrap instance, set up
     """
     command, bootstrap_env, b = prepare_bootstrap_instance(x, real_spack, env)
-    return BootstrapInstance(command=command, env=bootstrap_env, environment=b.environments / "compiler", store=b.store)
+    find = tuple(str(directory) for directory in search_directories(recorded_find(x.state)))
+    return BootstrapInstance(
+        command=command, env=bootstrap_env, environment=b.environments / "compiler", store=b.store, find=find
+    )
 
 
 def _probe_warning(result) -> str:
