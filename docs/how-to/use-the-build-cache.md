@@ -101,19 +101,25 @@ package_manager = "dnf"
 
 `operating_system` is what `spack arch --operating-system` prints in that image. `package_manager` is `dnf`, `apt` or `pacman`, and chooses the system packages of `[toolchain.system_packages]` that the image gets before Spack runs. A platform can add its own with `system_packages`, and name another Python with `python`, as Rocky 9 does for Python 3.12. Seanerstack and Spack both run with that Python in the image. Fedora 45 names Python 3.14, because Spack 1.2.2 has a ready-made clingo, its solver, for Python up to 3.14, and builds it from source for the Python 3.15 that Fedora 45 has as `python3`.
 
-### Renew the lockfile of the compiler
+### Publish the lockfile of the compiler
 
-`toolchain bootstrap` and `buildcache prepare` install the compiler of the lockfile that Seanerstack ships for the platform, `data/share/seanerstack/toolchain/<operating system>/spack.lock`, so the cache holds what every machine installs ([why](../explanation/compiler-bootstrap.md#why-the-compiler-is-installed-from-a-lockfile)). After a change of the pinned Spack, of the recipes that the compiler depends on, or of the compiler of `[toolchain]`, concretize it again in the image of the platform:
+`toolchain bootstrap` and `buildcache prepare` install the compiler of the lockfile in the build cache, a tag of its registry repository named after the compiler, the platform and a digest of the pins, such as `compiler-gcc-15-rocky10-x86_64_v3-2efee779f543` ([why](../explanation/compiler-bootstrap.md#why-the-compiler-is-installed-from-a-lockfile)). `buildcache prepare` publishes it when the cache has none: after a change of the pinned Spack, of the builtin recipes or of the compiler of `[toolchain]`, the tag is another one, and the next run of the `toolchain` job publishes its lockfile. Nothing is committed. By hand, in the image of the platform:
 
 ```console
-seanerstack --secrets-file credentials.toml buildcache prepare --platform rocky10 --concretize
+seanerstack --secrets-file credentials.toml buildcache prepare --platform rocky10
 ```
 
-It builds the compiler in two stages and prints the lockfile of the compiler environment, below the state directory in `buildcache-prepare/rocky10/spack/environments/compiler/spack.lock`. Copy that file over the shipped one and commit it. The operating system in the path is the name that `spack arch --operating-system` prints in the image, the `operating_system` of the platform.
+It builds the compiler in two stages, pushes it, and once the probe has accepted it prints the tag:
 
-The lockfile names the first stage of the compiler by its path, `<state>/bootstrap/store/gcc-VERSION`. Make it in the state directory where the cache is filled, which is that of the `toolchain` job of the pipeline: there `buildcache prepare` can build the compiler of the lockfile again, and anywhere else it refuses to. Every other machine only installs it from the cache.
+```text
+compiler lockfile: compiler-gcc-15-rocky10-x86_64_v3-2efee779f543 in oci://registry.seanergys.fz-juelich.de/software/seanerstack/buildcache
+```
 
-A platform without a lockfile concretizes the compiler on each machine, in two stages. Its cache then matches only machines with a state in the same directory.
+A tag that exists is left as it is, and the line says so. To replace a lockfile, delete its tag in the registry (Deploy > Container registry); the next `prepare` concretizes the compiler and publishes a new one.
+
+The lockfile names the first stage of the compiler by its path, `<state>/bootstrap/store/gcc-VERSION`. Publish it from the state directory where the cache is filled, which is that of the `toolchain` job of the pipeline: there `buildcache prepare` can build the compiler of the lockfile again, and anywhere else it refuses to. Every other machine only installs it from the cache.
+
+A platform without a lockfile concretizes the compiler on each machine, in two stages. Its cache then matches only machines with a state in the same directory. A cleanup policy of the registry must keep the `compiler-*` tags.
 
 ### Build binaries that install into any directory
 

@@ -173,9 +173,9 @@ gcc -> binutils -> diffutils -> gcc  local /i7yr4sl  cached /7jn7qej
 
 The same holds for a system compiler of another version. A machine that installs the compiler from a lockfile of its platform does not concretize it at all, and does not depend on its system compiler. In a test with Spack 1.2.2, a state whose system GCC lacked Fortran concretized the compiler to `/cmawlu4` by itself, and installed the compiler of the cache, `/awyc5sy`, from the lockfile, with a probe that passed.
 
-Seanerstack therefore ships the lockfile of the compiler environment for Rocky Linux 10 and installs from it: see [Why the compiler is installed from a lockfile](compiler-bootstrap.md#why-the-compiler-is-installed-from-a-lockfile). The test used installations without content, so the last step of a real installation from the cache, in which the recipe of gcc looks at the installed compiler, was not exercised.
+Seanerstack therefore installs the compiler from a lockfile of the compiler environment, which it keeps in the build cache: see [Why the compiler is installed from a lockfile](compiler-bootstrap.md#why-the-compiler-is-installed-from-a-lockfile). The test used installations without content, so the last step of a real installation from the cache, in which the recipe of gcc looks at the installed compiler, was not exercised.
 
-The compiler is now built in two stages, and the first stage, not the system compiler, is the external that builds it. Its hash then depends on the path of the first stage, which is in the state directory, and no longer on the version or the languages of the system compiler: see [Why the compiler is built in two stages](compiler-bootstrap.md#why-the-compiler-is-built-in-two-stages). No lockfile is shipped any more until the pipeline has built the two stages.
+The compiler is now built in two stages, and the first stage, not the system compiler, is the external that builds it. Its hash then depends on the path of the first stage, which is in the state directory, and no longer on the version or the languages of the system compiler: see [Why the compiler is built in two stages](compiler-bootstrap.md#why-the-compiler-is-built-in-two-stages).
 
 ## Known problems of Spack that were not met here
 
@@ -196,7 +196,7 @@ On Fedora 44 and 45 the reuse of a compiler that the system gcc 16 built did not
 - A probe that runs out of time reports what Spack printed until then, and how to tell a slow solve from a requirement without a solution.
 - `seanerstack buildcache prepare` takes `--probe-timeout`, as `init` and `toolchain bootstrap` do.
 - `seanerstack buildcache prepare` pushes the compiler and updates the index of the cache as soon as the compiler is built, before the probe. A failure afterwards no longer costs the build of the compiler again.
-- `toolchain bootstrap` and `buildcache prepare` install the compiler from the lockfile that Seanerstack ships for the platform, where there is one.
+- `toolchain bootstrap` and `buildcache prepare` install the compiler from the lockfile of the platform, which `buildcache prepare` publishes in the build cache, where there is one.
 - The compiler is built in two stages, the first in a Spack instance of its own, and `toolchain bootstrap` takes the compiler of a lockfile from the build caches only.
 
 ## How to look into a concretization that does not finish
