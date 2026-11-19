@@ -354,6 +354,7 @@ def _stage_external_path(lockfile: Path, compiler: str) -> str | None:
 def _install_in_two_stages(
     command: list[str], environment: Path, compiler: str, env, *, instance: BootstrapInstance,
     source: str | None, lockfile: Path | None, spack_config: Path, cache_only: bool,
+    installed_first_stage: Callable[[], None] | None = None,
 ) -> str | None:
     """Install the compiler in the compiler environment, built by a first stage of itself.
 
@@ -382,6 +383,8 @@ def _install_in_two_stages(
     @param lockfile: the concretized compiler environment to install, or None to concretize here
     @param spack_config: the Spack configuration directory of the state
     @param cache_only: with `lockfile`, fail instead of building
+    @param installed_first_stage: called once the bootstrap instance holds the
+        first stage, before the compiler is built with it
     @return: the prefix of the first stage that built the compiler, or None when the caches held it
     """
     environment.mkdir(parents=True, exist_ok=True)
@@ -404,11 +407,15 @@ def _install_in_two_stages(
                 f"{instance.store}; build the compiler in the state directory that made the lockfile, or concretize it"
             )
         prefix = _build_first_stage(instance, compiler, source)
+        if installed_first_stage is not None:
+            installed_first_stage()
         _use_first_stage(command, compiler, prefix, env)
         _install_environment(command, environment, env, cache_only=False)
         return prefix
     _concretize_as_a_new_state_does(spack_config)
     prefix = _build_first_stage(instance, compiler, source)
+    if installed_first_stage is not None:
+        installed_first_stage()
     _use_first_stage(command, compiler, prefix, env)
     _run_streaming([*command, "-e", str(environment), "concretize", "--force"], env=env)
     _install_environment(command, environment, env, cache_only=False)
@@ -616,6 +623,7 @@ def bootstrap(
     lockfile: Path | None = None,
     bootstrap_instance: BootstrapInstance | None = None,
     cache_only: bool = False,
+    installed_first_stage: Callable[[], None] | None = None,
 ) -> BootstrapResult:
     """Make COMPILER the compiler of every SEANERGYS build.
 
@@ -640,6 +648,10 @@ def bootstrap(
         of the compiler; needed wherever the compiler is installed
     @param cache_only: with a lockfile, take the compiler from the build
         caches or fail, and never build it
+    @param installed_first_stage: called once the bootstrap instance holds the
+        first stage, before the compiler is built with it, so that a caller
+        can keep the first stage whatever happens next; not called when the
+        compiler comes from the caches
     """
     command = command or ["spack"]
     if not languages:
@@ -670,6 +682,7 @@ def bootstrap(
         first_stage = _install_in_two_stages(
             command, environment, compiler, env, instance=bootstrap_instance, source=source_compiler,
             lockfile=locked, spack_config=spack_config, cache_only=cache_only,
+            installed_first_stage=installed_first_stage,
         )
         installed = _environment_compiler(command, environment, compiler, env)
 
