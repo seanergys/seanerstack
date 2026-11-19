@@ -9,12 +9,13 @@ stages:
   - toolchain
 
 variables:
-  # "true": every pipeline publishes the toolchain of every platform, the
-  # first stage of the compiler and the compiler lockfile included: the
-  # toolchain job runs for each platform, and build:rocky10 publishes what it
-  # built. Any other value leaves it to the toolchain job of the nightly
-  # schedule or of a pipeline run by hand. A CI/CD variable of the project, or
-  # of a pipeline run by hand, overrides this without a commit.
+  # "true": pipelines publish the toolchain of every platform, the first stage
+  # of the compiler and the compiler lockfile included: the toolchain job runs
+  # for each platform in push and web pipelines, and is offered by hand in
+  # merge request pipelines, and build:rocky10 publishes what it built. Any
+  # other value leaves it to the toolchain job of the nightly schedule or of a
+  # pipeline run by hand. A CI/CD variable of the project, or of a pipeline
+  # run by hand, overrides this without a commit.
   PUBLISH_TOOLCHAIN: "true"
 
 # A merge request runs merge request pipelines, which become merged results
@@ -407,9 +408,11 @@ publish:dev:
 # only checks that the cache holds everything.
 #
 # It runs in a pipeline schedule of the default branch (Build > Pipeline
-# schedules), in every other pipeline while PUBLISH_TOOLCHAIN is "true", and
-# otherwise by hand from Build > Pipelines > Run pipeline, on the default
-# branch or another one. A platform that fails does not fail the pipeline.
+# schedules), and in push and web pipelines while PUBLISH_TOOLCHAIN is "true".
+# A merge request pipeline offers it to start by hand, so that a merge request
+# does not build the toolchain of nine platforms unasked. Otherwise it runs by
+# hand from Build > Pipelines > Run pipeline, on the default branch or another
+# one. A platform that fails does not fail the pipeline.
 # The job token may push to the container registry of this project, which
 # holds the cache.
 #
@@ -426,11 +429,15 @@ toolchain:
   timeout: 12h
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "schedule"'
-    # In every pipeline while the toolchain is published from each: what a
-    # pipeline built is in the caches, with a lockfile per platform, for the
-    # pipelines and machines after it.
-    - if: '$PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE =~ /^(push|merge_request_event|web)$/'
+    # In push and web pipelines while the toolchain is published from them:
+    # what a pipeline built is in the caches, with a lockfile per platform, for
+    # the pipelines and machines after it.
+    - if: '$PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE =~ /^(push|web)$/'
       when: on_success
+      allow_failure: true
+    # In a merge request, only by hand.
+    - if: '$PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
       allow_failure: true
     # By hand, also on another branch: a change to how the toolchain is built
     # gives new hashes, and its own pipeline finds them in the cache only
