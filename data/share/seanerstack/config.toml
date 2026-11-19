@@ -20,13 +20,25 @@ url = "oci://registry.seanergys.fz-juelich.de/software/seanerstack/buildcache"
 credentials = "seanergys-registry"
 signed = false
 
+# The first stage of the compiler, which the system compiler builds in the
+# bootstrap instance of a state, and which builds the compiler of the stack.
+# Only the bootstrap instance reads it, so nothing the system compiler built
+# reaches the stack.
+[resources.seanerstack-buildcache-bootstrap]
+kind = "spack-buildcache"
+url = "oci://registry.seanergys.fz-juelich.de/software/seanerstack/buildcache-bootstrap"
+credentials = "seanergys-registry"
+signed = false
+
 # What `seanerstack buildcache prepare` builds and where it pushes it. Binaries
 # carry the operating system and CPU target in their hash, so the toolchain is
-# built once per platform, in that platform's image.
+# built once per platform, in that platform's image. The first stage of the
+# compiler goes to bootstrap_cache.
 [toolchain]
 compiler = "gcc@15"
 packages = ["rust", "capnproto"]
 cache = "seanerstack-buildcache"
+bootstrap_cache = "seanerstack-buildcache-bootstrap"
 target = "x86_64_v3"
 
 # What every platform with that package manager installs before Spack runs.

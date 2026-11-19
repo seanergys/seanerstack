@@ -28,7 +28,30 @@ UNREADABLE_INDEX = "you need a newer Spack version to read the buildcache index"
 
 
 def buildcaches(config: Config) -> tuple[Resource, ...]:
-    return tuple(resource for resource in config.resources.values() if resource.kind == "spack-buildcache")
+    """The build caches of the Spack that builds the stack: all but the bootstrap cache.
+
+    @param config: the Seanerstack configuration
+    @return: each build cache that the stack reads
+    """
+    bootstrap = config.toolchain.bootstrap_cache if config.toolchain else None
+    return tuple(
+        resource for resource in config.resources.values() if resource.kind == "spack-buildcache" and resource.name != bootstrap
+    )
+
+
+def bootstrap_buildcache(config: Config) -> Resource | None:
+    """The build cache of the bootstrap instance, which holds the first stage of the compiler.
+
+    @param config: the Seanerstack configuration
+    @return: the cache that `[toolchain] bootstrap_cache` names, or None when it names none
+    """
+    name = config.toolchain.bootstrap_cache if config.toolchain else None
+    if name is None:
+        return None
+    resource = config.resource(name)
+    if resource.kind != "spack-buildcache":
+        raise ValueError(f"[toolchain] bootstrap_cache: resource {name!r} is not a spack-buildcache")
+    return resource
 
 
 def _mirror_args(resource: Resource, command: list[str]) -> list[str]:
@@ -49,21 +72,32 @@ def _mirror_args(resource: Resource, command: list[str]) -> list[str]:
     return args
 
 
+def configure_buildcache(resource: Resource, *, command: list[str], env=None) -> None:
+    """Make one build cache a mirror of a Spack instance, replacing an earlier one of that name.
+
+    @param resource: the build cache
+    @param command: the isolated Spack command of the instance
+    @param env: its environment
+    @return: nothing; a mirror that Spack refuses raises RuntimeError
+    """
+    # `-C` also loads the private configuration as an immutable scope, and an
+    # unscoped remove picks that one and fails. Name the writable scope.
+    subprocess.run(
+        [*command, "mirror", "remove", "--scope", "user", resource.name],
+        check=False,
+        text=True,
+        capture_output=True, env=env,
+    )
+    process = subprocess.run(_mirror_args(resource, command), check=False, text=True, capture_output=True, env=env)
+    if process.returncode != 0:
+        message = process.stderr.strip() or process.stdout.strip()
+        raise RuntimeError(f"could not configure build cache {resource.name!r}: {message}")
+
+
 def configure_buildcaches(config: Config, *, command: list[str] | None = None, env=None) -> None:
     command = command or ["spack"]
     for resource in buildcaches(config):
-        # `-C` also loads the private configuration as an immutable scope, and an
-        # unscoped remove picks that one and fails. Name the writable scope.
-        subprocess.run(
-            [*command, "mirror", "remove", "--scope", "user", resource.name],
-            check=False,
-            text=True,
-            capture_output=True, env=env,
-        )
-        process = subprocess.run(_mirror_args(resource, command), check=False, text=True, capture_output=True, env=env)
-        if process.returncode != 0:
-            message = process.stderr.strip() or process.stdout.strip()
-            raise RuntimeError(f"could not configure build cache {resource.name!r}: {message}")
+        configure_buildcache(resource, command=command, env=env)
 
 
 # Run by `spack python`, so that it uses the Spack of the session.
@@ -73,10 +107,14 @@ HASHDIFF_SCRIPT = os.path.join(os.path.dirname(__file__), "_spack_hashdiff.py")
 def buildcache_environment(config: Config, secrets: SecretStore, env) -> dict[str, str]:
     """`env` with the credentials of every build cache that has them, for reading all of them.
 
+    The bootstrap cache is among them: the bootstrap instance takes its
+    environment from the actual one.
+
     A cache whose credentials are missing is read anonymously, as Spack would.
     """
     env = dict(env)
-    for resource in buildcaches(config):
+    bootstrap = bootstrap_buildcache(config)
+    for resource in (*buildcaches(config), *([bootstrap] if bootstrap else [])):
         if resource.credentials and not all(name in env for name in resource.credential_variables):
             try:
                 env.update(spack_resource_environment(resource, secrets))

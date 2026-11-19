@@ -65,6 +65,9 @@ class Toolchain:
     cache: str
     target: str
     platforms: dict[str, Platform]
+    # The build cache of the bootstrap instance, which holds the first stage of
+    # the compiler; the Spack of the stack never reads it.
+    bootstrap_cache: str | None = None
 
     def platform(self, name: str) -> Platform:
         try:
@@ -123,6 +126,7 @@ def _toolchain(data: dict, path: Path) -> Toolchain:
             packages=tuple(raw["packages"]),
             cache=raw["cache"],
             target=raw["target"],
+            bootstrap_cache=raw.get("bootstrap_cache"),
             platforms={
                 name: _platform(name, platform, raw["system_packages"], path)
                 for name, platform in raw["platforms"].items()
