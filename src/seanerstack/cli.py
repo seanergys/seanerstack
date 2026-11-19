@@ -14,7 +14,7 @@ from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_PROBE_TIMEOUT, 
 from .buildcache import buildcache_environment, buildcaches, check_buildcaches, configure_buildcaches, require_cache_access, update_index
 from .config import Config, load_config
 from .discovery import describe, detect_packages, find_compilers, load_detected, matching, registered_compilers, save_detected
-from .paths import environments_path, repository_path, share_path
+from .paths import environments_path, repository_path, share_path, toolchain_lockfile
 from .pins import SPACK_VERSION
 from .prepare import pad_install_tree, prepare_here, prepare_in_container
 from .secrets import SecretStore
@@ -113,6 +113,11 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap_parser.add_argument("--probe-timeout", type=float, default=DEFAULT_PROBE_TIMEOUT, help=f"seconds to allow the probe before giving up (default: {DEFAULT_PROBE_TIMEOUT:g}); 0 waits indefinitely")
     bootstrap_parser.add_argument("--force", action="store_true", help="ask Spack to install the compiler even when it is already installed")
     bootstrap_parser.add_argument(
+        "--concretize", action="store_true",
+        help="concretize the compiler on this machine, and do not install the one of the lockfile that Seanerstack "
+        "ships for this operating system. Its hash then depends on the system compiler of this machine",
+    )
+    bootstrap_parser.add_argument(
         "--external", action="append", metavar="SPEC",
         help="use what init found instead of building it: a compiler, such as gcc@16, or a package, "
         "such as rust; repeat as needed. Its hashes then match nothing in the project build cache",
@@ -199,6 +204,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--padded-length", type=int, default=0, metavar="N",
         help="install below a prefix padded to N characters, so that the binaries of the cache install into any "
         "shorter path, such as a state directory of the user's choice (default: 0, no padding)",
+    )
+    prepare_parser.add_argument(
+        "--concretize", action="store_true",
+        help="concretize the compiler in the image of the platform, and do not install the one of the shipped "
+        "lockfile; for a new lockfile, after the pinned Spack, the recipes or the compiler of [toolchain] changed",
     )
     prepare_parser.add_argument("--probe-timeout", type=float, default=DEFAULT_PROBE_TIMEOUT, help=f"seconds to allow the probe before giving up (default: {DEFAULT_PROBE_TIMEOUT:g}); 0 waits indefinitely")
 
@@ -316,12 +326,12 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
     if not args.dry_run:
         require_cache_access(command, env)
 
-    if args.os is not None:
-        system = subprocess.run(
-            [*command, "arch", "--operating-system"], check=True, capture_output=True, text=True, env=env
-        ).stdout.strip()
-        if system != args.os:
-            raise ValueError(f"this machine is {system}, not {args.os}")
+    system = subprocess.run(
+        [*command, "arch", "--operating-system"], check=True, capture_output=True, text=True, env=env
+    ).stdout.strip()
+    if args.os is not None and system != args.os:
+        raise ValueError(f"this machine is {system}, not {args.os}")
+    lockfile = None if args.concretize else toolchain_lockfile(system)
 
     compilers = registered_compilers(x)
     detected = load_detected(x)
@@ -362,6 +372,7 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
         source_compiler=source,
         environment=x.environments / "compiler",
         spack_config=x.config,
+        lockfile=lockfile,
     )
     if args.dry_run:
         if result.external:
@@ -377,6 +388,10 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
         print("used as: an external of this machine")
     else:
         print(f"used as: the installed package /{(result.hash or '')[:7]}")
+        if result.lockfile is not None:
+            print(f"concretized: by the lockfile of {system}, as the project build cache holds it")
+        else:
+            print("concretized: on this machine, with its system compiler; the build cache holds it only for the same one")
     print(f"languages: {', '.join(result.languages)}")
     print(f"compiler probe ({result.probe}): {'ok' if result.probe_ok else _probe_warning(result)}")
     if not result.probe_ok:
@@ -571,6 +586,7 @@ def _run_buildcache(args: argparse.Namespace) -> int:
                 config, secrets, platform=args.platform, command=command, env=env,
                 work=x.environments / "toolchain", jobs=args.jobs,
                 padded_length=args.padded_length, spack_config=x.config, probe_timeout=args.probe_timeout or None,
+                concretize=args.concretize,
             )
         state_dir = args.state_dir or Path(os.environ.get("SEANERSTACK_STATE_DIR", "~/.cache/seanerstack"))
         toolchain = config.toolchain
@@ -578,7 +594,7 @@ def _run_buildcache(args: argparse.Namespace) -> int:
         for platform in platforms:
             prepare_in_container(
                 config, secrets, platform=platform, state_dir=state_dir, jobs=args.jobs, padded_length=args.padded_length,
-                probe_timeout=args.probe_timeout,
+                probe_timeout=args.probe_timeout, concretize=args.concretize,
             )
         return 0
     raise ValueError(f"unknown buildcache command: {args.buildcache_command}")

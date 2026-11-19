@@ -34,6 +34,7 @@ def _init_args(tmp_path: Path, **overrides) -> "cli.argparse.Namespace":
         probe="zlib",
         probe_timeout=300.0,
         force=False,
+        concretize=False,
         external=None,
         skip_buildcache_check=False,
         skip_validate=False,
@@ -92,6 +93,10 @@ def _init_world(monkeypatch, tmp_path: Path, *, buildcache_ok=True, git_ok=True)
     toolchain = Toolchain(compiler="gcc@15", packages=(), cache="cache", target="x86_64_v3", platforms={})
     monkeypatch.setattr(cli, "load_config", lambda path: Config(path=path or tmp_path / "shipped.toml", resources={"cache": cache}, toolchain=toolchain))
     monkeypatch.setattr(cli, "_spack_runtime", lambda args: (x, tmp_path / "spack", ["spack"], {}))
+    # `spack arch --operating-system`, which bootstrap asks for the lockfile of the platform.
+    monkeypatch.setattr(cli.subprocess, "run", lambda args, **kwargs: cli.subprocess.CompletedProcess(args, 0, "rocky10\n", ""))
+    # No lockfile is shipped for it; the tests of the lockfile give one.
+    monkeypatch.setattr(cli, "toolchain_lockfile", lambda system: None)
     monkeypatch.setattr(cli, "configure_buildcaches", lambda config, **kwargs: calls.append("configure"))
     monkeypatch.setattr(cli, "require_target", lambda spack_config, target: calls.append(f"target={target}"))
     # The build caches answer; the tests of the access check cover a refusal.

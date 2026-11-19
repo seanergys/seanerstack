@@ -31,7 +31,7 @@ from .buildcache import buildcaches, configure_buildcaches, update_index
 from .config import Config, Platform, Resource, Toolchain
 from .isolation import DEFAULT_STATE_DIR
 from .pins import SPACK_GIT, SPACK_VERSION
-from .paths import source_checkout
+from .paths import source_checkout, toolchain_lockfile
 from .secrets import SecretStore
 
 
@@ -209,12 +209,16 @@ def pad_install_tree(spack_config: Path, length: int, *, command: list[str], env
 def prepare_here(
     config: Config, secrets: SecretStore, *, platform: str, command: list[str], env, work: Path, jobs: int | None = None,
     padded_length: int = 0, spack_config: Path | None = None, probe_timeout: float | None = DEFAULT_PROBE_TIMEOUT,
+    concretize: bool = False,
 ) -> int:
     """Build the toolchain in this operating system, which has to be `platform`, and push it.
 
     With `spack_config`, the configuration directory of the state, the install
     prefix is padded to `padded_length` characters first, or left unpadded.
     The compiler probe gets `probe_timeout` seconds, or any time with None.
+    The compiler is the one of the shipped lockfile of the platform, so that
+    the cache holds what every machine installs; with `concretize`, it is
+    concretized here, for a new lockfile.
     """
     toolchain, target = _toolchain(config)
     wanted = toolchain.platform(platform)
@@ -255,7 +259,9 @@ def prepare_here(
     result = bootstrap(
         toolchain.compiler, command=command, env=env, environment=work.parent / "compiler", spack_config=spack_config,
         installed_compiler=push, probe_timeout=probe_timeout,
+        lockfile=None if concretize else toolchain_lockfile(wanted.operating_system),
     )
+    print(f"compiler environment: {work.parent / 'compiler' / 'spack.lock'}")
     if not result.probe_ok:
         raise RuntimeError(
             f"Spack does not use {toolchain.compiler}: the probe {result.probe} is not compiled by the installed "
@@ -289,7 +295,7 @@ def install_command(platform: Platform) -> str:
 
 def container_script(
     platform: Platform, *, jobs: int, source: bool, uid: int, gid: int, version: str, padded_length: int = 0,
-    probe_timeout: float = DEFAULT_PROBE_TIMEOUT,
+    probe_timeout: float = DEFAULT_PROBE_TIMEOUT, concretize: bool = False,
 ) -> str:
     spack = f"{CONTAINER_STATE}/spack-{SPACK_VERSION}"
     package = CONTAINER_SOURCE if source else f"seanerstack=={version}"
@@ -300,6 +306,7 @@ def container_script(
         + (f" --padded-length {padded_length}" if padded_length else "")
         # 0 waits indefinitely, so it is passed on like any other value.
         + (f" --probe-timeout {probe_timeout:g}" if probe_timeout != DEFAULT_PROBE_TIMEOUT else "")
+        + (" --concretize" if concretize else "")
     )
     return "\n".join(
         [
@@ -351,7 +358,7 @@ def _stage_input(config: Config, checkout: Path | None, stage: Path) -> None:
 
 def prepare_in_container(
     config: Config, secrets: SecretStore, *, platform: str, state_dir: Path, jobs: int | None = None,
-    padded_length: int = 0, probe_timeout: float = DEFAULT_PROBE_TIMEOUT,
+    padded_length: int = 0, probe_timeout: float = DEFAULT_PROBE_TIMEOUT, concretize: bool = False,
 ) -> int:
     """Build the toolchain in the image of `platform`, so that any desktop can do it."""
     toolchain, target = _toolchain(config)
@@ -387,7 +394,7 @@ def prepare_in_container(
     script = container_script(
         wanted, jobs=jobs or default_jobs(), source=checkout is not None,
         uid=os.getuid(), gid=os.getgid(), version=metadata.version("seanerstack"), padded_length=padded_length,
-        probe_timeout=probe_timeout,
+        probe_timeout=probe_timeout, concretize=concretize,
     )
     try:
         _stream([*argv, wanted.image, "/bin/bash", "-c", script], env)
