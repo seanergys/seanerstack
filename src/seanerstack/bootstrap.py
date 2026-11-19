@@ -471,13 +471,21 @@ def _reuse_environment(spack_config: Path, environment: Path, compiler: str) -> 
     the stack builds its own with the project compiler. What the compiler
     itself links against, zlib-ng and zstd, stays the compiler's.
 
+    No external that the compiler spec matches may be reused, and Spack takes
+    an external only by reusing it. Removing such a compiler from the
+    configuration is not enough: where it was the only compiler, as the system
+    gcc 15.2.0 of Ubuntu 26.04 is, Spack registers the compilers on PATH again
+    at the next concretization, and the language requirements accept it as
+    gcc@15. Every other external stays reusable.
+
     @param spack_config: the Spack configuration directory of the state
     @param environment: the directory of the compiler environment
     @param compiler: the compiler spec, such as gcc@15
     @return: nothing
     """
     source = {"type": "environment", "path": str(environment), "include": [compiler]}
-    settings = {"concretizer": {"reuse": {"from": [source]}}}
+    externals = {"type": "external", "exclude": [compiler]}
+    settings = {"concretizer": {"reuse": {"from": [source, externals]}}}
     (spack_config / "concretizer.yaml").write_text(yaml.safe_dump(settings), encoding="utf-8")
 
 
