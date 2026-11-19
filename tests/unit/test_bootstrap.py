@@ -596,3 +596,27 @@ def test_both_instances_search_where_init_searched_for_compilers(monkeypatch, tm
     # Where the source compiler is, and where the system compilers come back.
     assert steps.index("bootstrap: compiler find /opt/rh/gcc-toolset-15/root/usr/bin") < steps.index("bootstrap: concretize --force")
     assert steps.index("actual: install") < steps.index("actual: compiler find /opt/rh/gcc-toolset-15/root/usr/bin")
+
+
+def test_bootstrap_says_when_the_first_stage_is_installed_before_it_builds_the_compiler(monkeypatch, tmp_path):
+    calls, state = _toolchain_spack(monkeypatch, tmp_path)
+
+    bootstrap_module.bootstrap(
+        "gcc@15", languages=("c",), probe="zlib", installed_first_stage=lambda: calls.append([*BOOTSTRAP_COMMAND, "told"]),
+        **state,
+    )
+
+    steps = _where(calls)
+    assert steps.count("bootstrap: told") == 1
+    assert steps.index("bootstrap: install") < steps.index("bootstrap: told") < steps.index("actual: concretize --force")
+
+
+def test_nothing_is_said_of_a_first_stage_when_the_caches_hold_the_compiler(monkeypatch, tmp_path):
+    for name, cache_holds, told in (("cached", True, 0), ("built", False, 1)):
+        calls, state = _toolchain_spack(monkeypatch, tmp_path / name, cache_holds=cache_holds)
+        lockfile = _two_stage_lockfile(tmp_path / f"{name}.lock", state["bootstrap_instance"].store / "gcc-15.3.0")
+        said = []
+        bootstrap_module.bootstrap(
+            "gcc@15", languages=("c",), probe="zlib", lockfile=lockfile, installed_first_stage=lambda: said.append(1), **state
+        )
+        assert len(said) == told
