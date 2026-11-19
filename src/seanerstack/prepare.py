@@ -29,8 +29,8 @@ from .auth import spack_resource_environment
 from .bootstrap import DEFAULT_PROBE_TIMEOUT, bootstrap, require_target
 from .buildcache import buildcaches, configure_buildcaches, update_index
 from .config import Config, Platform, Resource, Toolchain
-from .isolation import DEFAULT_STATE_DIR
-from .pins import SPACK_GIT, SPACK_VERSION
+from .isolation import DEFAULT_STATE_DIR, clone_pinned_spack_commands
+from .pins import SPACK_COMMIT
 from .paths import source_checkout, toolchain_lockfile
 from .secrets import SecretStore
 
@@ -297,7 +297,7 @@ def container_script(
     platform: Platform, *, jobs: int, source: bool, uid: int, gid: int, version: str, padded_length: int = 0,
     probe_timeout: float = DEFAULT_PROBE_TIMEOUT, concretize: bool = False,
 ) -> str:
-    spack = f"{CONTAINER_STATE}/spack-{SPACK_VERSION}"
+    spack = f"{CONTAINER_STATE}/spack-{SPACK_COMMIT[:12]}"
     package = CONTAINER_SOURCE if source else f"seanerstack=={version}"
     seanerstack = (
         f"/opt/seanerstack/bin/seanerstack --config-file {CONTAINER_CONFIG} --state-dir {CONTAINER_STATE} "
@@ -320,7 +320,7 @@ def container_script(
             "if [ -e /usr/lib/os-release ]; then ln -sf ../usr/lib/os-release /etc/os-release; fi",
             f"if [ ! -x {spack}/bin/spack ]; then",
             f"  rm -rf {spack}.partial",
-            f"  git clone --depth 1 --branch {SPACK_VERSION} {SPACK_GIT} {spack}.partial",
+            *(f"  {shlex.join(command)}" for command in clone_pinned_spack_commands(f"{spack}.partial")),
             f"  mv {spack}.partial {spack}",
             "fi",
             f"{platform.python} -m venv /opt/seanerstack",

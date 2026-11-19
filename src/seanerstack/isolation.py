@@ -13,7 +13,7 @@ from typing import Mapping
 
 from .config import Config
 from .paths import repository_path
-from .pins import BUILTIN_REPO_COMMIT, BUILTIN_REPO_GIT, SPACK_GIT, SPACK_VERSION
+from .pins import BUILTIN_REPO_COMMIT, BUILTIN_REPO_GIT, SPACK_COMMIT, SPACK_GIT, SPACK_VERSION
 from .auth import spack_resource_environment
 from .secrets import SecretStore
 
@@ -142,7 +142,23 @@ def read_record(state_dir: Path) -> dict[str, Path | None]:
 
 def pinned_spack(state_dir: Path) -> Path:
     """Where the pinned Spack lives in a state directory, installed or not."""
-    return state_dir / f"spack-{SPACK_VERSION}" / "bin" / "spack"
+    return state_dir / f"spack-{SPACK_COMMIT[:12]}" / "bin" / "spack"
+
+
+def clone_pinned_spack_commands(destination: str) -> list[list[str]]:
+    """The commands that put the pinned commit of Spack into `destination`.
+
+    A commit is not a branch or tag, so `git clone --branch` cannot name it;
+    the repository is fetched at that one commit instead.
+
+    @param destination: the directory to fill, which must not exist
+    @return: the commands, to run one after the other
+    """
+    return [
+        ["git", "init", "--quiet", destination],
+        ["git", "-C", destination, "fetch", "--quiet", "--depth", "1", SPACK_GIT, SPACK_COMMIT],
+        ["git", "-C", destination, "-c", "advice.detachedHead=false", "checkout", "--quiet", "FETCH_HEAD"],
+    ]
 
 
 def install_pinned_spack(state_dir: Path) -> Path:
@@ -155,18 +171,27 @@ def install_pinned_spack(state_dir: Path) -> Path:
     partial = root.with_name(root.name + ".partial")
     shutil.rmtree(partial, ignore_errors=True)
     root.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        ["git", "-c", "advice.detachedHead=false", "clone", "--quiet", "--depth", "1", "--branch", SPACK_VERSION, SPACK_GIT, str(partial)],
-        check=True,
-    )
+    for command in clone_pinned_spack_commands(str(partial)):
+        subprocess.run(command, check=True)
     partial.rename(root)
     return executable
 
 
-def spack_version(executable: Path) -> str:
-    """The version a Spack executable reports, such as 1.2.2."""
+def spack_version(executable: Path) -> tuple[str, str | None]:
+    """The version a Spack executable reports, and its commit when it runs from a Git checkout.
+
+    @param executable: the `spack` to ask
+    @return: the version, such as 1.3.0.dev0, and the commit, or None when it prints none
+    """
     result = subprocess.run([str(executable), "--version"], check=True, capture_output=True, text=True)
-    return result.stdout.split()[0]
+    words = result.stdout.split()
+    commit = words[1].strip("()") if len(words) > 1 else None
+    return words[0], commit
+
+
+def describe_pinned_spack() -> str:
+    """The pinned Spack in words, such as 1.3.0.dev0 at commit 7188f9d6e0."""
+    return f"{SPACK_VERSION} at commit {SPACK_COMMIT[:10]}"
 
 
 def resolve_real_spack(explicit: Path | None, state_dir: Path) -> Path:
@@ -184,10 +209,11 @@ def resolve_real_spack(explicit: Path | None, state_dir: Path) -> Path:
     path = explicit.expanduser().resolve()
     if not path.is_file():
         raise ValueError(f"Spack executable does not exist: {path}")
-    found, wanted = spack_version(path), SPACK_VERSION.removeprefix("v")
-    if found != wanted:
+    version, commit = spack_version(path)
+    if version != SPACK_VERSION or not (commit and SPACK_COMMIT.startswith(commit)):
+        found = f"{version} at commit {commit[:10]}" if commit else f"{version} without a commit"
         raise RuntimeError(
-            f"{path} is Spack {found}, and Seanerstack needs Spack {wanted}; "
+            f"{path} is Spack {found}, and Seanerstack needs Spack {describe_pinned_spack()}; "
             "leave out --spack-executable and SEANERSTACK_REAL_SPACK to use the one it installs"
         )
     return path

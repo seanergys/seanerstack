@@ -55,7 +55,7 @@ def test_version_names_seanerstack_and_its_pinned_spack(capsys):
         build_parser().parse_args(["--version"])
     assert stop.value.code == 0
     import seanerstack.pins
-    spack = seanerstack.pins.SPACK_VERSION.removeprefix("v")
+    spack = f"{seanerstack.pins.SPACK_VERSION} at commit {seanerstack.pins.SPACK_COMMIT[:10]}"
     assert capsys.readouterr().out == f"seanerstack {importlib.metadata.version('seanerstack')} (Spack {spack})\n"
 
 

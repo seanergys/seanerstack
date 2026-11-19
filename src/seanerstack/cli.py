@@ -15,11 +15,10 @@ from .buildcache import buildcache_environment, buildcaches, check_buildcaches, 
 from .config import Config, load_config
 from .discovery import describe, detect_packages, find_compilers, load_detected, matching, registered_compilers, save_detected
 from .paths import environments_path, repository_path, share_path, toolchain_lockfile
-from .pins import SPACK_VERSION
 from .prepare import pad_install_tree, prepare_here, prepare_in_container
 from .secrets import SecretStore
 from .isolation import (
-    activation_script, deactivation_script, layout, prepare_isolation, read_record, recorded_find,
+    activation_script, deactivation_script, describe_pinned_spack, layout, prepare_isolation, read_record, recorded_find,
     resolve_real_spack, resolve_state_dir, spack_command, spack_env, store_credentials, write_record,
 )
 from .sync import package_paths, sync_many
@@ -57,7 +56,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--version", action="version",
-        version=f"seanerstack {importlib.metadata.version('seanerstack')} (Spack {SPACK_VERSION.removeprefix('v')})",
+        version=f"seanerstack {importlib.metadata.version('seanerstack')} (Spack {describe_pinned_spack()})",
     )
     _add_secret_options(parser)
     parser.add_argument("--state-dir", type=Path, help="private Seanerstack state directory (or SEANERSTACK_STATE_DIR; default: /opt/seanergys/state, which the binaries of the project build cache need)")
