@@ -675,3 +675,10 @@ def test_the_toolchain_packages_are_installed_with_the_jobs_they_were_given(monk
     (call,) = calls
     assert call[: len(COMMAND) + 1] == [*COMMAND, "install"]
     assert sorted(call[len(COMMAND) + 1:]) == sorted(["rust", "capnproto", "--jobs", "48"])
+
+
+def test_the_jobs_of_the_toolchain_packages_come_before_the_packages(monkeypatch):
+    # spack install takes everything after the first spec as a spec: "--jobs 48" after "rust" would be two more.
+    calls = _fake_spack(monkeypatch)
+    bootstrap_module.install_packages(COMMAND, ["rust", "capnproto"], ENV, jobs=48)
+    assert calls == [[*COMMAND, "install", "--jobs", "48", "rust", "capnproto"]]
