@@ -29,6 +29,22 @@ class RegistryError(RuntimeError):
     """A request that the registry refused or did not answer."""
 
 
+def _refusal(error: urllib.error.HTTPError) -> str:
+    """The status of a refused request and what the registry said about it.
+
+    A registry answers an error with a JSON body that names the reason, such
+    as MANIFEST_INVALID with "unknown media type"; the status alone does not.
+
+    @param error: the refused request
+    @return: the status, and the body of the answer where there is one
+    """
+    try:
+        body = error.read().decode(errors="replace").strip()
+    except OSError:
+        body = ""
+    return f"HTTP {error.code}" + (f": {body[:1000]}" if body else "")
+
+
 @dataclass
 class Registry:
     """One repository of a registry, as a build cache resource names it.
@@ -76,7 +92,7 @@ class Registry:
             with urllib.request.urlopen(request, timeout=TIMEOUT) as response:
                 answer = json.load(response)
         except urllib.error.HTTPError as error:
-            raise RegistryError(f"{self.base} refused the credentials for {self.repository}: HTTP {error.code}") from error
+            raise RegistryError(f"{self.base} refused the credentials for {self.repository}: {_refusal(error)}") from error
         self._token = answer.get("token") or answer["access_token"]
 
     def request(self, method: str, url: str, *, headers=None, data: bytes | None = None):
@@ -107,7 +123,7 @@ class Registry:
                     continue
                 if error.code == 404:
                     return error.code, error.headers, error.read()
-                raise RegistryError(f"{method} {url}: HTTP {error.code}") from error
+                raise RegistryError(f"{method} {url}: {_refusal(error)}") from error
             except urllib.error.URLError as error:
                 raise RegistryError(f"{method} {url}: {error.reason}") from error
         raise RegistryError(f"{method} {url}: the registry asked for a token again")
