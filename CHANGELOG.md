@@ -37,6 +37,12 @@ and release process.
   holds, whatever its system compiler and state directory. Seanerstack reads
   and writes the tag itself, over the registry's HTTP API. No lockfile is in
   the source tree.
+- `toolchain bootstrap --jobs N` and `buildcache prepare` build with as many
+  jobs as the machine allows, for both stages of the compiler and the toolchain
+  packages: the CPUs the process may run on, within the CPU quota of its cgroup,
+  and no more than the free memory takes at 2 GiB per job, within the memory
+  limit of the cgroup. Spack used 16 jobs, a third of a CI node of 48 cores,
+  and a container limited by a quota counted all of the host's cores.
 - `seanerstack toolchain publish` pushes the first stage of the compiler to the
   bootstrap cache and publishes the compiler lockfile in the build cache,
   unless the cache has its tag, as `buildcache prepare` does by itself. It runs

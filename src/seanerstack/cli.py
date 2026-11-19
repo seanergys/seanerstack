@@ -22,6 +22,7 @@ from .config import Config, load_config
 from .discovery import (
     describe, detect_packages, find_compilers, load_detected, matching, registered_compilers, save_detected, search_directories,
 )
+from .jobs import default_jobs
 from .lockfile import find_compiler_lockfile, publish_compiler_lockfile
 from .paths import environments_path, repository_path, share_path
 from .prepare import pad_install_tree, prepare_here, prepare_in_container
@@ -122,6 +123,11 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap_parser.add_argument("--probe-timeout", type=float, default=DEFAULT_PROBE_TIMEOUT, help=f"seconds to allow the probe before giving up (default: {DEFAULT_PROBE_TIMEOUT:g}); 0 waits indefinitely")
     bootstrap_parser.add_argument("--force", action="store_true", help="ask Spack to install the compiler even when it is already installed")
     bootstrap_parser.add_argument(
+        "--jobs", type=int,
+        help="build jobs across the packages built at once (default: the CPUs this machine, or its container, may use, "
+        "and no more than its free memory takes at 2 GiB each)",
+    )
+    bootstrap_parser.add_argument(
         "--concretize", action="store_true",
         help="concretize the compiler on this machine, and do not install the one of the lockfile in the build "
         "cache. Its hash then depends on the state directory of this machine",
@@ -219,7 +225,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--platform", required=True, metavar="NAME",
         help="a platform of [toolchain], such as rocky10, or all of them one after the other with 'all'",
     )
-    prepare_parser.add_argument("--jobs", type=int, help="parallel jobs per package (default: what the free memory allows)")
+    prepare_parser.add_argument(
+        "--jobs", type=int,
+        help="build jobs across the packages built at once (default: the CPUs this machine, or its container, may use, "
+        "and no more than its free memory takes at 2 GiB each)",
+    )
     prepare_parser.add_argument("--no-container", action="store_true", help="build here, for a CI job that runs in the image of [toolchain]")
     prepare_parser.add_argument(
         "--padded-length", type=int, default=0, metavar="N",
@@ -451,6 +461,8 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
             directory=x.environments / "compiler-lockfiles",
         )
     instance = _bootstrap_instance(x, real_spack, env, config, target)
+    # Spack builds with 16 jobs unless told otherwise, whatever the machine has.
+    jobs = args.jobs or default_jobs()
     # Without a lockfile the compiler is built here, and its first stage comes
     # from the bootstrap cache, which Spack would also take as lacking the
     # binary when it refuses.
@@ -473,6 +485,7 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
         bootstrap_instance=instance,
         # A machine takes the compiler of the lockfile from the caches, or stops: a build takes hours.
         cache_only=True,
+        jobs=jobs,
     )
     if args.dry_run:
         if result.external:
@@ -502,7 +515,9 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
     for found in external_packages:
         use_external_package(command, found.name, found.prefix, env)
         print(f"package: {found.spec} (external, {found.prefix})")
-    install_packages(command, [package for package in packages if package not in {found.name for found in external_packages}], env)
+    install_packages(
+        command, [package for package in packages if package not in {found.name for found in external_packages}], env, jobs=jobs,
+    )
 
     externals = ([external_compiler] if external_compiler else []) + external_packages
     if externals:

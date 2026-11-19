@@ -252,7 +252,7 @@ def prepare_here(
             config, env, compiler=toolchain.compiler, target=toolchain.target,
             operating_system=wanted.operating_system, directory=work.parent / "compiler-lockfiles",
         ),
-        bootstrap_instance=bootstrap_instance, installed_first_stage=push_first_stage,
+        bootstrap_instance=bootstrap_instance, installed_first_stage=push_first_stage, jobs=jobs or default_jobs(),
     )
     print(f"compiler environment: {work.parent / 'compiler' / 'spack.lock'}")
     if not result.probe_ok:
