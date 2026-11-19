@@ -2,20 +2,55 @@
 
 SEANERGYS dependencies are normally built with a compiler that is itself installed through Spack.
 
-That creates a staged construction problem:
+That creates a construction in three stages:
 
-```text
-available system/bootstrap compiler
-        |
-        v
-Spack builds gcc@15
-        |
-        v
-gcc@15 becomes the project compiler
-        |
-        v
-Seanerstack environments are concretized and installed
-```
+<figure style="width: 100%">
+<svg style="width: 100%; max-width: 48rem" viewBox="0 0 780 250" role="img" aria-labelledby="compiler-stages-title compiler-stages-desc" xmlns="http://www.w3.org/2000/svg">
+  <title id="compiler-stages-title">The three stages of the compiler bootstrap</title>
+  <desc id="compiler-stages-desc">The system compiler of the platform builds gcc 15 and its libraries in the compiler environment. That gcc 15 compiles every package of the stack, and the stack may link against libraries of the compiler environment.</desc>
+  <defs>
+    <marker id="compiler-stages-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--md-default-fg-color--light)"/>
+    </marker>
+  </defs>
+  <g font-family="var(--md-text-font-family, sans-serif)" fill="var(--md-default-fg-color)">
+    <g stroke="var(--md-default-fg-color--lighter)" stroke-width="1.5" fill="var(--md-code-bg-color)">
+      <rect x="10" y="40" width="200" height="120" rx="8"/>
+      <rect x="290" y="40" width="200" height="120" rx="8" stroke="var(--md-accent-fg-color)" stroke-width="2"/>
+      <rect x="570" y="40" width="200" height="120" rx="8"/>
+    </g>
+    <g font-size="12" fill="var(--md-default-fg-color--light)" text-anchor="middle">
+      <text x="110" y="28">1 · of the platform</text>
+      <text x="390" y="28">2 · the compiler environment</text>
+      <text x="670" y="28">3 · the stack</text>
+    </g>
+    <g font-size="16" font-weight="600" text-anchor="middle">
+      <text x="110" y="78">System compiler</text>
+      <text x="390" y="78">gcc 15</text>
+      <text x="670" y="78">Every package</text>
+    </g>
+    <g font-size="13" text-anchor="middle">
+      <text x="110" y="104">gcc 14 of Rocky Linux 10,</text>
+      <text x="110" y="122">registered as an external</text>
+      <text x="390" y="104">with its own libraries,</text>
+      <text x="390" y="122">installed as packages</text>
+      <text x="670" y="104">rust, capnproto and</text>
+      <text x="670" y="122">the SEANERGYS packages</text>
+    </g>
+    <g stroke="var(--md-default-fg-color--light)" stroke-width="1.5" fill="none">
+      <line x1="214" y1="100" x2="284" y2="100" marker-end="url(#compiler-stages-arrow)"/>
+      <line x1="494" y1="100" x2="564" y2="100" marker-end="url(#compiler-stages-arrow)"/>
+      <path d="M 390 164 C 390 215, 670 215, 670 166" stroke-dasharray="5 4" marker-end="url(#compiler-stages-arrow)"/>
+    </g>
+    <g font-size="12" fill="var(--md-default-fg-color--light)" text-anchor="middle">
+      <text x="249" y="92">builds</text>
+      <text x="529" y="92">compiles</text>
+      <text x="530" y="222">libraries such as zlib-ng and ncurses are reused</text>
+    </g>
+  </g>
+</svg>
+<figcaption>The system compiler builds gcc 15 once. Every package of the stack is then compiled by that gcc 15, and identified by its hash.</figcaption>
+</figure>
 
 The compiler recipe comes from the normal Spack repositories; Seanerstack does not carry its own GCC or LLVM recipe.
 
