@@ -286,17 +286,27 @@ def lockfile_for(lockfile: Path | None, compiler: str) -> Path | None:
     return lockfile if roots == [_second_stage_root(compiler)] else None
 
 
-def _install_environment(command: list[str], environment: Path, env, *, cache_only: bool) -> bool:
+def _jobs(jobs: int | None) -> list[str]:
+    """The option of `spack install` for `jobs` build jobs, across all packages it builds at once.
+
+    @param jobs: the build jobs, or None for Spack's choice, which is 16
+    @return: the option, or nothing
+    """
+    return ["--jobs", str(jobs)] if jobs else []
+
+
+def _install_environment(command: list[str], environment: Path, env, *, cache_only: bool, jobs: int | None = None) -> bool:
     """Install what an environment holds, with `cache_only` only from build caches.
 
     @param command: the isolated Spack command
     @param environment: the directory of the environment
     @param env: the environment of the command
     @param cache_only: fail instead of building what no build cache holds
+    @param jobs: the build jobs, or None for Spack's choice
     @return: whether everything is installed; a failed build without
         `cache_only` raises CalledProcessError
     """
-    args = [*command, "-e", str(environment), "install", *(["--cache-only"] if cache_only else [])]
+    args = [*command, "-e", str(environment), "install", *(["--cache-only"] if cache_only else []), *_jobs(jobs)]
     try:
         _run_streaming(args, env=env)
     except subprocess.CalledProcessError:
@@ -306,7 +316,7 @@ def _install_environment(command: list[str], environment: Path, env, *, cache_on
     return True
 
 
-def _build_first_stage(instance: BootstrapInstance, compiler: str, source: str | None) -> str:
+def _build_first_stage(instance: BootstrapInstance, compiler: str, source: str | None, jobs: int | None = None) -> str:
     """Build the first stage of the compiler with the system compiler, in the bootstrap instance.
 
     The first stage is installed without a hash in its path, at
@@ -316,6 +326,7 @@ def _build_first_stage(instance: BootstrapInstance, compiler: str, source: str |
     @param instance: the bootstrap instance
     @param compiler: the compiler spec, such as gcc@15
     @param source: the registered compiler that builds it, or None for Spack's choice
+    @param jobs: the build jobs, or None for Spack's choice
     @return: the prefix of the first stage
     """
     command, env, environment = instance.command, instance.env, instance.environment
@@ -335,7 +346,7 @@ def _build_first_stage(instance: BootstrapInstance, compiler: str, source: str |
     for spec in json.loads(found.stdout or "[]") if found.returncode == 0 else []:
         if not spec.get("external") and spec.get("hash") != wanted:
             _run([*command, "uninstall", "--yes-to-all", f"/{spec['hash']}"], env=env)
-    _run_streaming([*command, "-e", str(environment), "install"], env=env)
+    _run_streaming([*command, "-e", str(environment), "install", *_jobs(jobs)], env=env)
     return _run([*command, "location", "--install-dir", f"/{wanted}"], env=env).stdout.strip()
 
 
@@ -374,7 +385,7 @@ def _stage_external_path(lockfile: Path, compiler: str) -> str | None:
 def _install_in_two_stages(
     command: list[str], environment: Path, compiler: str, env, *, instance: BootstrapInstance,
     source: str | None, lockfile: Path | None, spack_config: Path, cache_only: bool,
-    installed_first_stage: Callable[[], None] | None = None,
+    installed_first_stage: Callable[[], None] | None = None, jobs: int | None = None,
 ) -> str | None:
     """Install the compiler in the compiler environment, built by a first stage of itself.
 
@@ -405,6 +416,7 @@ def _install_in_two_stages(
     @param cache_only: with `lockfile`, fail instead of building
     @param installed_first_stage: called once the bootstrap instance holds the
         first stage, before the compiler is built with it
+    @param jobs: the build jobs of every install, or None for Spack's choice
     @return: the prefix of the first stage that built the compiler, or None when the caches held it
     """
     environment.mkdir(parents=True, exist_ok=True)
@@ -412,7 +424,7 @@ def _install_in_two_stages(
     (environment / "spack.yaml").write_text(yaml.safe_dump(manifest), encoding="utf-8")
     if lockfile is not None:
         shutil.copyfile(lockfile, environment / "spack.lock")
-        if _install_environment(command, environment, env, cache_only=True):
+        if _install_environment(command, environment, env, cache_only=True, jobs=jobs):
             return None
         if cache_only:
             raise RuntimeError(
@@ -426,19 +438,19 @@ def _install_in_two_stages(
                 f"the lockfile {lockfile} records the first stage in {recorded}, and this state builds it in "
                 f"{instance.store}; build the compiler in the state directory that made the lockfile, or concretize it"
             )
-        prefix = _build_first_stage(instance, compiler, source)
+        prefix = _build_first_stage(instance, compiler, source, jobs)
         if installed_first_stage is not None:
             installed_first_stage()
         _use_first_stage(command, compiler, prefix, env)
-        _install_environment(command, environment, env, cache_only=False)
+        _install_environment(command, environment, env, cache_only=False, jobs=jobs)
         return prefix
     _concretize_as_a_new_state_does(spack_config)
-    prefix = _build_first_stage(instance, compiler, source)
+    prefix = _build_first_stage(instance, compiler, source, jobs)
     if installed_first_stage is not None:
         installed_first_stage()
     _use_first_stage(command, compiler, prefix, env)
     _run_streaming([*command, "-e", str(environment), "concretize", "--force"], env=env)
-    _install_environment(command, environment, env, cache_only=False)
+    _install_environment(command, environment, env, cache_only=False, jobs=jobs)
     return prefix
 
 
@@ -644,6 +656,7 @@ def bootstrap(
     bootstrap_instance: BootstrapInstance | None = None,
     cache_only: bool = False,
     installed_first_stage: Callable[[], None] | None = None,
+    jobs: int | None = None,
 ) -> BootstrapResult:
     """Make COMPILER the compiler of every SEANERGYS build.
 
@@ -672,6 +685,8 @@ def bootstrap(
         first stage, before the compiler is built with it, so that a caller
         can keep the first stage whatever happens next; not called when the
         compiler comes from the caches
+    @param jobs: the build jobs of every install, across the packages built at
+        once, or None for Spack's choice, which is 16 whatever the machine has
     """
     command = command or ["spack"]
     if not languages:
@@ -702,7 +717,7 @@ def bootstrap(
         first_stage = _install_in_two_stages(
             command, environment, compiler, env, instance=bootstrap_instance, source=source_compiler,
             lockfile=locked, spack_config=spack_config, cache_only=cache_only,
-            installed_first_stage=installed_first_stage,
+            installed_first_stage=installed_first_stage, jobs=jobs,
         )
         installed = _environment_compiler(command, environment, compiler, env)
 
@@ -814,7 +829,14 @@ def use_external_package(command: list[str], name: str, prefix: str, env) -> Non
     _run([*command, "config", "add", f"packages:{name}:buildable:false"], env=env)
 
 
-def install_packages(command: list[str], packages: list[str], env) -> None:
-    """Install the toolchain's packages, such as rust, with the toolchain compiler."""
+def install_packages(command: list[str], packages: list[str], env, jobs: int | None = None) -> None:
+    """Install the toolchain's packages, such as rust, with the toolchain compiler.
+
+    @param command: the isolated Spack command
+    @param packages: the packages, such as rust
+    @param env: the environment of the command
+    @param jobs: the build jobs, or None for Spack's choice
+    @return: nothing; a failed build raises CalledProcessError
+    """
     if packages:
-        _run_streaming([*command, "install", *packages], env=env)
+        _run_streaming([*command, "install", *packages, *_jobs(jobs)], env=env)
