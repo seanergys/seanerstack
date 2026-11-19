@@ -197,16 +197,6 @@ def _check_external(command: list[str], compiler: str, prefix: str, env, timeout
         )
 
 
-def _compiler_root(compiler: str, source: str | None = None) -> str:
-    """The root spec of the compiler environment.
-
-    @param compiler: the compiler spec, such as gcc@15
-    @param source: the registered compiler that builds it, or None for Spack's choice
-    @return: the spec that the environment asks for
-    """
-    return f"{compiler} %c,cxx={source}" if source else f"{compiler} %c"
-
-
 def _package_name(compiler: str) -> str:
     """The package of a compiler spec.
 
@@ -226,6 +216,11 @@ def _first_stage_root(compiler: str, source: str | None = None) -> str:
     GCC's own three-stage bootstrap and without binutils, which take most of
     the time of a full build. The second stage bootstraps itself.
 
+    The system compiler is registered as an external, and an external that
+    satisfies the spec is taken instead of a build: on Ubuntu 26.04, `gcc@15`
+    alone takes the system GCC 15.2.0 and installs nothing. An external is a
+    leaf, so asking for a C compiler as a dependency rules it out.
+
     @param compiler: the compiler spec, such as gcc@15
     @param source: the registered compiler that builds it, or None for Spack's choice
     @return: the spec that the bootstrap instance installs
@@ -235,7 +230,11 @@ def _first_stage_root(compiler: str, source: str | None = None) -> str:
 
 
 def _second_stage_root(compiler: str) -> str:
-    """The root spec of the compiler environment when a first stage builds the compiler.
+    """The root spec of the compiler environment: the compiler, built by its first stage.
+
+    The first stage is the one registered compiler that the spec matches, an
+    external, and the compiler asks for it as its C and C++ compiler, which
+    also keeps the external itself from being taken as the compiler.
 
     @param compiler: the compiler spec, such as gcc@15
     @return: the compiler, compiled by the registered compiler of the same spec, the first stage
@@ -256,47 +255,7 @@ def lockfile_for(lockfile: Path | None, compiler: str) -> Path | None:
     if lockfile is None:
         return None
     roots = [root.get("spec") for root in json.loads(lockfile.read_text(encoding="utf-8")).get("roots", [])]
-    return lockfile if roots in ([_compiler_root(compiler)], [_second_stage_root(compiler)]) else None
-
-
-def _install_compiler(
-    command: list[str], environment: Path, compiler: str, env, source: str | None = None, lockfile: Path | None = None
-) -> None:
-    """Build the compiler in an environment of its own, even where the system compiler has the same version.
-
-    The system compiler is registered as an external, and an external that
-    satisfies the spec is taken instead of a build: on Ubuntu 26.04,
-    `gcc@15` alone takes the system GCC 15.2.0 and installs nothing. An
-    external is a leaf, so asking for a C compiler as a dependency rules it
-    out, while the system compiler can still be that dependency. `source`
-    names the registered compiler that builds it; by default Spack chooses.
-
-    The environment records which installation is the compiler, with
-    everything it links to: its lockfile is what the concretizer reuses.
-
-    With `lockfile`, the environment is not concretized here. The compiler is
-    built by the system compiler, an external whose hash holds its version and
-    the languages it offers, so a machine with another system compiler, or
-    without gfortran, concretizes the compiler to a hash that no build cache
-    holds. The lockfile is the concretization of the machine that filled the
-    cache, and Spack installs exactly its specs.
-
-    @param command: the isolated Spack command
-    @param environment: the directory of the compiler environment, written here
-    @param compiler: the compiler spec, such as gcc@15
-    @param env: the environment of the command
-    @param source: the registered compiler that builds it, or None for Spack's choice
-    @param lockfile: the concretized environment to install, or None to concretize here
-    @return: nothing; a failed build raises CalledProcessError
-    """
-    environment.mkdir(parents=True, exist_ok=True)
-    manifest = {"spack": {"specs": [_compiler_root(compiler, source)], "view": False, "concretizer": {"unify": True}}}
-    (environment / "spack.yaml").write_text(yaml.safe_dump(manifest), encoding="utf-8")
-    if lockfile is None:
-        _run_streaming([*command, "-e", str(environment), "concretize", "--force"], env=env)
-    else:
-        shutil.copyfile(lockfile, environment / "spack.lock")
-    _run_streaming([*command, "-e", str(environment), "install"], env=env)
+    return lockfile if roots == [_second_stage_root(compiler)] else None
 
 
 def _install_environment(command: list[str], environment: Path, env, *, cache_only: bool) -> bool:
@@ -387,6 +346,9 @@ def _install_in_two_stages(
     source: str | None, lockfile: Path | None, spack_config: Path, cache_only: bool,
 ) -> str | None:
     """Install the compiler in the compiler environment, built by a first stage of itself.
+
+    The environment records which installation is the compiler, with
+    everything it links to: its lockfile is what the concretizer reuses.
 
     The system compiler builds the first stage in the bootstrap instance. The
     actual instance knows it only as an external, the one gcc it has, and that
@@ -648,8 +610,10 @@ def bootstrap(
     """Make COMPILER the compiler of every SEANERGYS build.
 
     Without `external`, Spack installs COMPILER in the compiler environment
-    unless it already has, built with `source_compiler` or Spack's choice, and
-    the concretizer reuses that installation as the package it is. With
+    unless it already has, and the concretizer reuses that installation as
+    the package it is. It is built in two stages: `source_compiler`, or
+    Spack's choice of the system compilers, builds a first stage in the
+    bootstrap instance, and that first stage builds COMPILER. With
     `external`, a compiler already in that prefix, such as /usr or a
     gcc-toolset, is registered instead and nothing is built; COMPILER must
     name it.
@@ -663,7 +627,7 @@ def bootstrap(
         compiler is installed from it and not concretized here, unless it is
         for another compiler or `source_compiler` names what builds it
     @param bootstrap_instance: the Spack instance that builds the first stage
-        of the compiler; with it, the compiler is built in two stages
+        of the compiler; needed wherever the compiler is installed
     @param cache_only: with a lockfile, take the compiler from the build
         caches or fail, and never build it
     """
@@ -691,16 +655,12 @@ def bootstrap(
     already_installed = installed is not None
     first_stage = None
     if (force or not already_installed) and not dry_run:
-        if bootstrap_instance is not None:
-            first_stage = _install_in_two_stages(
-                command, environment, compiler, env, instance=bootstrap_instance, source=source_compiler,
-                lockfile=locked, spack_config=spack_config, cache_only=cache_only,
-            )
-        else:
-            _ensure_system_compiler(command, env)
-            if locked is None:
-                _concretize_as_a_new_state_does(spack_config)
-            _install_compiler(command, environment, compiler, env, source_compiler, locked)
+        if bootstrap_instance is None:
+            raise ValueError("installing the compiler needs the bootstrap instance that builds its first stage")
+        first_stage = _install_in_two_stages(
+            command, environment, compiler, env, instance=bootstrap_instance, source=source_compiler,
+            lockfile=locked, spack_config=spack_config, cache_only=cache_only,
+        )
         installed = _environment_compiler(command, environment, compiler, env)
 
     if not dry_run:
