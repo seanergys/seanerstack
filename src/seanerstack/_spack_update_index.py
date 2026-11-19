@@ -17,6 +17,7 @@ import tempfile
 import time
 
 import spack.binary_distribution
+import spack.config
 import spack.error
 import spack.mirrors.mirror
 import spack.oci.oci
@@ -87,7 +88,7 @@ def main(name: str) -> int:
     # replacement for fetching a config.
     distribution.tag_is_spec = indexed
     distribution._oci_config_from_tag = lambda image_and_tag: configs[image_and_tag[1]]
-    with tempfile.TemporaryDirectory(dir=spack.stage.get_stage_root()) as tmpdir, \
+    with tempfile.TemporaryDirectory(dir=spack.stage.stage_root(spack.config.CONFIG)) as tmpdir, \
             concurrent.futures.ThreadPoolExecutor(THREADS) as executor:
         distribution._oci_update_index(image, tmpdir, executor)
 

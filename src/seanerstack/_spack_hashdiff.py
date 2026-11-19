@@ -18,6 +18,7 @@ import sys
 import spack
 import spack.binary_distribution
 import spack.concretize
+import spack.config
 import spack.spec
 
 
@@ -118,7 +119,7 @@ def main(argv):
 
     cached = [
         s
-        for s in spack.binary_distribution.update_cache_and_get_specs()
+        for s in spack.binary_distribution.update_cache_and_get_specs(config=spack.config.CONFIG)
         if s.name == local.name and s.version == local.version
     ]
     if not cached:
