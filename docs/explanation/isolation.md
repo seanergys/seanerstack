@@ -35,7 +35,7 @@ All mutable Spack state controlled by Seanerstack is redirected below the select
 <state-dir>/
 ├── seanerstack.json        what init recorded: config.toml, Spack
 ├── credentials.json        stored credentials, mode 0600
-├── spack-v1.2.2/           the pinned Spack
+├── spack-7188f9d6e0f3/     the pinned Spack, named by its commit
 └── spack/
     ├── bin/
     │   └── spack           the wrapper
@@ -65,7 +65,7 @@ Seanerstack also initializes the concretizer with reuse disabled. Packages are n
 
 ## Pinned Spack
 
-The Spack version is pinned too, to v1.2.2. Both pins live in `src/seanerstack/pins.py`, the one place to change them. On first use, Seanerstack clones that version into `spack-v1.2.2/` in the state directory and uses it from then on. A Spack given with `--spack-executable` or `SEANERSTACK_REAL_SPACK` has to report the same version, or Seanerstack refuses it: a newer Spack writes specs and build-cache indexes that the pinned one cannot read, and its hashes match nothing in the project build cache. `seanerstack --version` prints both versions.
+Spack is pinned too, to commit `7188f9d6e0` of its develop branch, which reports version `1.3.0.dev0`. Spack 1.2.2 hangs when it concretizes with a gcc that Spack built with a newer gcc, such as gcc 15 built by the gcc 16 of Fedora; the fixes are on develop and in no release yet (see [Compiler as a package](compiler-as-a-package.md#known-problems-of-spack-that-were-not-met-here)). Both pins live in `src/seanerstack/pins.py`, the one place to change them. On first use, Seanerstack fetches that commit into `spack-<commit>/` in the state directory and uses it from then on. Every commit of develop reports the same version, so a Spack given with `--spack-executable` or `SEANERSTACK_REAL_SPACK` has to report the pinned commit as well as the version, or Seanerstack refuses it: another Spack writes specs and build-cache indexes that the pinned one cannot read, and its hashes match nothing in the project build cache. `seanerstack --version` prints both.
 
 ## The state's spack wrapper
 
