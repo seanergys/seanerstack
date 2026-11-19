@@ -88,3 +88,48 @@ def test_a_config_without_the_cache_of_its_toolchain_has_no_lockfile(tmp_path):
     toolchain = Toolchain(compiler="gcc@15", packages=(), cache="seanerstack-buildcache", target="x86_64_v3", platforms={})
     config = Config(path=tmp_path / "config.toml", resources={}, toolchain=toolchain)
     assert lockfile.find_compiler_lockfile(config, {}, **WHERE, directory=tmp_path) is None
+
+
+def test_the_lockfile_is_an_ordinary_image_of_one_layer(cache, tmp_path):
+    # A registry that checks media types, such as GitLab's, refuses types of its own.
+    import gzip
+    import hashlib
+    import io
+    import tarfile
+    tag, _ = _publish(cache, tmp_path)
+
+    manifest = json.loads(FakeRegistry.manifests[tag])
+    assert manifest["mediaType"] == "application/vnd.oci.image.manifest.v1+json"
+    assert manifest["config"]["mediaType"] == "application/vnd.oci.image.config.v1+json"
+    (layer,) = manifest["layers"]
+    assert layer["mediaType"] == "application/vnd.oci.image.layer.v1.tar+gzip"
+
+    blob = FakeRegistry.blobs[layer["digest"]]
+    with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as archive:
+        assert archive.getnames() == ["spack.lock"]
+        assert json.loads(archive.extractfile("spack.lock").read()) == LOCK
+    config = json.loads(FakeRegistry.blobs[manifest["config"]["digest"]])
+    assert config["rootfs"]["diff_ids"] == [f"sha256:{hashlib.sha256(gzip.decompress(blob)).hexdigest()}"]
+    assert (config["architecture"], config["os"]) == ("amd64", "linux")
+
+
+def test_the_same_lockfile_is_the_same_layer():
+    assert lockfile._layer(b"same") == lockfile._layer(b"same")
+    assert lockfile._layer(b"same") != lockfile._layer(b"other")
+
+
+def test_a_layer_without_a_lockfile_is_an_error(cache, tmp_path):
+    import gzip
+    import io
+    import tarfile
+    from seanerstack.registry import Registry
+    registry = Registry.of(cache, {})
+    other = io.BytesIO()
+    with tarfile.open(fileobj=other, mode="w") as archive:
+        archive.addfile(tarfile.TarInfo("README"), io.BytesIO(b""))
+    digest = registry.put_blob(gzip.compress(other.getvalue()))
+    FakeRegistry.manifests["other-layer"] = json.dumps(
+        {"schemaVersion": 2, "layers": [{"mediaType": "application/vnd.oci.image.layer.v1.tar+gzip", "digest": digest}]}
+    ).encode()
+    with pytest.raises(RegistryError, match="holds no compiler lockfile"):
+        lockfile.fetch_compiler_lockfile(cache, "other-layer", {}, tmp_path)
