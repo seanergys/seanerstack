@@ -515,3 +515,36 @@ def test_the_bootstrap_instance_searches_where_init_searched_for_compilers(tmp_p
     instance = cli._bootstrap_instance(x, tmp_path / "spack", {})
 
     assert instance.find == (str(toolset / "bin"), str(tmp_path / "no-bin"))
+
+
+def test_the_bootstrap_instance_reads_the_bootstrap_cache_and_builds_for_the_target(monkeypatch, tmp_path: Path):
+    import seanerstack.isolation
+    from seanerstack.config import Resource, Toolchain
+    x = seanerstack.isolation.prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    boot = Resource(name="boot", kind="spack-buildcache", url="oci://registry.example.org/cache-bootstrap", credentials="c", signed=False)
+    toolchain = Toolchain(compiler="gcc@15", packages=(), cache="cache", target="x86_64_v3", platforms={}, bootstrap_cache="boot")
+    configured = []
+    monkeypatch.setattr(cli, "configure_buildcache", lambda resource, *, command, env: configured.append((resource.name, command)))
+
+    instance = cli._bootstrap_instance(
+        x, tmp_path / "spack", {}, Config(path=tmp_path / "config.toml", resources={"boot": boot}, toolchain=toolchain), "x86_64_v3"
+    )
+
+    assert configured == [("boot", instance.command)]
+    assert (instance.config, instance.target) == (x.state / "bootstrap" / "config", "x86_64_v3")
+
+
+def test_bootstrap_checks_the_bootstrap_cache_only_where_it_builds_the_compiler(monkeypatch, tmp_path: Path):
+    _bootstrap_world(monkeypatch, tmp_path)
+    asked = []
+    monkeypatch.setattr(cli, "require_cache_access", lambda command, env: asked.append(command))
+    bootstrap_config = str(tmp_path / "state" / "bootstrap" / "config")
+
+    # No lockfile: the compiler is built, and its first stage comes from the bootstrap cache.
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path)) == 0
+    assert any(command[-1] == bootstrap_config for command in asked)
+
+    asked.clear()
+    monkeypatch.setattr(cli, "toolchain_lockfile", lambda system: tmp_path / "rocky10.lock")
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path)) == 0
+    assert not any(command[-1] == bootstrap_config for command in asked)

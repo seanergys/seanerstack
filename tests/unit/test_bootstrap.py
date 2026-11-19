@@ -620,3 +620,26 @@ def test_nothing_is_said_of_a_first_stage_when_the_caches_hold_the_compiler(monk
             "gcc@15", languages=("c",), probe="zlib", lockfile=lockfile, installed_first_stage=lambda: said.append(1), **state
         )
         assert len(said) == told
+
+
+def test_the_first_stage_is_built_for_the_target_of_the_toolchain(monkeypatch, tmp_path):
+    from dataclasses import replace
+    calls, state = _toolchain_spack(monkeypatch, tmp_path)
+    config = tmp_path / "bootstrap-config"
+    config.mkdir()
+    (config / "packages.yaml").write_text("packages:: {}\n")
+    state["bootstrap_instance"] = replace(state["bootstrap_instance"], config=config, target="x86_64_v3")
+    seen = []
+    streaming = bootstrap_module._run_streaming
+
+    def concretize(args, *, env=None):
+        if args[: len(BOOTSTRAP_COMMAND)] == BOOTSTRAP_COMMAND and args[-2:] == ["concretize", "--force"]:
+            seen.append(_packages(config))
+        streaming(args, env=env)
+
+    monkeypatch.setattr(bootstrap_module, "_run_streaming", concretize)
+
+    bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", **state)
+
+    # Built for the host's CPU, the first stage would have another hash on every kind of machine.
+    assert seen == [{"all": {"require": ["target=x86_64_v3"]}}]

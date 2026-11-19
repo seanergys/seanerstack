@@ -580,3 +580,58 @@ def test_prepare_builds_the_compiler_in_the_environment_next_to_the_toolchain(mo
 
     assert given["environment"] == tmp_path / "compiler"
     assert given["spack_config"] == tmp_path / "config"
+
+
+BOOT_USER, BOOT_TOKEN = "SEANERSTACK_RESOURCE_BOOT_USERNAME", "SEANERSTACK_RESOURCE_BOOT_PASSWORD"
+
+
+def _with_bootstrap_cache(tmp_path: Path) -> Config:
+    boot = Resource(name="boot", kind="spack-buildcache", url="oci://registry.example.org/group/cache-bootstrap", credentials="c", signed=False)
+    return replace(config(tmp_path, boot=boot), toolchain=replace(TOOLCHAIN, bootstrap_cache="boot"))
+
+
+def _bootstrap_instance(tmp_path: Path):
+    from seanerstack.bootstrap import BootstrapInstance
+    return BootstrapInstance(command=["bspack"], env={"SPACK_USER_CONFIG_PATH": "/b"}, environment=tmp_path / "env", store=tmp_path / "store")
+
+
+def _prepare_with_bootstrap_cache(monkeypatch, tmp_path, env):
+    spack = Spack(monkeypatch)
+    given, checked = [], []
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: given.append(kwargs) or type("Result", (), {"probe_ok": True}))
+    monkeypatch.setattr(_prepare, "check_push_access", lambda resource, env: checked.append((resource.name, env.get(BOOT_TOKEN))))
+    _prepare.prepare_here(
+        _with_bootstrap_cache(tmp_path), SecretStore(None), platform="rocky10", command=["spack"], env=env,
+        work=tmp_path / "toolchain", bootstrap_instance=_bootstrap_instance(tmp_path),
+    )
+    return spack, given[0], checked
+
+
+def test_prepare_pushes_the_first_stage_to_the_bootstrap_cache_once_it_is_built(monkeypatch, tmp_path):
+    env = {USER: "u", TOKEN: "t", BOOT_USER: "bu", BOOT_TOKEN: "bt"}
+    spack, given, checked = _prepare_with_bootstrap_cache(monkeypatch, tmp_path, env)
+
+    # Before a build of an hour, as for the project cache.
+    assert ("boot", "bt") in checked
+    instance = given["bootstrap_instance"]
+    assert (instance.env[BOOT_TOKEN], instance.env["SPACK_USER_CONFIG_PATH"]) == ("bt", "/b")
+
+    spack.calls.clear()
+    given["installed_first_stage"]()
+
+    assert ["bspack", "buildcache", "push", "--only", "package", "boot", "/aaa", "/bbb"] in spack.calls
+    # Then its index, without which concretization finds nothing.
+    assert spack.calls[-1][:2] == ["bspack", "python"] and spack.calls[-1][-1] == "boot"
+
+
+def test_prepare_needs_the_credentials_of_the_bootstrap_cache(monkeypatch, tmp_path):
+    with pytest.raises(ValueError, match="no credentials for build cache 'boot'"):
+        _prepare_with_bootstrap_cache(monkeypatch, tmp_path, {USER: "u", TOKEN: "t"})
+
+
+def test_prepare_pushes_no_first_stage_without_a_bootstrap_cache(monkeypatch, tmp_path):
+    Spack(monkeypatch)
+    given = []
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: given.append(kwargs) or type("Result", (), {"probe_ok": True}))
+    run_here(tmp_path, bootstrap_instance=_bootstrap_instance(tmp_path))
+    assert given[0]["installed_first_stage"] is None
