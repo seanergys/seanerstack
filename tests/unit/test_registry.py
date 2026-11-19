@@ -134,3 +134,14 @@ def test_the_https_registry_of_a_resource():
     registry = Registry.of(resource, {USER: "user", PASSWORD: "secret"})
     assert (registry.base, registry.repository, registry.username) == ("https://registry.example.org", "software/seanerstack/buildcache", "user")
     assert "secret" not in repr(registry)
+
+
+def test_a_refused_request_says_what_the_registry_answered(cache, monkeypatch):
+    def refuse(self):
+        if self.authorized():
+            self.body()
+            self.answer(400, body=b'{"errors":[{"code":"MANIFEST_INVALID","message":"manifest invalid"}]}')
+
+    monkeypatch.setattr(FakeRegistry, "do_PUT", refuse)
+    with pytest.raises(RegistryError, match='HTTP 400: {"errors":\\[{"code":"MANIFEST_INVALID"'):
+        Registry.of(cache, {}).put_manifest("a-tag", {"schemaVersion": 2})
