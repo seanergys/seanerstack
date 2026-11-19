@@ -207,6 +207,26 @@ def check_buildcaches(config: Config, secrets: SecretStore, *, command: list[str
     return results
 
 
+def push_installed(resource: Resource, *, command: list[str], env) -> int:
+    """Push everything a Spack instance has installed to a build cache, and rebuild its index.
+
+    Also what came from another cache, so that this one is complete by itself.
+    Spack leaves out externals.
+
+    @param resource: the build cache, configured as a mirror of the instance
+    @param command: the isolated Spack command of the instance
+    @param env: its environment, with the cache's push credentials
+    @return: how many specs were pushed; with none, nothing is sent; a failed
+        push raises CalledProcessError
+    """
+    found = subprocess.run([*command, "find", "--format", "/{hash}"], check=False, text=True, capture_output=True, env=env)
+    specs = found.stdout.split() if found.returncode == 0 else []
+    if specs:
+        subprocess.run([*command, "buildcache", "push", "--only", "package", resource.name, *specs], check=True, text=True, env=env)
+        update_index(resource, command=command, env=env)
+    return len(specs)
+
+
 def update_index(resource: Resource, *, command: list[str], env) -> None:
     """Rebuild the index of a build cache from the binaries it holds.
 
