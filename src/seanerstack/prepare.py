@@ -31,17 +31,12 @@ from .bootstrap import DEFAULT_PROBE_TIMEOUT, BootstrapInstance, bootstrap, requ
 from .buildcache import bootstrap_buildcache, buildcaches, configure_buildcaches, push_installed, update_index
 from .config import Config, Platform, Resource, Toolchain
 from .isolation import DEFAULT_STATE_DIR, clone_pinned_spack_commands
+from .jobs import available_memory, default_jobs
 from .pins import SPACK_COMMIT
 from .lockfile import find_compiler_lockfile, publish_compiler_lockfile
 from .paths import source_checkout
 from .secrets import SecretStore
 
-
-GIB = 1024**3
-
-# Rust with four jobs ran a desktop with 4 GiB free out of memory, and the kernel
-# then also killed what else was running there. Two jobs finished.
-MEMORY_PER_JOB = 2 * GIB
 
 # Keeps the desktop usable, and makes running out of memory end the build rather
 # than the services next to it.
@@ -139,21 +134,6 @@ def check_push_access(resource: Resource, env) -> None:
             pass  # The registry drops an abandoned upload by itself.
         return
     raise RuntimeError(denied)
-
-
-def _available_memory() -> int | None:
-    try:
-        text = Path("/proc/meminfo").read_text(encoding="utf-8")
-    except OSError:
-        return None
-    match = re.search(r"^MemAvailable:\s+(\d+) kB", text, re.MULTILINE)
-    return int(match.group(1)) * 1024 if match else None
-
-
-def default_jobs() -> int:
-    cores = os.cpu_count() or 1
-    memory = _available_memory()
-    return cores if memory is None else max(1, min(cores, memory // MEMORY_PER_JOB))
 
 
 def _stream(args: list[str], env) -> None:
@@ -427,7 +407,7 @@ def prepare_in_container(
     # The state is mounted, so that the next run continues where this one stopped.
     # Under Docker in Docker it lives with the daemon, and goes when the job ends.
     argv = [runtime, "create", "--name", name, "-v", f"{state}:{CONTAINER_STATE}"]
-    memory = _available_memory()
+    memory = available_memory()
     if memory is not None:
         limit = str(int(memory * MEMORY_SHARE))
         argv += ["--memory", limit, "--memory-swap", limit]
