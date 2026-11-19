@@ -82,3 +82,20 @@ def test_s3_build_cache_still_defaults_to_signed(tmp_path: Path):
     )
 
     assert load_config(path).resource("cache").signed is True
+
+
+def test_shipped_config_names_the_bootstrap_cache_beside_the_project_cache():
+    config = load_config()
+    cache = config.resource(config.toolchain.bootstrap_cache)
+
+    assert cache.name == "seanerstack-buildcache-bootstrap"
+    assert cache.url == "oci://registry.seanergys.fz-juelich.de/software/seanerstack/buildcache-bootstrap"
+    assert cache.oci and not cache.signed
+    # The registry of the project cache, with its credentials.
+    assert cache.credentials == config.resource(config.toolchain.cache).credentials
+
+
+def test_a_config_without_a_bootstrap_cache_keeps_the_shipped_one(tmp_path: Path):
+    path = tmp_path / "config.toml"
+    path.write_text('[toolchain]\ncompiler = "gcc@14"\n', encoding="utf-8")
+    assert load_config(path).toolchain.bootstrap_cache == "seanerstack-buildcache-bootstrap"
