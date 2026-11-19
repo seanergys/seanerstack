@@ -214,3 +214,12 @@ def test_the_rocky10_build_job_installs_with_the_jobs_the_runner_allows():
     # Spack takes 16 jobs whatever the runner has.
     assert '--jobs "$(python -c \'import seanerstack.jobs; print(seanerstack.jobs.default_jobs())\')"' in install
     assert install.endswith("|| status=$?")
+
+
+def test_a_merge_request_offers_the_toolchain_job_only_by_hand():
+    rules = _toolchain_job()["rules"]
+    (published,) = [rule for rule in rules if rule.get("when") == "on_success"]
+    assert "merge_request_event" not in published["if"]
+    (asked,) = [rule for rule in rules if "merge_request_event" in rule["if"]]
+    assert (asked["when"], asked["allow_failure"]) == ("manual", True)
+    assert asked["if"] == '$PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE == "merge_request_event"'
