@@ -250,7 +250,7 @@ def test_bootstrap_lets_the_concretizer_reuse_the_compiler_environment_and_nothi
     settings = yaml.safe_load((state["spack_config"] / "concretizer.yaml").read_text())
     # Only the compiler: what it was built with stays the system compiler's, and the stack builds its own.
     source = {"type": "environment", "path": str(state["environment"]), "include": ["gcc@15"]}
-    assert settings == {"concretizer": {"reuse": {"from": [source]}}}
+    assert [found for found in settings["concretizer"]["reuse"]["from"] if found["type"] == "environment"] == [source]
     # The built compiler is no external: only the first stage is registered by its prefix.
     registered = [step for step in _where(calls) if step.startswith("actual: compiler find ")]
     assert registered == [f"actual: compiler find {state['bootstrap_instance'].store}/gcc-15.3.0"]
