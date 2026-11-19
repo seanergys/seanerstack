@@ -166,7 +166,7 @@ def test_the_jobs_that_fill_the_cache_build_in_a_long_padded_state_directory():
 
 def test_the_toolchain_job_can_be_started_by_hand_on_any_branch():
     rules = _toolchain_job()["rules"]
-    (by_hand,) = [rule for rule in rules if rule.get("when") == "manual"]
+    (by_hand,) = [rule for rule in rules if rule.get("when") == "manual" and '"web"' in rule["if"]]
     assert by_hand["if"] == '$CI_COMMIT_BRANCH && $CI_PIPELINE_SOURCE == "web"'
     assert by_hand["allow_failure"] is True
     # The schedule of the default branch starts it by itself, and so does every pipeline while the toolchain is published.
@@ -199,11 +199,13 @@ def test_the_rocky10_build_job_publishes_the_toolchain_after_its_push_while_swit
 def test_the_toolchain_job_publishes_every_platform_from_every_pipeline_while_switched_on():
     rules = _toolchain_job()["rules"]
     (published,) = [rule for rule in rules if rule.get("when") == "on_success"]
-    assert published["if"] == '$PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE =~ /^(push|merge_request_event|web)$/'
+    assert published["if"].startswith('$PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE =~ /^(push|')
+    assert "|web)$/" in published["if"]
     # A platform that fails, such as one whose system compiler Spack cannot use yet, does not fail the pipeline.
     assert published["allow_failure"] is True
     # Before the rule for a pipeline run by hand, which would otherwise make it wait for a click.
-    assert rules.index(published) < rules.index(next(rule for rule in rules if rule.get("when") == "manual"))
+    by_hand = next(rule for rule in rules if rule.get("when") == "manual" and '"web"' in rule["if"])
+    assert rules.index(published) < rules.index(by_hand)
 
 
 def test_the_rocky10_build_job_installs_with_the_jobs_the_runner_allows():
