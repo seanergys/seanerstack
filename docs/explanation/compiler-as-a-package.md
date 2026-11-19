@@ -127,7 +127,7 @@ The rule is hard. A spec that asks for another gcc, such as `zlib %gcc@14`, has 
 
 ## What reuse brings with it
 
-The concretizer may reuse everything in the compiler environment, not only the compiler. A new package that needs a library of the compiler's own tree links against that installation, which the system compiler built. For `rust` these were:
+At first the concretizer could reuse everything in the compiler environment, not only the compiler. A new package that needs a library of the compiler's own tree links against that installation, which the system compiler built. For `rust` these were:
 
 | Library of the compiler's tree | Used by |
 | --- | --- |
@@ -140,7 +140,7 @@ The concretizer may reuse everything in the compiler environment, not only the c
 
 The hashes are still the same on every machine of a platform, because the compiler's tree is. "Compiled by gcc 15" holds for every new package, and not for these libraries.
 
-Spack can be told to reuse the compiler alone:
+Spack can be told to reuse the compiler alone, and Seanerstack now does:
 
 ```yaml
 concretizer:
@@ -151,7 +151,9 @@ concretizer:
       include: ["gcc@15"]
 ```
 
-`rust` then has 37 new packages in place of 21, all compiled by gcc 15.3.0, and builds its own `ncurses`, `readline`, `xz`, `bzip2`, `gettext` and `gmake`. Only `zlib-ng` and `zstd` are still the ones of the compiler's tree, which gcc itself links against. Seanerstack does not do this yet: it changes every hash of the stack, and is a decision of its own.
+`rust` then has 37 new packages in place of 21, all compiled by gcc 15.3.0, and builds its own `ncurses`, `readline`, `xz`, `bzip2`, `gettext` and `gmake`. Only `zlib-ng` and `zstd` are still the ones of the compiler's tree, which gcc itself links against. `seanergys-meta` concretizes to 115 new packages, all compiled by gcc 15.3.0. Every hash of the stack changed with this.
+
+It has one consequence for the compiler itself. Concretized again in a state that has the rule and may reuse the earlier compiler, the compiler environment gave another compiler, `/inbwxol`: its dependencies were no longer reusable, so they became new packages that the rule compiles with the earlier compiler. `bootstrap` therefore takes the rule and the reuse out of the configuration before it concretizes the compiler, and writes them back afterwards. The compiler is then `/awyc5sy` again, whether it is concretized or installed from the lockfile.
 
 ## The system compiler still decides the compiler's hash
 
@@ -208,4 +210,4 @@ These steps found the causes above, and apply to the next one.
 - The reuse of the compiler on the platforms with a system gcc 16.
 - Lockfiles of the compiler environment for the platforms other than Rocky Linux 10.
 - A report to Spack about the condition `%cxx`.
-- Whether the stack should reuse the compiler alone, and build the libraries of the compiler's tree again with gcc 15.
+- A complete build of the toolchain and of `seanergys-meta` with the compiler reused alone; so far it was concretized, not built.

@@ -45,7 +45,7 @@ That creates a construction in three stages:
     <g font-size="12" fill="var(--md-default-fg-color--light)" text-anchor="middle">
       <text x="249" y="92">builds</text>
       <text x="529" y="92">compiles</text>
-      <text x="530" y="222">libraries such as zlib-ng and ncurses are reused</text>
+      <text x="530" y="222">zlib-ng and zstd, which gcc links against, are shared</text>
     </g>
   </g>
 </svg>
@@ -78,7 +78,7 @@ packages:
 
 Spack takes a compiler only when it is an external or a concrete spec that the concretizer may reuse. A Seanerstack state concretizes everything fresh, so that the same recipes give the same hashes on every machine, and with reuse switched off an installed gcc@15 is neither: the requirement can then only be met by building gcc@15 with gcc@15, which is circular.
 
-`seanerstack toolchain bootstrap` therefore installs the compiler in a Spack environment of its own, `environments/compiler` in the state, and lets the concretizer reuse what that environment holds, and nothing else:
+`seanerstack toolchain bootstrap` therefore installs the compiler in a Spack environment of its own, `environments/compiler` in the state, and lets the concretizer reuse the compiler of that environment, and nothing else:
 
 ```yaml
 concretizer:
@@ -86,7 +86,12 @@ concretizer:
     from:
     - type: environment
       path: /opt/seanergys/state/spack/environments/compiler
+      include: ["gcc@15"]
 ```
+
+`include` matters. The environment also holds what the compiler was built with, such as `ncurses`, `readline` and `gmake`, which the system compiler compiled. Spack prefers an installed package to a new one, so without `include` every package of the stack that needs one of them would take the compiler's. With it, the stack builds its own with the project compiler. Only what the compiler itself links against, `zlib-ng` and `zstd`, is shared.
+
+The compiler environment is always concretized as a new state concretizes it. Before `bootstrap` concretizes it again, it takes the compiler rule and the reuse out of the configuration, and writes both back once the compiler is installed. With them in place, the dependencies of the compiler would be new packages compiled by the earlier compiler, and the result a compiler with another hash.
 
 The compiler then enters every build as the installed package it is, by its hash.
 
@@ -106,7 +111,7 @@ The rule reads: a package that takes C from a gcc takes it from gcc@15, and the 
 
 The rule is hard: a spec that asks for another gcc, such as `zlib %gcc@14`, has no solution. Spack 1.2.2 takes minutes to say so.
 
-What the compiler environment holds can be reused by every package, not only the compiler. A new package that needs a library of the compiler's own tree, such as `zlib-ng`, `ncurses` or `xz`, links against that installation, which the system compiler built. The hashes are still the same on every machine of a platform, because the compiler's tree is.
+A new package that needs `zlib-ng` or `zstd` links against the installation that the compiler itself uses, which the system compiler built. Every other package of the stack is compiled by the project compiler.
 
 ## Using a compiler that is already installed
 
