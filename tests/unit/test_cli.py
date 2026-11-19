@@ -95,8 +95,9 @@ def _init_world(monkeypatch, tmp_path: Path, *, buildcache_ok=True, git_ok=True)
     monkeypatch.setattr(cli, "_spack_runtime", lambda args: (x, tmp_path / "spack", ["spack"], {}))
     # `spack arch --operating-system`, which bootstrap asks for the lockfile of the platform.
     monkeypatch.setattr(cli.subprocess, "run", lambda args, **kwargs: cli.subprocess.CompletedProcess(args, 0, "rocky10\n", ""))
-    # No lockfile is shipped for it; the tests of the lockfile give one.
-    monkeypatch.setattr(cli, "toolchain_lockfile", lambda system: None)
+    # The build cache has no compiler lockfile for it; the tests of the lockfile give one.
+    monkeypatch.setattr(cli, "toolchain_lockfile", lambda system: None, raising=False)
+    monkeypatch.setattr(cli, "find_compiler_lockfile", lambda config, env, **kwargs: None, raising=False)
     monkeypatch.setattr(cli, "configure_buildcaches", lambda config, **kwargs: calls.append("configure"))
     monkeypatch.setattr(cli, "require_target", lambda spack_config, target: calls.append(f"target={target}"))
     # The build caches answer; the tests of the access check cover a refusal.
@@ -283,7 +284,10 @@ def test_bootstrap_installs_the_compiler_of_the_lockfile_for_this_operating_syst
     _bootstrap_world(monkeypatch, tmp_path, system="rocky10")
     given = []
     shipped = {"rocky10": tmp_path / "rocky10.lock"}
-    monkeypatch.setattr(cli, "toolchain_lockfile", shipped.get)
+    monkeypatch.setattr(cli, "toolchain_lockfile", shipped.get, raising=False)
+    monkeypatch.setattr(
+        cli, "find_compiler_lockfile", lambda config, env, **kwargs: shipped.get(kwargs["operating_system"]), raising=False
+    )
 
     def fake_bootstrap(compiler, **kwargs):
         given.append(kwargs["lockfile"])
@@ -332,7 +336,11 @@ def test_bootstrap_builds_the_compiler_in_two_stages_and_takes_a_locked_one_from
 def test_bootstrap_concretizes_where_no_lockfile_is_shipped(monkeypatch, tmp_path: Path):
     _bootstrap_world(monkeypatch, tmp_path, system="debian13")
     given = []
-    monkeypatch.setattr(cli, "toolchain_lockfile", {"rocky10": tmp_path / "rocky10.lock"}.get)
+    shipped = {"rocky10": tmp_path / "rocky10.lock"}
+    monkeypatch.setattr(cli, "toolchain_lockfile", shipped.get, raising=False)
+    monkeypatch.setattr(
+        cli, "find_compiler_lockfile", lambda config, env, **kwargs: shipped.get(kwargs["operating_system"]), raising=False
+    )
     monkeypatch.setattr(
         cli, "bootstrap",
         lambda compiler, **kwargs: given.append(kwargs["lockfile"]) or BootstrapResult(
@@ -545,6 +553,7 @@ def test_bootstrap_checks_the_bootstrap_cache_only_where_it_builds_the_compiler(
     assert any(command[-1] == bootstrap_config for command in asked)
 
     asked.clear()
-    monkeypatch.setattr(cli, "toolchain_lockfile", lambda system: tmp_path / "rocky10.lock")
+    monkeypatch.setattr(cli, "toolchain_lockfile", lambda system: tmp_path / "rocky10.lock", raising=False)
+    monkeypatch.setattr(cli, "find_compiler_lockfile", lambda config, env, **kwargs: tmp_path / "rocky10.lock", raising=False)
     assert cli._run_bootstrap(_bootstrap_args(tmp_path)) == 0
     assert not any(command[-1] == bootstrap_config for command in asked)

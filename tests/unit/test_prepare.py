@@ -49,6 +49,14 @@ class Spack:
         monkeypatch.setattr(_prepare, "configure_buildcaches", self.configure)
         monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: type("Result", (), {"probe_ok": True}))
         monkeypatch.setattr(_prepare.subprocess, "run", self.run)
+        # The build cache has no compiler lockfile; publishing one is recorded, not sent.
+        self.published = []
+        monkeypatch.setattr(_prepare, "find_compiler_lockfile", lambda config, env, **kwargs: None, raising=False)
+        monkeypatch.setattr(
+            _prepare, "publish_compiler_lockfile",
+            lambda resource, path, env, **kwargs: self.published.append((resource.name, path, kwargs)) or ("tag", True),
+            raising=False,
+        )
 
     def configure(self, config, **kwargs):
         self.caches = config.resources
@@ -480,7 +488,11 @@ def test_the_container_builds_with_the_probe_timeout_it_was_given():
 def test_prepare_installs_the_compiler_of_the_lockfile_of_the_platform(monkeypatch, tmp_path):
     Spack(monkeypatch)
     given = []
-    monkeypatch.setattr(_prepare, "toolchain_lockfile", lambda system: tmp_path / f"{system}.lock")
+    monkeypatch.setattr(_prepare, "toolchain_lockfile", lambda system: tmp_path / f"{system}.lock", raising=False)
+    monkeypatch.setattr(
+        _prepare, "find_compiler_lockfile", lambda config, env, **kwargs: tmp_path / f"{kwargs['operating_system']}.lock",
+        raising=False,
+    )
     monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: given.append(kwargs["lockfile"]) or type("Result", (), {"probe_ok": True}))
 
     run_here(tmp_path)
