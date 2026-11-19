@@ -10,7 +10,10 @@ import subprocess
 import sys
 
 from .auth import spack_resource_environment
-from .bootstrap import DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_PROBE_TIMEOUT, bootstrap, install_packages, require_target, use_external_package
+from .bootstrap import (
+    DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_PROBE_TIMEOUT, BootstrapInstance, bootstrap, install_packages, require_target,
+    use_external_package,
+)
 from .buildcache import buildcache_environment, buildcaches, check_buildcaches, configure_buildcaches, require_cache_access, update_index
 from .config import Config, load_config
 from .discovery import describe, detect_packages, find_compilers, load_detected, matching, registered_compilers, save_detected
@@ -18,8 +21,9 @@ from .paths import environments_path, repository_path, share_path, toolchain_loc
 from .prepare import pad_install_tree, prepare_here, prepare_in_container
 from .secrets import SecretStore
 from .isolation import (
-    activation_script, deactivation_script, describe_pinned_spack, layout, prepare_isolation, read_record, recorded_find,
-    resolve_real_spack, resolve_state_dir, spack_command, spack_env, store_credentials, write_record,
+    activation_script, deactivation_script, describe_pinned_spack, layout, prepare_bootstrap_instance, prepare_isolation,
+    read_record, recorded_find, resolve_real_spack, resolve_state_dir, spack_command, spack_env, store_credentials,
+    write_record,
 )
 from .sync import package_paths, sync_many
 from .validate import check_git_access, validate
@@ -296,6 +300,18 @@ def _spack_runtime(args: argparse.Namespace):
     env.update(spack_env(x))
     return x, real_spack, spack_command(x, real_spack), env
 
+def _bootstrap_instance(x, real_spack: Path, env) -> BootstrapInstance:
+    """The Spack instance that builds the first stage of the compiler of a state.
+
+    @param x: the layout of the state
+    @param real_spack: the pinned Spack executable
+    @param env: the environment of the actual instance
+    @return: the bootstrap instance, set up
+    """
+    command, bootstrap_env, b = prepare_bootstrap_instance(x, real_spack, env)
+    return BootstrapInstance(command=command, env=bootstrap_env, environment=b.environments / "compiler", store=b.store)
+
+
 def _probe_warning(result) -> str:
     if result.external:
         return f"warning: the probe is not compiled by the compiler in {result.external}"
@@ -318,7 +334,7 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
     compiler = args.compiler or (toolchain.compiler if toolchain else None)
     packages = list(args.packages) if args.packages else list(toolchain.packages if toolchain else ())
     target = args.target or (toolchain.target if toolchain else None)
-    x, _, command, env = _spack_runtime(args)
+    x, real_spack, command, env = _spack_runtime(args)
     # Without them Spack asks a private build cache anonymously, is refused,
     # and builds from source what the cache holds, saying only "no binary available".
     env = buildcache_environment(config, secrets, env)
@@ -372,6 +388,9 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
         environment=x.environments / "compiler",
         spack_config=x.config,
         lockfile=lockfile,
+        bootstrap_instance=_bootstrap_instance(x, real_spack, env),
+        # A machine takes the compiler of the lockfile from the caches, or stops: a build takes hours.
+        cache_only=True,
     )
     if args.dry_run:
         if result.external:
@@ -387,10 +406,12 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
         print("used as: an external of this machine")
     else:
         print(f"used as: the installed package /{(result.hash or '')[:7]}")
+        if result.first_stage is not None:
+            print(f"built: in two stages, by the first stage in {result.first_stage}")
         if result.lockfile is not None:
             print(f"concretized: by the lockfile of {system}, as the project build cache holds it")
         else:
-            print("concretized: on this machine, with its system compiler; the build cache holds it only for the same one")
+            print("concretized: on this machine; the build cache holds it only for a state in this directory")
     print(f"languages: {', '.join(result.languages)}")
     print(f"compiler probe ({result.probe}): {'ok' if result.probe_ok else _probe_warning(result)}")
     if not result.probe_ok:
@@ -580,12 +601,12 @@ def _run_buildcache(args: argparse.Namespace) -> int:
         if args.no_container:
             if args.platform == "all":
                 raise ValueError("--no-container builds for the platform it runs on; name it with --platform")
-            x, _, command, env = _spack_runtime(args)
+            x, real_spack, command, env = _spack_runtime(args)
             return prepare_here(
                 config, secrets, platform=args.platform, command=command, env=env,
                 work=x.environments / "toolchain", jobs=args.jobs,
                 padded_length=args.padded_length, spack_config=x.config, probe_timeout=args.probe_timeout or None,
-                concretize=args.concretize,
+                concretize=args.concretize, bootstrap_instance=_bootstrap_instance(x, real_spack, env),
             )
         state_dir = args.state_dir or Path(os.environ.get("SEANERSTACK_STATE_DIR", "~/.cache/seanerstack"))
         toolchain = config.toolchain

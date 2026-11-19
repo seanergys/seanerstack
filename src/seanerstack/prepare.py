@@ -26,7 +26,7 @@ import urllib.request
 import yaml
 
 from .auth import spack_resource_environment
-from .bootstrap import DEFAULT_PROBE_TIMEOUT, bootstrap, require_target
+from .bootstrap import DEFAULT_PROBE_TIMEOUT, BootstrapInstance, bootstrap, require_target
 from .buildcache import buildcaches, configure_buildcaches, update_index
 from .config import Config, Platform, Resource, Toolchain
 from .isolation import DEFAULT_STATE_DIR, clone_pinned_spack_commands
@@ -209,7 +209,7 @@ def pad_install_tree(spack_config: Path, length: int, *, command: list[str], env
 def prepare_here(
     config: Config, secrets: SecretStore, *, platform: str, command: list[str], env, work: Path, jobs: int | None = None,
     padded_length: int = 0, spack_config: Path | None = None, probe_timeout: float | None = DEFAULT_PROBE_TIMEOUT,
-    concretize: bool = False,
+    concretize: bool = False, bootstrap_instance: BootstrapInstance | None = None,
 ) -> int:
     """Build the toolchain in this operating system, which has to be `platform`, and push it.
 
@@ -218,7 +218,8 @@ def prepare_here(
     The compiler probe gets `probe_timeout` seconds, or any time with None.
     The compiler is the one of the shipped lockfile of the platform, so that
     the cache holds what every machine installs; with `concretize`, it is
-    concretized here, for a new lockfile.
+    concretized here, for a new lockfile. `bootstrap_instance` builds the
+    first stage of the compiler, where the compiler is built.
     """
     toolchain, target = _toolchain(config)
     wanted = toolchain.platform(platform)
@@ -260,6 +261,7 @@ def prepare_here(
         toolchain.compiler, command=command, env=env, environment=work.parent / "compiler", spack_config=spack_config,
         installed_compiler=push, probe_timeout=probe_timeout,
         lockfile=None if concretize else toolchain_lockfile(wanted.operating_system),
+        bootstrap_instance=bootstrap_instance,
     )
     print(f"compiler environment: {work.parent / 'compiler' / 'spack.lock'}")
     if not result.probe_ok:

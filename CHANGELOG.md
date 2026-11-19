@@ -9,6 +9,18 @@ and release process.
 
 ### Added
 
+- The compiler of the stack is built in two stages. The system compiler builds
+  a first GCC, for C and C++ only, in a Spack instance of its own below
+  `<state>/bootstrap`; the actual instance knows it only as an external at
+  `<state>/bootstrap/store/gcc-VERSION`, and it builds the compiler of the
+  stack with everything that compiler links against. On Fedora 44 and 45,
+  whose system GCC 16 is newer than the compiler, nothing concretized with a
+  compiler that GCC 16 had built: Spack's gcc recipe lets whatever gcc@15
+  compiles depend only on gcc@:15. The hash of the compiler no longer depends
+  on the system compiler, only on the state directory.
+- `toolchain bootstrap` takes the compiler of a shipped lockfile from the build
+  caches only (`spack install --cache-only`), and stops when they lack it
+  instead of building for hours; `--concretize` builds it on the machine.
 - Seanerstack ships the lockfile of the compiler environment for Rocky Linux
   10, and `toolchain bootstrap` and `buildcache prepare` install the compiler
   from it without concretizing. A machine with another system compiler, or
