@@ -130,6 +130,12 @@ and release process.
 
 ### Fixed
 
+- No registered compiler that the compiler spec matches builds the stack in
+  place of the installed compiler. On Ubuntu 26.04, whose only compiler is the
+  system gcc 15.2.0, `buildcache prepare` refused the compiler it had just
+  built: removed from the configuration, gcc 15.2.0 came back when Spack
+  registered the compilers on PATH again, and it satisfies `gcc@15`. The
+  concretizer now reuses every external but those.
 - `toolchain bootstrap` and `buildcache prepare` no longer stop at a compiler
   probe that never finishes. The compiler was required on the languages `c`,
   `cxx` and `fortran`, which Spack also applies to the compiler's own
