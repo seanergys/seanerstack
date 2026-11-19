@@ -35,6 +35,8 @@ def _init_args(tmp_path: Path, **overrides) -> "cli.argparse.Namespace":
         probe_timeout=300.0,
         force=False,
         concretize=False,
+        # What the machine allows, as without --jobs.
+        jobs=None,
         external=None,
         skip_buildcache_check=False,
         skip_validate=False,
