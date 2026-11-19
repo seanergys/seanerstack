@@ -568,3 +568,15 @@ def test_an_installed_compiler_needs_no_first_stage(monkeypatch, tmp_path):
     assert not any(step.startswith("bootstrap: ") for step in _where(calls))
     assert "actual: compiler remove -a gcc" not in _where(calls)
     assert (result.first_stage, result.probe_ok) == (None, True)
+
+
+def test_installing_the_compiler_needs_the_bootstrap_instance(monkeypatch, tmp_path):
+    calls, state = _toolchain_spack(monkeypatch, tmp_path)
+    del state["bootstrap_instance"]
+    with pytest.raises(ValueError, match="needs the bootstrap instance"):
+        bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", **state)
+    assert calls == []
+    # An installed compiler needs none.
+    calls, state = _toolchain_spack(monkeypatch, tmp_path / "installed", installed=True)
+    del state["bootstrap_instance"]
+    assert bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", **state).probe_ok
