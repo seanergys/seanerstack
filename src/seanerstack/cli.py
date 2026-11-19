@@ -11,18 +11,18 @@ import sys
 
 from .auth import spack_resource_environment
 from .bootstrap import (
-    DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_PROBE_TIMEOUT, BootstrapInstance, bootstrap, install_packages, require_target,
-    use_external_package,
+    DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_PROBE_TIMEOUT, BootstrapInstance, bootstrap, install_packages, lockfile_for,
+    require_target, use_external_package,
 )
 from .buildcache import (
     bootstrap_buildcache, buildcache_environment, buildcaches, check_buildcaches, configure_buildcache, configure_buildcaches,
-    require_cache_access, update_index,
+    push_installed, require_cache_access, update_index,
 )
 from .config import Config, load_config
 from .discovery import (
     describe, detect_packages, find_compilers, load_detected, matching, registered_compilers, save_detected, search_directories,
 )
-from .lockfile import find_compiler_lockfile
+from .lockfile import find_compiler_lockfile, publish_compiler_lockfile
 from .paths import environments_path, repository_path, share_path
 from .prepare import pad_install_tree, prepare_here, prepare_in_container
 from .secrets import SecretStore
@@ -132,6 +132,18 @@ def build_parser() -> argparse.ArgumentParser:
         "such as rust; repeat as needed. Its hashes then match nothing in the project build cache",
     )
     bootstrap_parser.add_argument("--dry-run", action="store_true", help="show the intended operation without changing Spack configuration")
+
+    toolchain_sub.add_parser(
+        "publish",
+        help="Publish the first stage of the compiler and the compiler lockfile in the build caches.",
+        description=(
+            "Push what the bootstrap instance of the state holds, the first stage of the compiler, to the bootstrap "
+            "cache of [toolchain], and publish the lockfile of the compiler environment under its tag in the build "
+            "cache of [toolchain], unless the cache has that tag already. Run it after toolchain bootstrap, once the "
+            "compiler itself is in the build cache: every machine installs the binaries that the lockfile names "
+            "from there. buildcache prepare does both by itself."
+        ),
+    )
 
     validate_parser = subparsers.add_parser(
         "validate",
@@ -344,6 +356,45 @@ def _only(found: list, wanted: str, option: str, kind: str, among: list) -> obje
     listed = "\n".join(f"  {line}" for line in describe(among)) or "  none"
     problem = "matches more than one" if found else "matches none"
     raise ValueError(f"{option} {wanted} {problem} of the {kind} that init found; run init again to look again:\n{listed}")
+
+
+def _run_publish(args: argparse.Namespace) -> int:
+    """Publish the first stage of the compiler and the compiler lockfile of the state.
+
+    @param args: the parsed command line
+    @return: the exit status
+    """
+    config, secrets = _runtime(args)
+    toolchain = config.toolchain
+    if toolchain is None:
+        raise ValueError(f"{config.path}: [toolchain] is missing")
+    x, real_spack, command, env = _spack_runtime(args)
+    env = buildcache_environment(config, secrets, env)
+
+    cache = bootstrap_buildcache(config)
+    if cache is None:
+        print("first stage: config.toml names no bootstrap cache")
+    else:
+        instance = _bootstrap_instance(x, real_spack, env, config, toolchain.target)
+        count = push_installed(cache, command=instance.command, env=instance.env)
+        print(f"first stage: {count} specs of the bootstrap instance in {cache.url}" if count else "first stage: the bootstrap instance holds nothing")
+
+    path = x.environments / "compiler" / "spack.lock"
+    lockfile = lockfile_for(path if path.is_file() else None, toolchain.compiler)
+    target = config.resources.get(toolchain.cache)
+    if lockfile is None:
+        print(f"compiler lockfile: none, the compiler environment holds no {toolchain.compiler} of two stages")
+    elif target is None or not target.oci:
+        print(f"compiler lockfile: none, the build cache {toolchain.cache} is not in a registry")
+    else:
+        system = subprocess.run(
+            [*command, "arch", "--operating-system"], check=True, capture_output=True, text=True, env=env
+        ).stdout.strip()
+        tag, stored = publish_compiler_lockfile(
+            target, lockfile, env, compiler=toolchain.compiler, target=toolchain.target, operating_system=system,
+        )
+        print(f"compiler lockfile: {tag} in {target.url}" + ("" if stored else ", there already and left as it is"))
+    return 0
 
 
 def _run_bootstrap(args: argparse.Namespace) -> int:
@@ -662,6 +713,8 @@ def main(argv: list[str] | None = None) -> None:
             code = _run_package_update(args)
         elif args.command == "toolchain" and args.toolchain_command == "bootstrap":
             code = _run_bootstrap(args)
+        elif args.command == "toolchain" and args.toolchain_command == "publish":
+            code = _run_publish(args)
         elif args.command == "validate":
             code = _run_validate(args)
         elif args.command == "paths":

@@ -37,6 +37,10 @@ and release process.
   holds, whatever its system compiler and state directory. Seanerstack reads
   and writes the tag itself, over the registry's HTTP API. No lockfile is in
   the source tree.
+- `seanerstack toolchain publish` pushes the first stage of the compiler to the
+  bootstrap cache and publishes the compiler lockfile in the build cache,
+  unless the cache has its tag, as `buildcache prepare` does by itself. It runs
+  after `toolchain bootstrap`, once the compiler is in the build cache.
 - `toolchain bootstrap` takes the compiler of that lockfile from the build
   caches only (`spack install --cache-only`), and stops when they lack it
   instead of building for hours. Without a lockfile in the cache, or with
