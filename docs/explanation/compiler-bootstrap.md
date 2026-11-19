@@ -128,6 +128,22 @@ After the requirements, the probe checks that its compiler is that external too.
 
 An external compiler changes the hash of everything built with it, so a stack built with the GCC of `/usr` shares no binaries with one built with the Spack-installed gcc@15. `seanerstack buildcache prepare` keeps building its compiler for that reason: the project build cache is for machines bootstrapped the normal way, and an external compiler suits a workstation or a CI job that does not push to it.
 
+## Why the compiler is installed from a lockfile
+
+The compiler is built by the system compiler, which Spack knows as an external. The hash of an external holds its version and the languages it offers, and the hash of the compiler holds the hash of what built it. Two machines of the same platform therefore concretize the compiler to different hashes when one has a newer system compiler, or lacks `gfortran`. The second finds nothing in the build cache, and Spack builds the compiler from source without saying why.
+
+Seanerstack therefore ships the concretized compiler environment of a platform as a lockfile, `share/seanerstack/toolchain/<operating system>/spack.lock`. `toolchain bootstrap` and `buildcache prepare` copy it into the compiler environment and install exactly its specs, without concretizing. The machine that fills the cache and every machine that reads it install the same compiler, whatever their system compiler is. `bootstrap` prints which happened:
+
+```text
+concretized: by the lockfile of rocky10, as the project build cache holds it
+```
+
+A lockfile exists for Rocky Linux 10. On the other platforms, with `--source-compiler`, or with a `--compiler` other than the one of the lockfile, the compiler is concretized on the machine as before, and `bootstrap` says so. `--concretize` asks for that on purpose.
+
+The lockfile changes only through a commit. A newer system compiler in the image of a platform no longer changes the hash of the compiler, and with it of the whole stack. After a change of the pinned Spack, the recipes or the compiler of `[toolchain]`, the lockfile is made again: see [Renew the lockfile of the compiler](../how-to/use-the-build-cache.md#renew-the-lockfile-of-the-compiler).
+
+When the cache does not hold a compiler of the lockfile, Spack builds it from the lockfile with the system compiler of the machine. The hash then names the system compiler that the lockfile was made with, and not the one that built it.
+
 ## Why the compiler is built even when the system has one
 
 The system compiler is registered as an external before the build, because building the new compiler needs a C compiler. An external that satisfies the requested spec would then be taken instead of a build: on Ubuntu 26.04, whose system GCC is 15.2.0, `spack install gcc@15` installs nothing. Seanerstack therefore installs `gcc@15 %c`. An external is a leaf without dependencies, so asking for a C compiler as a dependency rules it out, while the system compiler can still be that C compiler. The compiler is built whatever version the system has, the same version included.

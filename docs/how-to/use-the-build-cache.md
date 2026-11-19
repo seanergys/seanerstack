@@ -99,6 +99,18 @@ package_manager = "dnf"
 
 `operating_system` is what `spack arch --operating-system` prints in that image. `package_manager` is `dnf`, `apt` or `pacman`, and chooses the system packages of `[toolchain.system_packages]` that the image gets before Spack runs. A platform can add its own with `system_packages`, and name another Python with `python`, as Rocky 9 does for Python 3.12. Seanerstack and Spack both run with that Python in the image. Fedora 45 names Python 3.14, because Spack 1.2.2 has a ready-made clingo, its solver, for Python up to 3.14, and builds it from source for the Python 3.15 that Fedora 45 has as `python3`.
 
+### Renew the lockfile of the compiler
+
+`toolchain bootstrap` and `buildcache prepare` install the compiler of the lockfile that Seanerstack ships for the platform, `data/share/seanerstack/toolchain/<operating system>/spack.lock`, so the cache holds what every machine installs ([why](../explanation/compiler-bootstrap.md#why-the-compiler-is-installed-from-a-lockfile)). After a change of the pinned Spack, of the recipes that the compiler depends on, or of the compiler of `[toolchain]`, concretize it again in the image of the platform:
+
+```console
+seanerstack --secrets-file credentials.toml buildcache prepare --platform rocky10 --concretize
+```
+
+It prints the lockfile of the compiler environment it built, below the state directory in `buildcache-prepare/rocky10/spack/environments/compiler/spack.lock`. Copy that file over the shipped one and commit it. The operating system in the path is the name that `spack arch --operating-system` prints in the image, the `operating_system` of the platform.
+
+A platform without a lockfile concretizes the compiler on each machine. Its cache then matches only machines with the same system compiler, with `gfortran` installed.
+
 ### Build binaries that install into any directory
 
 Spack rewrites the install prefix inside a binary only into a path that is no longer than the one it was built in. Built below `/opt/seanergys/state`, binaries install only below a path of that length or shorter. `--padded-length` builds below a prefix padded to that many characters, so the binaries install into any shorter path, such as a state directory of the user's choice:

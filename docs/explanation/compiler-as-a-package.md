@@ -140,6 +140,19 @@ The concretizer may reuse everything in the compiler environment, not only the c
 
 The hashes are still the same on every machine of a platform, because the compiler's tree is. "Compiled by gcc 15" holds for every new package, and not for these libraries.
 
+Spack can be told to reuse the compiler alone:
+
+```yaml
+concretizer:
+  reuse:
+    from:
+    - type: environment
+      path: /opt/seanergys/state/spack/environments/compiler
+      include: ["gcc@15"]
+```
+
+`rust` then has 37 new packages in place of 21, all compiled by gcc 15.3.0, and builds its own `ncurses`, `readline`, `xz`, `bzip2`, `gettext` and `gmake`. Only `zlib-ng` and `zstd` are still the ones of the compiler's tree, which gcc itself links against. Seanerstack does not do this yet: it changes every hash of the stack, and is a decision of its own.
+
 ## The system compiler still decides the compiler's hash
 
 The compiler is built by the system compiler, which is an external, and an external is hashed with the languages it offers. A machine without `gfortran` registers the system GCC with C and C++ only, concretizes the project compiler to another hash, and finds nothing in the build cache. Spack then builds the compiler from source without saying why.
@@ -156,7 +169,9 @@ gcc -> binutils -> diffutils -> gcc  local /i7yr4sl  cached /7jn7qej
         cached: ['c', 'c++', 'fortran']
 ```
 
-The same holds for a system compiler of another version. A machine that installed the compiler from a lockfile of its platform would not concretize it at all, and would not depend on its system compiler. In a test with Spack 1.2.2, a state whose system GCC lacked Fortran concretized the compiler to another hash by itself, and installed the dependencies of the cached compiler from the lockfile of the platform without concretizing. Seanerstack does not ship such lockfiles yet.
+The same holds for a system compiler of another version. A machine that installs the compiler from a lockfile of its platform does not concretize it at all, and does not depend on its system compiler. In a test with Spack 1.2.2, a state whose system GCC lacked Fortran concretized the compiler to `/cmawlu4` by itself, and installed the compiler of the cache, `/awyc5sy`, from the lockfile, with a probe that passed.
+
+Seanerstack therefore ships the lockfile of the compiler environment for Rocky Linux 10 and installs from it: see [Why the compiler is installed from a lockfile](compiler-bootstrap.md#why-the-compiler-is-installed-from-a-lockfile). The test used installations without content, so the last step of a real installation from the cache, in which the recipe of gcc looks at the installed compiler, was not exercised.
 
 ## Known problems of Spack that were not met here
 
@@ -175,6 +190,7 @@ Rocky Linux 10 is not affected, because its system compiler is older than gcc 15
 - A probe that runs out of time reports what Spack printed until then, and how to tell a slow solve from a requirement without a solution.
 - `seanerstack buildcache prepare` takes `--probe-timeout`, as `init` and `toolchain bootstrap` do.
 - `seanerstack buildcache prepare` pushes the compiler and updates the index of the cache as soon as the compiler is built, before the probe. A failure afterwards no longer costs the build of the compiler again.
+- `toolchain bootstrap` and `buildcache prepare` install the compiler from the lockfile that Seanerstack ships for the platform, where there is one.
 
 ## How to look into a concretization that does not finish
 
@@ -190,6 +206,6 @@ These steps found the causes above, and apply to the next one.
 ## Open
 
 - The reuse of the compiler on the platforms with a system gcc 16.
-- Lockfiles of the compiler environment per platform, so that a machine installs the compiler of the cache whatever its system compiler is.
+- Lockfiles of the compiler environment for the platforms other than Rocky Linux 10.
 - A report to Spack about the condition `%cxx`.
-- Whether the libraries of the compiler's tree should be reused by the stack, or built again by gcc 15.
+- Whether the stack should reuse the compiler alone, and build the libraries of the compiler's tree again with gcc 15.

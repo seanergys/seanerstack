@@ -9,6 +9,12 @@ and release process.
 
 ### Added
 
+- Seanerstack ships the lockfile of the compiler environment for Rocky Linux
+  10, and `toolchain bootstrap` and `buildcache prepare` install the compiler
+  from it without concretizing. A machine with another system compiler, or
+  without `gfortran`, then installs the compiler that the build cache holds
+  and no longer builds its own. `--concretize` concretizes on the machine, for
+  a new lockfile. The other platforms concretize as before.
 - `seanerstack buildcache prepare --probe-timeout SECONDS` sets how long the
   compiler probe may take, as `init` and `toolchain bootstrap` already do; 0
   waits indefinitely. In a container, the build inside gets the same limit.
