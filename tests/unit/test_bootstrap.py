@@ -420,3 +420,174 @@ def test_bootstrap_needs_the_state_it_installs_into(monkeypatch):
     _fake_spack(monkeypatch)
     with pytest.raises(ValueError, match="compiler environment and the Spack configuration"):
         bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", command=COMMAND, env=ENV)
+
+
+BOOTSTRAP_COMMAND = ["/opt/spack/bin/spack", "-C", "/state/bootstrap/config"]
+FIRST = "fffffffffffffffffffffffffffffff1"
+
+
+def _two_stage_spack(monkeypatch, state, *, earlier_first=None, cache_holds=True, installed=False):
+    """Stand in for Spack with a compiler environment and a bootstrap instance below `state`."""
+    calls, kwargs = _toolchain_spack(monkeypatch, state, installed=installed)
+    instance = bootstrap_module.BootstrapInstance(
+        command=BOOTSTRAP_COMMAND, env={"SPACK_USER_CONFIG_PATH": "/state/bootstrap/config"},
+        environment=state / "bootstrap" / "environments" / "compiler", store=state / "bootstrap" / "store",
+    )
+    run, streaming = bootstrap_module._run, bootstrap_module._run_streaming
+
+    def fake_run(args, *, check=True, env=None, timeout=None):
+        if args[: len(BOOTSTRAP_COMMAND)] != BOOTSTRAP_COMMAND:
+            return run(args, check=check, env=env, timeout=timeout)
+        calls.append(args)
+        output = ""
+        if args[-3:-1] == ["find", "--json"]:
+            output = json.dumps([{"hash": earlier_first}] if earlier_first else [])
+        elif "location" in args:
+            output = f"{instance.store}/gcc-15.3.0\n"
+        return subprocess.CompletedProcess(args, 0, output, "")
+
+    def fake_run_streaming(args, *, env=None):
+        if args[: len(BOOTSTRAP_COMMAND)] == BOOTSTRAP_COMMAND:
+            calls.append(args)
+            if args[-2:] == ["concretize", "--force"]:
+                (instance.environment / "spack.lock").write_text(json.dumps({"roots": [{"hash": FIRST}]}))
+            return
+        if "--cache-only" in args and not cache_holds:
+            calls.append(args)
+            raise subprocess.CalledProcessError(1, args)
+        streaming(args, env=env)
+
+    monkeypatch.setattr(bootstrap_module, "_run", fake_run)
+    monkeypatch.setattr(bootstrap_module, "_run_streaming", fake_run_streaming)
+    return calls, {**kwargs, "bootstrap_instance": instance}
+
+
+def _where(calls):
+    """The steps of `_steps`, each with the instance it ran in: bootstrap or actual."""
+    return [("bootstrap: " if call[: len(BOOTSTRAP_COMMAND)] == BOOTSTRAP_COMMAND else "actual: ") + step for call, step in zip(calls, _steps(calls))]
+
+
+def _manifest(environment):
+    return yaml.safe_load((environment / "spack.yaml").read_text())["spack"]["specs"]
+
+
+def test_the_first_stage_is_built_in_the_bootstrap_instance_for_c_and_cxx_only(monkeypatch, tmp_path):
+    calls, state = _two_stage_spack(monkeypatch, tmp_path)
+
+    bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", **state)
+
+    # Only what building the compiler needs, without GCC's own bootstrap: much quicker than a full GCC.
+    assert _manifest(state["bootstrap_instance"].environment) == ["gcc@15 languages:=c,c++ ~bootstrap ~binutils %c"]
+    steps = _where(calls)
+    assert steps.index("bootstrap: compiler find") < steps.index("bootstrap: concretize --force") < steps.index("bootstrap: install")
+
+
+def test_the_source_compiler_builds_the_first_stage(monkeypatch, tmp_path):
+    _, state = _two_stage_spack(monkeypatch, tmp_path)
+    bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", source_compiler="gcc@14.2.1", **state)
+    assert _manifest(state["bootstrap_instance"].environment) == ["gcc@15 languages:=c,c++ ~bootstrap ~binutils %c,cxx=gcc@14.2.1"]
+
+
+def test_the_first_stage_is_the_only_gcc_that_builds_the_compiler(monkeypatch, tmp_path):
+    calls, state = _two_stage_spack(monkeypatch, tmp_path)
+
+    result = bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", **state)
+
+    prefix = f"{state['bootstrap_instance'].store}/gcc-15.3.0"
+    assert _manifest(state["environment"]) == ["gcc@15 %c,cxx=gcc@15"]
+    steps = _where(calls)
+    # The system gcc would record itself in the compiler environment.
+    assert steps.index("bootstrap: install") < steps.index("actual: compiler remove -a gcc")
+    assert steps.index("actual: compiler remove -a gcc") < steps.index(f"actual: compiler find {prefix}")
+    assert steps.index(f"actual: compiler find {prefix}") < steps.index("actual: concretize --force") < steps.index("actual: install")
+    assert (result.first_stage, result.hash, result.probe_ok) == (prefix, HASH, True)
+
+
+def test_the_system_compilers_come_back_once_the_compiler_is_built(monkeypatch, tmp_path):
+    calls, state = _two_stage_spack(monkeypatch, tmp_path)
+
+    bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", **state)
+
+    steps = _where(calls)
+    after = steps[steps.index("actual: install"):]
+    # The first stage leaves; what the system has comes back, without a gcc 15 that the rule would accept.
+    assert after.index("actual: compiler remove -a gcc") < after.index("actual: compiler find")
+    assert after.index("actual: compiler find") < after.index("actual: compiler remove -a gcc@15") < after.index("actual: require gcc@15")
+
+
+def test_a_first_stage_of_another_system_compiler_leaves_its_path(monkeypatch, tmp_path):
+    for earlier, uninstalled in (("0lderfirst", True), (FIRST, False)):
+        calls, state = _two_stage_spack(monkeypatch, tmp_path / earlier, earlier_first=earlier)
+        bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", **state)
+        steps = _where(calls)
+        assert (f"bootstrap: uninstall --yes-to-all /{earlier}" in steps) is uninstalled
+        if uninstalled:
+            assert steps.index(f"bootstrap: uninstall --yes-to-all /{earlier}") < steps.index("bootstrap: install")
+
+
+def _two_stage_lockfile(path, first_stage):
+    path.write_text(json.dumps({
+        "roots": [{"hash": HASH, "spec": "gcc@15 %c,cxx=gcc@15"}],
+        "concrete_specs": {HASH: {"name": "gcc"}, FIRST: {"name": "gcc", "external": {"path": str(first_stage)}}},
+    }))
+    return path
+
+
+def test_the_compiler_of_a_lockfile_comes_from_the_caches_without_a_first_stage(monkeypatch, tmp_path):
+    calls, state = _two_stage_spack(monkeypatch, tmp_path)
+    lockfile = _two_stage_lockfile(tmp_path / "rocky10.lock", "/ci/state/bootstrap/store/gcc-15.3.0")
+
+    result = bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", lockfile=lockfile, cache_only=True, **state)
+
+    steps = _where(calls)
+    assert "actual: install --cache-only" in steps and "actual: concretize --force" not in steps
+    assert not any(step.startswith("bootstrap: ") for step in steps)
+    assert (state["environment"] / "spack.lock").read_text() == lockfile.read_text()
+    assert (result.lockfile, result.first_stage, result.probe_ok) == (lockfile, None, True)
+
+
+def test_a_compiler_that_the_caches_lack_is_not_built_with_cache_only(monkeypatch, tmp_path):
+    calls, state = _two_stage_spack(monkeypatch, tmp_path, cache_holds=False)
+    lockfile = _two_stage_lockfile(tmp_path / "rocky10.lock", "/ci/state/bootstrap/store/gcc-15.3.0")
+
+    with pytest.raises(RuntimeError, match="do not hold the compiler of the lockfile .* --concretize builds"):
+        bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", lockfile=lockfile, cache_only=True, **state)
+
+    assert not any(step.startswith("bootstrap: ") for step in _where(calls))
+
+
+def test_a_compiler_that_the_caches_lack_is_built_from_the_lockfile_in_its_state(monkeypatch, tmp_path):
+    calls, state = _two_stage_spack(monkeypatch, tmp_path, cache_holds=False)
+    lockfile = _two_stage_lockfile(tmp_path / "rocky10.lock", state["bootstrap_instance"].store / "gcc-15.3.0")
+
+    result = bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", lockfile=lockfile, **state)
+
+    steps = _where(calls)
+    assert steps.index("actual: install --cache-only") < steps.index("bootstrap: install") < steps.index("actual: install")
+    assert "actual: concretize --force" not in steps
+    assert result.first_stage == f"{state['bootstrap_instance'].store}/gcc-15.3.0"
+
+
+def test_a_lockfile_of_another_state_directory_is_not_built_from(monkeypatch, tmp_path):
+    # The lockfile names the first stage by its path, which another state does not have.
+    calls, state = _two_stage_spack(monkeypatch, tmp_path, cache_holds=False)
+    lockfile = _two_stage_lockfile(tmp_path / "rocky10.lock", "/ci/state/bootstrap/store/gcc-15.3.0")
+
+    with pytest.raises(RuntimeError, match="records the first stage in /ci/state/bootstrap/store/gcc-15.3.0"):
+        bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", lockfile=lockfile, **state)
+
+    assert "bootstrap: install" not in _where(calls)
+
+
+def test_a_lockfile_of_two_stages_is_one_for_the_compiler(tmp_path):
+    lockfile = _two_stage_lockfile(tmp_path / "rocky10.lock", "/ci/state/bootstrap/store/gcc-15.3.0")
+    assert bootstrap_module.lockfile_for(lockfile, "gcc@15") == lockfile
+    assert bootstrap_module.lockfile_for(lockfile, "gcc@16") is None
+
+
+def test_an_installed_compiler_needs_no_first_stage(monkeypatch, tmp_path):
+    calls, state = _two_stage_spack(monkeypatch, tmp_path, installed=True)
+    result = bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", **state)
+    assert not any(step.startswith("bootstrap: ") for step in _where(calls))
+    assert "actual: compiler remove -a gcc" not in _where(calls)
+    assert (result.first_stage, result.probe_ok) == (None, True)
