@@ -258,6 +258,18 @@ def _second_stage_root(compiler: str) -> str:
     return f"{compiler} %c,cxx={compiler}"
 
 
+def stage_roots(compiler: str) -> tuple[str, str]:
+    """The root specs of the two stages of a compiler, as bootstrap installs them.
+
+    They are part of what decides the hash of the compiler, with the pins of
+    Spack and its recipes.
+
+    @param compiler: the compiler spec, such as gcc@15
+    @return: the root of the first stage, built by Spack's choice, and of the second
+    """
+    return _first_stage_root(compiler), _second_stage_root(compiler)
+
+
 def lockfile_for(lockfile: Path | None, compiler: str) -> Path | None:
     """`lockfile` when it holds the compiler environment of COMPILER, and None otherwise.
 
