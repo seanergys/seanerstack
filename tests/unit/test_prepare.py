@@ -490,6 +490,19 @@ def test_prepare_installs_the_compiler_of_the_lockfile_of_the_platform(monkeypat
     assert given == [tmp_path / "rocky10.lock", None]
 
 
+def test_prepare_hands_the_bootstrap_instance_to_bootstrap(monkeypatch, tmp_path):
+    # Where the caches lack the compiler, prepare builds it, in two stages.
+    Spack(monkeypatch)
+    given = []
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: given.append(kwargs) or type("Result", (), {"probe_ok": True}))
+    instance = object()
+
+    run_here(tmp_path, bootstrap_instance=instance)
+
+    assert given[0]["bootstrap_instance"] is instance
+    assert given[0].get("cache_only", False) is False
+
+
 def test_the_container_concretizes_when_told_to():
     script = lambda **extra: _prepare.container_script(ROCKY10, jobs=1, source=False, uid=0, gid=0, version="1", **extra)
     assert "--concretize" not in script()

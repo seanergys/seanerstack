@@ -303,6 +303,30 @@ def test_bootstrap_installs_the_compiler_of_the_lockfile_for_this_operating_syst
     assert given == [tmp_path / "rocky10.lock", None]
 
 
+def test_bootstrap_builds_the_compiler_in_two_stages_and_takes_a_locked_one_from_the_caches_only(monkeypatch, tmp_path: Path, capsys):
+    _bootstrap_world(monkeypatch, tmp_path)
+    given = []
+
+    def fake_bootstrap(compiler, **kwargs):
+        given.append(kwargs)
+        return BootstrapResult(
+            compiler=compiler, installed=True, registered=False, languages=("c",), probe="zlib", probe_ok=True,
+            hash="abcdefabcdef", first_stage="/state/bootstrap/store/gcc-15.3.0",
+        )
+
+    monkeypatch.setattr(cli, "bootstrap", fake_bootstrap)
+
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path)) == 0
+
+    instance = given[0]["bootstrap_instance"]
+    bootstrap = tmp_path / "state" / "bootstrap"
+    assert instance.command[-2:] == ["-C", str(bootstrap / "config")]
+    assert (instance.environment, instance.store) == (bootstrap / "environments" / "compiler", bootstrap / "store")
+    # A build of the compiler takes hours; a machine takes the locked one from the caches or stops.
+    assert given[0]["cache_only"] is True
+    assert "built: in two stages, by the first stage in /state/bootstrap/store/gcc-15.3.0" in capsys.readouterr().out
+
+
 def test_bootstrap_concretizes_where_no_lockfile_is_shipped(monkeypatch, tmp_path: Path):
     _bootstrap_world(monkeypatch, tmp_path, system="debian13")
     given = []
@@ -460,3 +484,19 @@ def test_init_pads_the_state_only_when_told_to(monkeypatch, tmp_path: Path):
     assert padded == [(x.config, 256), (x.config, 0)]
     assert build_parser().parse_args(["init", "--padded-length", "256"]).padded_length == 256
     assert build_parser().parse_args(["init"]).padded_length is None
+
+
+def test_prepare_without_a_container_builds_with_the_bootstrap_instance_of_the_state(monkeypatch, tmp_path: Path):
+    import seanerstack.isolation
+    x = seanerstack.isolation.prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    monkeypatch.setattr(cli, "_runtime", lambda args: (Config(path=tmp_path / "config.toml", resources={}), None))
+    monkeypatch.setattr(cli, "_spack_runtime", lambda args: (x, tmp_path / "spack", ["spack"], {}))
+    given = []
+    monkeypatch.setattr(cli, "prepare_here", lambda config, secrets, **kwargs: given.append(kwargs) or 0)
+
+    args = build_parser().parse_args(["buildcache", "prepare", "--no-container", "--platform", "rocky10"])
+    assert cli._run_buildcache(args) == 0
+
+    instance = given[0]["bootstrap_instance"]
+    assert instance.command == [str(tmp_path / "spack"), "-C", str(x.state / "bootstrap" / "config")]
+    assert instance.store == x.state / "bootstrap" / "store"
