@@ -245,8 +245,12 @@ build:rocky10:
     - spack env create --without-view -d "$ENVIRONMENT"
     - spack -e "$ENVIRONMENT" add seanergys-meta
     - spack -e "$ENVIRONMENT" concretize
-    # Push what was built even when another package failed.
-    - status=0; spack -e "$ENVIRONMENT" install || status=$?
+    # Push what was built even when another package failed. With the jobs the
+    # runner allows, within the limits of the container: Spack takes 16.
+    - >-
+      status=0; spack -e "$ENVIRONMENT" install
+      --jobs "$(python -c 'import seanerstack.jobs; print(seanerstack.jobs.default_jobs())')"
+      || status=$?
     - spack buildcache push --only package seanerstack-buildcache $(spack find --format '/{hash}')
     - seanerstack buildcache update-index
     # After the compiler is in the build cache: the lockfile names its binaries.
