@@ -370,6 +370,43 @@ def test_bootstrap_concretizes_when_a_source_compiler_builds_the_compiler(monkey
     assert result.lockfile is None
 
 
+def test_the_compiler_is_concretized_as_a_new_state_concretizes_it(monkeypatch, tmp_path):
+    # With the rule in place and the earlier compiler reusable, the same spec gives another compiler.
+    calls, state = _toolchain_spack(monkeypatch, tmp_path, installed=True)
+    config = state["spack_config"]
+    bootstrap_module.require_target(config, "x86_64_v3")
+    bootstrap_module._require_compiler_where_used(config, ("c",), "gcc@15")
+    bootstrap_module._reuse_environment(config, state["environment"], "gcc@15")
+    seen = {}
+    streaming = bootstrap_module._run_streaming
+
+    def concretize(args, *, env=None):
+        if args[-2:] == ["concretize", "--force"]:
+            seen["packages"] = _packages(config)
+            seen["concretizer"] = yaml.safe_load((config / "concretizer.yaml").read_text())
+        streaming(args, env=env)
+
+    monkeypatch.setattr(bootstrap_module, "_run_streaming", concretize)
+
+    bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", force=True, **state)
+
+    assert seen == {"packages": {"all": {"require": ["target=x86_64_v3"]}}, "concretizer": {"concretizer": {"reuse": False}}}
+    # Both are back once the compiler is installed.
+    assert _packages(config)["all"]["require"] == ["target=x86_64_v3", _rule("c")]
+    assert "reuse" in yaml.safe_load((config / "concretizer.yaml").read_text())["concretizer"]
+
+
+def test_a_lockfile_is_installed_with_the_configuration_as_it_is(monkeypatch, tmp_path):
+    # Nothing is concretized, so nothing has to be taken out first.
+    calls, state = _toolchain_spack(monkeypatch, tmp_path)
+    taken_out = []
+    monkeypatch.setattr(bootstrap_module, "_concretize_as_a_new_state_does", lambda spack_config: taken_out.append(spack_config))
+
+    bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", lockfile=_lockfile(tmp_path / "rocky10.lock"), **state)
+
+    assert taken_out == []
+
+
 def test_bootstrap_dry_run_changes_nothing(monkeypatch, tmp_path):
     calls, state = _toolchain_spack(monkeypatch, tmp_path)
 
