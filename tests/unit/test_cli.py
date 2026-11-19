@@ -587,3 +587,61 @@ def test_bootstrap_with_a_config_of_no_resources_has_no_bootstrap_cache(monkeypa
 
     assert config.toolchain.bootstrap_cache == "seanerstack-buildcache-bootstrap" and configured == []
     assert instance.target == "x86_64_v3"
+
+
+def _publish_world(monkeypatch, tmp_path: Path, *, bootstrap_cache=True, compiler_lock=True):
+    """init's world with a bootstrap cache and a compiler environment, recording what publish sends."""
+    import json
+    from seanerstack.config import Resource, Toolchain
+    x, _ = _init_world(monkeypatch, tmp_path)
+    cache = Resource(name="cache", kind="spack-buildcache", url="oci://registry.example.org/cache", credentials="registry", signed=False)
+    boot = Resource(name="boot", kind="spack-buildcache", url="oci://registry.example.org/cache-bootstrap", credentials="registry", signed=False)
+    toolchain = Toolchain(
+        compiler="gcc@15", packages=(), cache="cache", target="x86_64_v3", platforms={},
+        bootstrap_cache="boot" if bootstrap_cache else None,
+    )
+    monkeypatch.setattr(cli, "load_config", lambda path: Config(path=tmp_path / "config.toml", resources={"cache": cache, "boot": boot}, toolchain=toolchain))
+    sent = []
+    monkeypatch.setattr(cli, "configure_buildcache", lambda resource, **kwargs: None)
+    monkeypatch.setattr(cli, "push_installed", lambda resource, *, command, env: sent.append(("push", resource.name, command)) or 3)
+    monkeypatch.setattr(
+        cli, "publish_compiler_lockfile",
+        lambda resource, path, env, **kwargs: sent.append(("lockfile", resource.name, path, kwargs)) or ("compiler-tag", True),
+    )
+    if compiler_lock:
+        environment = x.environments / "compiler"
+        environment.mkdir(parents=True)
+        (environment / "spack.lock").write_text(json.dumps({"roots": [{"hash": "abc", "spec": "gcc@15 %c,cxx=gcc@15"}]}))
+    return x, sent
+
+
+def test_publish_pushes_the_first_stage_and_publishes_the_compiler_lockfile(monkeypatch, tmp_path: Path, capsys):
+    x, sent = _publish_world(monkeypatch, tmp_path)
+
+    assert cli._run_publish(_init_args(tmp_path)) == 0
+
+    push, lock = sent
+    assert push[:2] == ("push", "boot") and push[2][-2:] == ["-C", str(x.state / "bootstrap" / "config")]
+    assert lock[:3] == ("lockfile", "cache", x.environments / "compiler" / "spack.lock")
+    # `spack arch --operating-system` of the stand-in answers rocky10.
+    assert lock[3] == {"compiler": "gcc@15", "target": "x86_64_v3", "operating_system": "rocky10"}
+    out = capsys.readouterr().out
+    assert "first stage: 3 specs of the bootstrap instance in oci://registry.example.org/cache-bootstrap" in out
+    assert "compiler lockfile: compiler-tag in oci://registry.example.org/cache" in out
+
+
+def test_publish_leaves_out_what_the_state_or_the_config_does_not_have(monkeypatch, tmp_path: Path, capsys):
+    _, sent = _publish_world(monkeypatch, tmp_path / "a", bootstrap_cache=False)
+    assert cli._run_publish(_init_args(tmp_path / "a")) == 0
+    assert [entry[0] for entry in sent] == ["lockfile"]
+    assert "first stage: config.toml names no bootstrap cache" in capsys.readouterr().out
+
+    _, sent = _publish_world(monkeypatch, tmp_path / "b", compiler_lock=False)
+    assert cli._run_publish(_init_args(tmp_path / "b")) == 0
+    assert [entry[0] for entry in sent] == ["push"]
+    assert "compiler lockfile: none, the compiler environment holds no gcc@15 of two stages" in capsys.readouterr().out
+
+
+def test_toolchain_publish_is_a_command():
+    args = build_parser().parse_args(["toolchain", "publish"])
+    assert (args.command, args.toolchain_command) == ("toolchain", "publish")
