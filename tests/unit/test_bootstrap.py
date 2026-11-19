@@ -331,6 +331,43 @@ def test_a_dry_run_installs_nothing_to_tell_of(monkeypatch, tmp_path):
     assert told == []
 
 
+def _lockfile(path, root="gcc@15 %c"):
+    path.write_text(json.dumps({"roots": [{"hash": HASH, "spec": root}], "concrete_specs": {HASH: {"name": "gcc"}}}))
+    return path
+
+
+def test_bootstrap_installs_the_compiler_of_a_lockfile_without_concretizing(monkeypatch, tmp_path):
+    calls, state = _toolchain_spack(monkeypatch, tmp_path)
+    lockfile = _lockfile(tmp_path / "rocky10.lock")
+
+    result = bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", lockfile=lockfile, **state)
+
+    steps = _steps(calls)
+    # A machine without gfortran would concretize the compiler to a hash that no cache holds.
+    assert "concretize --force" not in steps and "install" in steps
+    assert (state["environment"] / "spack.lock").read_text() == lockfile.read_text()
+    assert yaml.safe_load((state["environment"] / "spack.yaml").read_text())["spack"]["specs"] == ["gcc@15 %c"]
+    assert (result.hash, result.lockfile, result.probe_ok) == (HASH, lockfile, True)
+
+
+def test_bootstrap_concretizes_when_the_lockfile_is_for_another_compiler(monkeypatch, tmp_path):
+    for name, extra in (("other", {"lockfile": _lockfile(tmp_path / "gcc16.lock", "gcc@16 %c")}), ("none", {})):
+        calls, state = _toolchain_spack(monkeypatch, tmp_path / name)
+        result = bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", **extra, **state)
+        assert "concretize --force" in _steps(calls)
+        assert result.lockfile is None
+
+
+def test_bootstrap_concretizes_when_a_source_compiler_builds_the_compiler(monkeypatch, tmp_path):
+    # The lockfile holds the compiler as Spack's own choice built it.
+    calls, state = _toolchain_spack(monkeypatch, tmp_path)
+    result = bootstrap_module.bootstrap(
+        "gcc@15", languages=("c",), probe="zlib", source_compiler="gcc@14.2.1", lockfile=_lockfile(tmp_path / "rocky10.lock"), **state
+    )
+    assert "concretize --force" in _steps(calls)
+    assert result.lockfile is None
+
+
 def test_bootstrap_dry_run_changes_nothing(monkeypatch, tmp_path):
     calls, state = _toolchain_spack(monkeypatch, tmp_path)
 

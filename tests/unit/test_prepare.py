@@ -477,6 +477,26 @@ def test_the_container_builds_with_the_probe_timeout_it_was_given():
     assert "--jobs 1 --padded-length 200 --probe-timeout 0" in script(padded_length=200, probe_timeout=0)
 
 
+def test_prepare_installs_the_compiler_of_the_lockfile_of_the_platform(monkeypatch, tmp_path):
+    Spack(monkeypatch)
+    given = []
+    monkeypatch.setattr(_prepare, "toolchain_lockfile", lambda system: tmp_path / f"{system}.lock")
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: given.append(kwargs["lockfile"]) or type("Result", (), {"probe_ok": True}))
+
+    run_here(tmp_path)
+    # For a new lockfile, after the pinned Spack, the recipes or the compiler changed.
+    run_here(tmp_path, concretize=True)
+
+    assert given == [tmp_path / "rocky10.lock", None]
+
+
+def test_the_container_concretizes_when_told_to():
+    script = lambda **extra: _prepare.container_script(ROCKY10, jobs=1, source=False, uid=0, gid=0, version="1", **extra)
+    assert "--concretize" not in script()
+    assert script(concretize=True).splitlines()[-1].endswith("--platform rocky10 --jobs 1 --concretize")
+    assert build_parser().parse_args(["buildcache", "prepare", "--platform", "rocky10", "--concretize"]).concretize is True
+
+
 CONFIG_YAML = "config::\n  install_tree:\n    root: /state/spack/store\n  build_stage:\n  - /state/spack/stage\n"
 
 

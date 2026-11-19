@@ -279,6 +279,45 @@ def test_bootstrap_builds_the_compiler_then_rust_and_the_other_packages(monkeypa
     assert calls == ["target=x86_64_v3", ("bootstrap", "gcc@15", None, None), ("install", ["rust", "capnproto"])]
 
 
+def test_bootstrap_installs_the_compiler_of_the_lockfile_for_this_operating_system(monkeypatch, tmp_path: Path, capsys):
+    _bootstrap_world(monkeypatch, tmp_path, system="rocky10")
+    given = []
+    shipped = {"rocky10": tmp_path / "rocky10.lock"}
+    monkeypatch.setattr(cli, "toolchain_lockfile", shipped.get)
+
+    def fake_bootstrap(compiler, **kwargs):
+        given.append(kwargs["lockfile"])
+        return BootstrapResult(
+            compiler=compiler, installed=True, registered=False, languages=("c",), probe="zlib", probe_ok=True,
+            hash="abcdefabcdef", lockfile=kwargs["lockfile"],
+        )
+
+    monkeypatch.setattr(cli, "bootstrap", fake_bootstrap)
+
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path)) == 0
+    assert "concretized: by the lockfile of rocky10" in capsys.readouterr().out
+    # For a new lockfile, or on purpose with the system compiler of this machine.
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path, concretize=True)) == 0
+    assert "concretized: on this machine" in capsys.readouterr().out
+
+    assert given == [tmp_path / "rocky10.lock", None]
+
+
+def test_bootstrap_concretizes_where_no_lockfile_is_shipped(monkeypatch, tmp_path: Path):
+    _bootstrap_world(monkeypatch, tmp_path, system="debian13")
+    given = []
+    monkeypatch.setattr(cli, "toolchain_lockfile", {"rocky10": tmp_path / "rocky10.lock"}.get)
+    monkeypatch.setattr(
+        cli, "bootstrap",
+        lambda compiler, **kwargs: given.append(kwargs["lockfile"]) or BootstrapResult(
+            compiler=compiler, installed=True, registered=False, languages=("c",), probe="zlib", probe_ok=True
+        ),
+    )
+
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path)) == 0
+    assert given == [None]
+
+
 def test_bootstrap_gives_spack_the_stored_credentials_of_the_build_cache(monkeypatch, tmp_path: Path):
     import json
     import seanerstack.isolation
