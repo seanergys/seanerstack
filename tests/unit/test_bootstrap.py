@@ -682,3 +682,14 @@ def test_the_jobs_of_the_toolchain_packages_come_before_the_packages(monkeypatch
     calls = _fake_spack(monkeypatch)
     bootstrap_module.install_packages(COMMAND, ["rust", "capnproto"], ENV, jobs=48)
     assert calls == [[*COMMAND, "install", "--jobs", "48", "rust", "capnproto"]]
+
+
+def test_bootstrap_reuses_no_external_that_the_compiler_spec_matches(monkeypatch, tmp_path):
+    # Spack registers the system gcc 15.2.0 again where it was the only compiler, and it satisfies gcc@15.
+    calls, state = _toolchain_spack(monkeypatch, tmp_path)
+
+    bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", **state)
+
+    settings = yaml.safe_load((state["spack_config"] / "concretizer.yaml").read_text())
+    externals = [found for found in settings["concretizer"]["reuse"]["from"] if found["type"] == "external"]
+    assert externals == [{"type": "external", "exclude": ["gcc@15"]}]
