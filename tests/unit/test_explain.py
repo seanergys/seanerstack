@@ -82,13 +82,14 @@ def _hashdiff(monkeypatch, cached):
 
     spack = types.ModuleType("spack")
     spack.spack_version = "1.2.2"
-    for name in ("binary_distribution", "concretize", "spec"):
+    for name in ("binary_distribution", "concretize", "config", "spec"):
         module = types.ModuleType(f"spack.{name}")
         setattr(spack, name, module)
         monkeypatch.setitem(sys.modules, f"spack.{name}", module)
     monkeypatch.setitem(sys.modules, "spack", spack)
     spack.concretize.concretize_one = lambda text: _Spec("local")
-    spack.binary_distribution.update_cache_and_get_specs = lambda: cached
+    spack.config.CONFIG = object()
+    spack.binary_distribution.update_cache_and_get_specs = lambda *args, **kwargs: cached
     spec = importlib.util.spec_from_file_location("hashdiff_script", buildcache.HASHDIFF_SCRIPT)
     script = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(script)

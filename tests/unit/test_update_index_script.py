@@ -40,7 +40,7 @@ class Registry:
 def rebuild(monkeypatch, tmp_path):
     def run(registry: Registry) -> None:
         spack = types.ModuleType("spack")
-        names = ("binary_distribution", "error", "mirrors", "mirrors.mirror", "oci", "oci.oci", "spec", "stage")
+        names = ("binary_distribution", "config", "error", "mirrors", "mirrors.mirror", "oci", "oci.oci", "spec", "stage")
         modules = {name: types.ModuleType(f"spack.{name}") for name in names}
         for name, module in modules.items():
             parent, _, child = name.rpartition(".")
@@ -59,7 +59,9 @@ def rebuild(monkeypatch, tmp_path):
         modules["mirrors.mirror"].MirrorCollection = lambda binary: {"registry": "mirror"}
         modules["spec"].Spec = types.SimpleNamespace(from_dict=registry.from_dict)
         modules["error"].SpackError = type("SpackError", (Exception,), {})
+        modules["config"].CONFIG = object()
         modules["stage"].get_stage_root = lambda: str(tmp_path)
+        modules["stage"].stage_root = lambda config: str(tmp_path)
 
         spec = importlib.util.spec_from_file_location("update_index_script", buildcache.UPDATE_INDEX_SCRIPT)
         script = importlib.util.module_from_spec(spec)
