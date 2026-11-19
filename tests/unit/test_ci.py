@@ -204,3 +204,11 @@ def test_the_toolchain_job_publishes_every_platform_from_every_pipeline_while_sw
     assert published["allow_failure"] is True
     # Before the rule for a pipeline run by hand, which would otherwise make it wait for a click.
     assert rules.index(published) < rules.index(next(rule for rule in rules if rule.get("when") == "manual"))
+
+
+def test_the_rocky10_build_job_installs_with_the_jobs_the_runner_allows():
+    job = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))["build:rocky10"]
+    (install,) = [step for step in _steps(job) if step.startswith('status=0; spack -e "$ENVIRONMENT" install')]
+    # Spack takes 16 jobs whatever the runner has.
+    assert '--jobs "$(python -c \'import seanerstack.jobs; print(seanerstack.jobs.default_jobs())\')"' in install
+    assert install.endswith("|| status=$?")
