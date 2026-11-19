@@ -195,6 +195,11 @@ build:rocky10:
     <<: *cache-build
     PLATFORM: rocky10
     ENVIRONMENT: /opt/seanergys-meta
+    # "true": also publish the first stage of the compiler and the compiler
+    # lockfile, as the toolchain job does, so that the pipelines after this one
+    # find both. Any other value leaves them to the toolchain job. A CI/CD
+    # variable of the project, or of a pipeline run by hand, overrides this.
+    PUBLISH_TOOLCHAIN: "true"
   before_script: &rocky10-setup
     - dnf install -y --setopt=install_weak_deps=False python3 python3-pip
     - python3 -m venv /opt/seanerstack
@@ -240,6 +245,11 @@ build:rocky10:
     - status=0; spack -e "$ENVIRONMENT" install || status=$?
     - spack buildcache push --only package seanerstack-buildcache $(spack find --format '/{hash}')
     - seanerstack buildcache update-index
+    # After the compiler is in the build cache: the lockfile names its binaries.
+    - |
+      if [ "$PUBLISH_TOOLCHAIN" = "true" ]; then
+        seanerstack toolchain publish
+      fi
     - exit "$status"
 
 # A state directory with a random name of a random length. The jobs that
