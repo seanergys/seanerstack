@@ -89,7 +89,7 @@ def _hashdiff(monkeypatch, cached):
     monkeypatch.setitem(sys.modules, "spack", spack)
     spack.concretize.concretize_one = lambda text: _Spec("local")
     spack.config.CONFIG = object()
-    spack.binary_distribution.update_cache_and_get_specs = lambda *args, **kwargs: cached
+    spack.binary_distribution.update_cache_and_get_specs = lambda *, config: cached
     spec = importlib.util.spec_from_file_location("hashdiff_script", buildcache.HASHDIFF_SCRIPT)
     script = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(script)

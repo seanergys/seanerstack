@@ -60,7 +60,6 @@ def rebuild(monkeypatch, tmp_path):
         modules["spec"].Spec = types.SimpleNamespace(from_dict=registry.from_dict)
         modules["error"].SpackError = type("SpackError", (Exception,), {})
         modules["config"].CONFIG = object()
-        modules["stage"].get_stage_root = lambda: str(tmp_path)
         modules["stage"].stage_root = lambda config: str(tmp_path)
 
         spec = importlib.util.spec_from_file_location("update_index_script", buildcache.UPDATE_INDEX_SCRIPT)
