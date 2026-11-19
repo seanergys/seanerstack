@@ -14,6 +14,7 @@ where nothing finds them.
 import concurrent.futures
 import sys
 import tempfile
+import time
 
 import spack.binary_distribution
 import spack.error
@@ -23,14 +24,37 @@ import spack.spec
 import spack.stage
 
 
+# How many requests the registry gets at once. Several jobs rebuild the index
+# at the same time, each with this many.
+THREADS = 8
+# How often a config is asked for, and the pause before the second request,
+# which doubles from one to the next: 2, 4, 8 and 16 seconds.
+ATTEMPTS = 5
+PAUSE = 2
+
+
 def main(name: str) -> int:
     distribution = spack.binary_distribution
     mirror = spack.mirrors.mirror.MirrorCollection(binary=True)[name]
     image = spack.oci.oci.image_from_mirror(mirror)
     tags = [tag for tag in spack.oci.oci.list_tags(image) if distribution.tag_is_spec(tag)]
 
-    fetch = distribution._oci_config_from_tag
+    read = distribution._oci_config_from_tag
     configs, left_out = {}, {}
+
+    def fetch(image_and_tag):
+        # A registry under load lets a request time out, and Spack does not
+        # ask again. One config that cannot be read would stop the rebuild of
+        # an index over hundreds, so it is asked for again, a little later
+        # each time.
+        for attempt in range(ATTEMPTS):
+            try:
+                return read(image_and_tag)
+            except Exception as error:
+                if attempt == ATTEMPTS - 1:
+                    raise
+                print(f"{image_and_tag[1]}: {error}; reading it again", flush=True)
+                time.sleep(PAUSE * 2**attempt)
 
     def record(tag, config):
         configs[tag] = config
@@ -43,7 +67,7 @@ def main(name: str) -> int:
             left_out[tag] = str(error)
 
     # A registry that cannot be read stops the rebuild, as in Spack.
-    with concurrent.futures.ThreadPoolExecutor(16) as pool:
+    with concurrent.futures.ThreadPoolExecutor(THREADS) as pool:
         for tag, config in zip(tags, pool.map(lambda tag: fetch((image, tag)), tags)):
             record(tag, config)
 
@@ -64,7 +88,7 @@ def main(name: str) -> int:
     distribution.tag_is_spec = indexed
     distribution._oci_config_from_tag = lambda image_and_tag: configs[image_and_tag[1]]
     with tempfile.TemporaryDirectory(dir=spack.stage.get_stage_root()) as tmpdir, \
-            concurrent.futures.ThreadPoolExecutor(16) as executor:
+            concurrent.futures.ThreadPoolExecutor(THREADS) as executor:
         distribution._oci_update_index(image, tmpdir, executor)
 
     print(f"indexed {len(configs) - len(left_out)} specs of {name}, left out {len(left_out)}")
