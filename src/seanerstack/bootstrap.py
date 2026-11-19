@@ -839,4 +839,5 @@ def install_packages(command: list[str], packages: list[str], env, jobs: int | N
     @return: nothing; a failed build raises CalledProcessError
     """
     if packages:
-        _run_streaming([*command, "install", *packages, *_jobs(jobs)], env=env)
+        # Options before the specs: spack install takes everything after the first spec as a spec.
+        _run_streaming([*command, "install", *_jobs(jobs), *packages], env=env)
