@@ -8,6 +8,16 @@ stages:
   - publish
   - toolchain
 
+variables:
+  # "true": pipelines publish the toolchain of every platform, the first stage
+  # of the compiler and the compiler lockfile included: the toolchain job runs
+  # for each platform in push and web pipelines, and is offered by hand in
+  # merge request pipelines, and build:rocky10 publishes what it built. Any
+  # other value leaves it to the toolchain job of the nightly schedule or of a
+  # pipeline run by hand. A CI/CD variable of the project, or of a pipeline
+  # run by hand, overrides this without a commit.
+  PUBLISH_TOOLCHAIN: "true"
+
 # A merge request runs merge request pipelines, which become merged results
 # and merge train pipelines once the project enables them. A branch with an
 # open merge request runs no second pipeline for the same push. Other branches,
@@ -173,12 +183,12 @@ access:
 # with that one package, which depends on every recipe that builds with the
 # project toolchain. A recipe that does not build yet stays out of
 # seanergys-meta, and joins it once it does. What the project build cache holds
-# is installed from it, so a pipeline builds only what a change touches. The
-# default branch pushes what it built, and rebuilds the index, for the
-# pipelines after it; merge requests only read, so that no unreviewed recipe
-# reaches the shared cache. Pushes of two pipelines at once are safe, and an
-# index that misses the other's binaries is complete again after the next
-# rebuild, which also leaves out binaries the pinned Spack cannot read.
+# is installed from it, so a pipeline builds only what a change touches. Every
+# pipeline pushes what it built, and rebuilds the index, for the pipelines
+# after it, merge requests included: a change is built once, and its merge
+# train and the default branch install it. Pushes of two pipelines at once are
+# safe, and an index that misses the other's binaries is complete again after
+# the next rebuild, which also leaves out binaries the pinned Spack cannot read.
 build:rocky10:
   stage: build
   tags:
@@ -206,12 +216,10 @@ build:rocky10:
       "$PLATFORM")"
     - *job-token-secrets
   script:
-    # The default branch repairs an index that init cannot read, such as one a
-    # newer Spack wrote; merge requests only report it.
+    # Repairs an index that init cannot read, such as one a newer Spack wrote.
     - export SEANERSTACK_STATE_DIR="$STATE"
     - |
       if ! seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password init --padded-length "$PADDED_LENGTH"; then
-        [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ] || exit 1
         seanerstack buildcache update-index
         seanerstack init
       fi
@@ -238,12 +246,18 @@ build:rocky10:
     - spack env create --without-view -d "$ENVIRONMENT"
     - spack -e "$ENVIRONMENT" add seanergys-meta
     - spack -e "$ENVIRONMENT" concretize
-    # Push what was built even when another package failed.
-    - status=0; spack -e "$ENVIRONMENT" install || status=$?
+    # Push what was built even when another package failed. With the jobs the
+    # runner allows, within the limits of the container: Spack takes 16.
+    - >-
+      status=0; spack -e "$ENVIRONMENT" install
+      --jobs "$(python -c 'import seanerstack.jobs; print(seanerstack.jobs.default_jobs())')"
+      || status=$?
+    - spack buildcache push --only package seanerstack-buildcache $(spack find --format '/{hash}')
+    - seanerstack buildcache update-index
+    # After the compiler is in the build cache: the lockfile names its binaries.
     - |
-      if [ "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH" ]; then
-        spack buildcache push --only package seanerstack-buildcache $(spack find --format '/{hash}')
-        seanerstack buildcache update-index
+      if [ "$PUBLISH_TOOLCHAIN" = "true" ]; then
+        seanerstack toolchain publish
       fi
     - exit "$status"
 
@@ -258,7 +272,7 @@ build:rocky10:
 # tests/tutorials/install-the-stack.sh, and this job runs that script on Rocky
 # Linux 10 with the Seanerstack of this commit. It installs seanergys-meta
 # from the build cache, and builds what a merge request changed a second time
-# next to build:rocky10, which pushes nothing from a merge request.
+# next to build:rocky10, which pushes it only once it has built it.
 tutorial:install-the-stack:
   stage: build
   tags:
@@ -394,9 +408,13 @@ publish:dev:
 # only checks that the cache holds everything.
 #
 # It runs in a pipeline schedule of the default branch (Build > Pipeline
-# schedules), or by hand from Build > Pipelines > Run pipeline, on the default
-# branch or another one. The job token
-# may push to the container registry of this project, which holds the cache.
+# schedules), and in push and web pipelines while PUBLISH_TOOLCHAIN is "true".
+# A merge request pipeline offers it to start by hand, so that a merge request
+# does not build the toolchain of nine platforms unasked. Otherwise it runs by
+# hand from Build > Pipelines > Run pipeline, on the default branch or another
+# one. A platform that fails does not fail the pipeline.
+# The job token may push to the container registry of this project, which
+# holds the cache.
 #
 # Each job runs in the image of its platform, the same image as in config.toml
 # (a unit test keeps them equal), and builds there with --no-container, so no
@@ -411,6 +429,16 @@ toolchain:
   timeout: 12h
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "schedule"'
+    # In push and web pipelines while the toolchain is published from them:
+    # what a pipeline built is in the caches, with a lockfile per platform, for
+    # the pipelines and machines after it.
+    - if: '$PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE =~ /^(push|web)$/'
+      when: on_success
+      allow_failure: true
+    # In a merge request, only by hand.
+    - if: '$PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE == "merge_request_event"'
+      when: manual
+      allow_failure: true
     # By hand, also on another branch: a change to how the toolchain is built
     # gives new hashes, and its own pipeline finds them in the cache only
     # after this job has built them from that branch.
@@ -443,8 +471,6 @@ toolchain:
       - PLATFORM: arch
         IMAGE: docker.io/library/archlinux:latest
   variables:
-    SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME: "gitlab-ci-token"
-    SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD: "$CI_JOB_TOKEN"
     <<: *cache-build
   before_script:
     # Just enough Python for Seanerstack, which then installs the system
@@ -472,11 +498,16 @@ toolchain:
     # system links it to /usr/lib/os-release, but the archlinux image writes
     # its own with the date of the image as version, which no machine has.
     - if [ -e /usr/lib/os-release ]; then ln -sf ../usr/lib/os-release /etc/os-release; fi
+    # The job token for every build cache, as build:rocky10 and users pass it.
+    # keyloom came with Seanerstack.
+    - export PATH="/opt/seanerstack/bin:$PATH"
+    - *job-token-secrets
   script:
     # Explain what was built even when a package failed.
     - >-
       status=0;
       /opt/seanerstack/bin/seanerstack --state-dir "$STATE"
+      --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password
       buildcache prepare --no-container --platform "$PLATFORM" --padded-length "$PADDED_LENGTH" || status=$?
     # Why a night built instead of reusing: each spec of the toolchain against
     # the cached specs of its name and version for this platform, which
@@ -490,6 +521,8 @@ toolchain:
     - |
       for spec in $SPECS; do
         echo "== seanerstack buildcache explain $spec"
-        /opt/seanerstack/bin/seanerstack --state-dir "$STATE" buildcache explain "$spec" || true
+        /opt/seanerstack/bin/seanerstack --state-dir "$STATE" \
+          --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password \
+          buildcache explain "$spec" || true
       done
     - exit "$status"

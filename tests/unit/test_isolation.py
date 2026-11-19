@@ -12,13 +12,14 @@ from seanerstack.isolation import (
     activation_script,
     deactivation_script,
     layout,
+    prepare_bootstrap_instance,
     prepare_isolation,
     spack_env,
 )
-from seanerstack.pins import SPACK_VERSION
+from seanerstack.pins import SPACK_COMMIT, SPACK_VERSION
 from seanerstack.secrets import SecretStore
 
-PINNED = SPACK_VERSION.removeprefix("v")
+PINNED = SPACK_VERSION
 
 
 def test_activation_skips_build_caches_without_vault_credentials(tmp_path: Path):
@@ -246,9 +247,11 @@ def test_the_toolchain_is_built_in_the_default_state_directory():
     assert seanerstack.prepare.CONTAINER_STATE == "/opt/seanergys/state"
 
 
-def _fake_spack_executable(path: Path, version: str) -> Path:
+def _fake_spack_executable(path: Path, version: str, commit: str | None = SPACK_COMMIT) -> Path:
+    """A `spack` that reports `version`, and `commit` as a Git checkout does."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(f"#!/bin/sh\necho '{version} (0123456789abcdef)'\n", encoding="utf-8")
+    reported = f"{version} ({commit})" if commit else version
+    path.write_text(f"#!/bin/sh\necho '{reported}'\n", encoding="utf-8")
     path.chmod(0o755)
     return path
 
@@ -259,17 +262,25 @@ def test_the_pinned_spack_is_installed_into_the_state_directory(monkeypatch, tmp
 
     def fake_run(args, **kwargs):
         clones.append(args)
-        _fake_spack_executable(Path(args[-1]) / "bin" / "spack", PINNED)
+        # `git init DIR`, then `git -C DIR fetch` and `git -C DIR checkout`.
+        destination = Path(args[-1] if args[1] == "init" else args[2])
+        _fake_spack_executable(destination / "bin" / "spack", PINNED)
 
     monkeypatch.delenv("SEANERSTACK_REAL_SPACK", raising=False)
     monkeypatch.setattr(seanerstack.isolation.subprocess, "run", fake_run)
     spack = seanerstack.isolation.resolve_real_spack(None, tmp_path)
-    assert spack == tmp_path / f"spack-{SPACK_VERSION}" / "bin" / "spack"
-    assert clones[0][-3:] == [SPACK_VERSION, "https://github.com/spack/spack.git", str(tmp_path / f"spack-{SPACK_VERSION}.partial")]
+    partial = str(tmp_path / f"spack-{SPACK_COMMIT[:12]}.partial")
+    assert spack == tmp_path / f"spack-{SPACK_COMMIT[:12]}" / "bin" / "spack"
+    # A commit of develop is no branch or tag, so it is fetched by itself.
+    assert clones == [
+        ["git", "init", "--quiet", partial],
+        ["git", "-C", partial, "fetch", "--quiet", "--depth", "1", "https://github.com/spack/spack.git", SPACK_COMMIT],
+        ["git", "-C", partial, "-c", "advice.detachedHead=false", "checkout", "--quiet", "FETCH_HEAD"],
+    ]
 
     # The next command finds it and clones nothing.
     assert seanerstack.isolation.resolve_real_spack(None, tmp_path) == spack
-    assert len(clones) == 1
+    assert len(clones) == 3
 
 
 def test_another_spack_of_the_pinned_version_is_used(monkeypatch, tmp_path):
@@ -282,15 +293,25 @@ def test_another_spack_of_the_pinned_version_is_used(monkeypatch, tmp_path):
 def test_another_spack_version_is_refused(monkeypatch, tmp_path):
     import seanerstack.isolation
     monkeypatch.delenv("SEANERSTACK_REAL_SPACK", raising=False)
-    spack = _fake_spack_executable(tmp_path / "spack", "1.3.0.dev0")
-    with pytest.raises(RuntimeError, match=f"is Spack 1.3.0.dev0, and Seanerstack needs Spack {PINNED}"):
+    spack = _fake_spack_executable(tmp_path / "spack", "1.2.2", None)
+    with pytest.raises(RuntimeError, match=f"is Spack 1.2.2 without a commit, and Seanerstack needs Spack {PINNED} at commit {SPACK_COMMIT[:10]}"):
         seanerstack.isolation.resolve_real_spack(spack, tmp_path / "state")
+
+
+def test_another_commit_of_the_pinned_version_is_refused(monkeypatch, tmp_path):
+    # Every commit of develop reports the same development version.
+    import seanerstack.isolation
+    monkeypatch.delenv("SEANERSTACK_REAL_SPACK", raising=False)
+    for name, commit in (("other", "0123456789abcdef"), ("none", None)):
+        spack = _fake_spack_executable(tmp_path / name / "spack", PINNED, commit)
+        with pytest.raises(RuntimeError, match=f"is Spack {PINNED} (at commit 0123456789|without a commit), and"):
+            seanerstack.isolation.resolve_real_spack(spack, tmp_path / "state")
 
 
 def test_the_spack_variable_is_held_to_the_pinned_version_too(monkeypatch, tmp_path):
     import seanerstack.isolation
-    monkeypatch.setenv("SEANERSTACK_REAL_SPACK", str(_fake_spack_executable(tmp_path / "spack", "1.3.0.dev0")))
-    with pytest.raises(RuntimeError, match="is Spack 1.3.0.dev0"):
+    monkeypatch.setenv("SEANERSTACK_REAL_SPACK", str(_fake_spack_executable(tmp_path / "spack", "1.2.2")))
+    with pytest.raises(RuntimeError, match="is Spack 1.2.2"):
         seanerstack.isolation.resolve_real_spack(None, tmp_path / "state")
 
 
@@ -374,3 +395,40 @@ def test_the_record_remembers_what_init_was_given(tmp_path: Path):
     x = prepare_isolation(state, tmp_path / "spack")
     seanerstack.isolation.write_record(x, config_file=tmp_path / "config.toml", spack_executable=None)
     assert seanerstack.isolation.read_record(state) == {"config_file": tmp_path / "config.toml", "spack_executable": None}
+
+
+def _bootstrap_instance(tmp_path: Path):
+    real_spack = tmp_path / "real-spack"
+    real_spack.write_text("#!/bin/sh\n", encoding="utf-8")
+    x = prepare_isolation(tmp_path / "state", real_spack)
+    env = {"PATH": "/usr/bin", **spack_env(x)}
+    return x, real_spack, env, prepare_bootstrap_instance(x, real_spack, env)
+
+
+def test_the_bootstrap_instance_has_its_own_configuration_and_installations(tmp_path: Path):
+    x, real_spack, env, (command, bootstrap_env, b) = _bootstrap_instance(tmp_path)
+
+    assert b.config == x.state / "bootstrap" / "config" and b.store == x.state / "bootstrap" / "store"
+    assert command == [str(real_spack), "-C", str(b.config)]
+    assert bootstrap_env["SPACK_USER_CONFIG_PATH"] == str(b.config)
+    # Spack's own bootstrap, such as clingo, is shared.
+    assert bootstrap_env["SPACK_USER_CACHE_PATH"] == env["SPACK_USER_CACHE_PATH"]
+    config = yaml.safe_load((b.config / "config.yaml").read_text(encoding="utf-8"))["config:"]
+    assert config["install_tree"]["root"] == str(b.store)
+    assert config["source_cache"] == str(x.source_cache)
+    # Nothing of the actual instance: no compilers, caches or reuse.
+    for name, empty in (("packages", {}), ("mirrors", {}), ("upstreams", {})):
+        assert yaml.safe_load((b.config / f"{name}.yaml").read_text(encoding="utf-8")) == {f"{name}:": empty}
+    assert yaml.safe_load((b.config / "concretizer.yaml").read_text(encoding="utf-8")) == {"concretizer": {"reuse": False}}
+
+
+def test_the_bootstrap_instance_installs_gcc_at_a_path_without_a_hash(tmp_path: Path):
+    # The actual instance hashes the first stage, an external, by its path.
+    _, _, _, (_, _, b) = _bootstrap_instance(tmp_path)
+    projections = yaml.safe_load((b.config / "config.yaml").read_text(encoding="utf-8"))["config:"]["install_tree"]["projections"]
+    assert projections == {"gcc": "{name}-{version}", "all": "{name}-{version}-{hash}"}
+
+
+def test_the_bootstrap_instance_loads_the_recipes_of_the_actual_one(tmp_path: Path):
+    x, _, _, (_, _, b) = _bootstrap_instance(tmp_path)
+    assert (b.config / "repos.yaml").read_text(encoding="utf-8") == (x.config / "repos.yaml").read_text(encoding="utf-8")

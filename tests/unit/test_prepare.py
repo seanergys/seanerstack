@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from seanerstack import cli as _cli
+from seanerstack import jobs
 from seanerstack import prepare as _prepare
 from seanerstack.cli import build_parser
 from seanerstack.config import Config, Platform, Resource, Toolchain, load_config
@@ -49,6 +50,13 @@ class Spack:
         monkeypatch.setattr(_prepare, "configure_buildcaches", self.configure)
         monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: type("Result", (), {"probe_ok": True}))
         monkeypatch.setattr(_prepare.subprocess, "run", self.run)
+        # The build cache has no compiler lockfile; publishing one is recorded, not sent.
+        self.published = []
+        monkeypatch.setattr(_prepare, "find_compiler_lockfile", lambda config, env, **kwargs: None)
+        monkeypatch.setattr(
+            _prepare, "publish_compiler_lockfile",
+            lambda resource, path, env, **kwargs: self.published.append((resource.name, path, kwargs)) or ("tag", True),
+        )
 
     def configure(self, config, **kwargs):
         self.caches = config.resources
@@ -122,16 +130,6 @@ def test_prepare_needs_credentials_for_its_target(monkeypatch, tmp_path):
         )
 
 
-def test_jobs_follow_the_free_memory(monkeypatch):
-    monkeypatch.setattr(_prepare.os, "cpu_count", lambda: 16)
-    monkeypatch.setattr(_prepare, "_available_memory", lambda: 4 * _prepare.GIB)
-    assert _prepare.default_jobs() == 2
-    monkeypatch.setattr(_prepare, "_available_memory", lambda: _prepare.GIB)
-    assert _prepare.default_jobs() == 1
-    monkeypatch.setattr(_prepare, "_available_memory", lambda: None)
-    assert _prepare.default_jobs() == 16
-
-
 def test_the_container_reaches_prepare_through_a_checkout_or_a_release():
     arguments = dict(jobs=2, uid=1000, gid=1000, version="1.2.3")
     source = _prepare.container_script(ROCKY10, source=True, **arguments)
@@ -168,7 +166,7 @@ def test_no_token_is_on_the_command_line_of_the_container(monkeypatch, tmp_path)
     calls = []
     monkeypatch.setattr(_prepare, "check_push_access", lambda resource, env: None)
     monkeypatch.setattr(_prepare, "_container_runtime", lambda: "docker")
-    monkeypatch.setattr(_prepare, "_available_memory", lambda: 8 * _prepare.GIB)
+    monkeypatch.setattr(_prepare, "available_memory", lambda: 8 * jobs.GIB)
     monkeypatch.setattr(_prepare, "_stream", lambda args, env: calls.append((args, env)))
     monkeypatch.setattr(_prepare.subprocess, "run", lambda *a, **k: None)
     monkeypatch.setattr(_prepare, "_session", lambda *a: ({"target": config(tmp_path).resources["target"]}, {TOKEN: "secret"}))
@@ -178,7 +176,7 @@ def test_no_token_is_on_the_command_line_of_the_container(monkeypatch, tmp_path)
     assert "secret" not in " ".join(argv)
     assert env[TOKEN] == "secret"
     assert argv[argv.index("-e") + 1] == TOKEN
-    assert argv[argv.index("--memory") + 1] == argv[argv.index("--memory-swap") + 1] == str(int(8 * _prepare.GIB * 0.85))
+    assert argv[argv.index("--memory") + 1] == argv[argv.index("--memory-swap") + 1] == str(int(8 * jobs.GIB * 0.85))
     assert (tmp_path / "buildcache-prepare/rocky9").is_dir()
     assert "rocky:9" in argv
 
@@ -358,7 +356,7 @@ def test_the_container_gets_its_input_by_copy_not_by_mount(monkeypatch, tmp_path
 
     monkeypatch.setattr(_prepare, "check_push_access", lambda resource, env: None)
     monkeypatch.setattr(_prepare, "_container_runtime", lambda: "docker")
-    monkeypatch.setattr(_prepare, "_available_memory", lambda: None)
+    monkeypatch.setattr(_prepare, "available_memory", lambda: None)
     monkeypatch.setattr(_prepare, "_stream", stream)
     monkeypatch.setattr(_prepare.subprocess, "run", lambda args, **kwargs: removed.append(args))
     monkeypatch.setattr(_prepare, "_session", lambda *a: ({"target": config(tmp_path).resources["target"]}, {}))
@@ -383,7 +381,7 @@ def test_credentials_from_the_environment_reach_the_container(monkeypatch, tmp_p
     calls = []
     monkeypatch.setattr(_prepare, "check_push_access", lambda resource, env: None)
     monkeypatch.setattr(_prepare, "_container_runtime", lambda: "docker")
-    monkeypatch.setattr(_prepare, "_available_memory", lambda: None)
+    monkeypatch.setattr(_prepare, "available_memory", lambda: None)
     monkeypatch.setattr(_prepare, "_stream", lambda args, env: calls.append(args))
     monkeypatch.setattr(_prepare.subprocess, "run", lambda *a, **k: None)
     monkeypatch.setenv(USER, "gitlab-ci-token")
@@ -477,6 +475,41 @@ def test_the_container_builds_with_the_probe_timeout_it_was_given():
     assert "--jobs 1 --padded-length 200 --probe-timeout 0" in script(padded_length=200, probe_timeout=0)
 
 
+def test_prepare_installs_the_compiler_of_the_lockfile_of_the_platform(monkeypatch, tmp_path):
+    Spack(monkeypatch)
+    given = []
+    monkeypatch.setattr(
+        _prepare, "find_compiler_lockfile", lambda config, env, **kwargs: tmp_path / f"{kwargs['operating_system']}.lock",
+    )
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: given.append(kwargs["lockfile"]) or type("Result", (), {"probe_ok": True}))
+
+    run_here(tmp_path)
+    # For a new lockfile, after the pinned Spack, the recipes or the compiler changed.
+    run_here(tmp_path, concretize=True)
+
+    assert given == [tmp_path / "rocky10.lock", None]
+
+
+def test_prepare_hands_the_bootstrap_instance_to_bootstrap(monkeypatch, tmp_path):
+    # Where the caches lack the compiler, prepare builds it, in two stages.
+    Spack(monkeypatch)
+    given = []
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: given.append(kwargs) or type("Result", (), {"probe_ok": True}))
+    instance = object()
+
+    run_here(tmp_path, bootstrap_instance=instance)
+
+    assert given[0]["bootstrap_instance"] is instance
+    assert given[0].get("cache_only", False) is False
+
+
+def test_the_container_concretizes_when_told_to():
+    script = lambda **extra: _prepare.container_script(ROCKY10, jobs=1, source=False, uid=0, gid=0, version="1", **extra)
+    assert "--concretize" not in script()
+    assert script(concretize=True).splitlines()[-1].endswith("--platform rocky10 --jobs 1 --concretize")
+    assert build_parser().parse_args(["buildcache", "prepare", "--platform", "rocky10", "--concretize"]).concretize is True
+
+
 CONFIG_YAML = "config::\n  install_tree:\n    root: /state/spack/store\n  build_stage:\n  - /state/spack/stage\n"
 
 
@@ -547,3 +580,98 @@ def test_prepare_builds_the_compiler_in_the_environment_next_to_the_toolchain(mo
 
     assert given["environment"] == tmp_path / "compiler"
     assert given["spack_config"] == tmp_path / "config"
+
+
+BOOT_USER, BOOT_TOKEN = "SEANERSTACK_RESOURCE_BOOT_USERNAME", "SEANERSTACK_RESOURCE_BOOT_PASSWORD"
+
+
+def _with_bootstrap_cache(tmp_path: Path) -> Config:
+    boot = Resource(name="boot", kind="spack-buildcache", url="oci://registry.example.org/group/cache-bootstrap", credentials="c", signed=False)
+    return replace(config(tmp_path, boot=boot), toolchain=replace(TOOLCHAIN, bootstrap_cache="boot"))
+
+
+def _bootstrap_instance(tmp_path: Path):
+    from seanerstack.bootstrap import BootstrapInstance
+    return BootstrapInstance(command=["bspack"], env={"SPACK_USER_CONFIG_PATH": "/b"}, environment=tmp_path / "env", store=tmp_path / "store")
+
+
+def _prepare_with_bootstrap_cache(monkeypatch, tmp_path, env):
+    spack = Spack(monkeypatch)
+    given, checked = [], []
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: given.append(kwargs) or type("Result", (), {"probe_ok": True}))
+    monkeypatch.setattr(_prepare, "check_push_access", lambda resource, env: checked.append((resource.name, env.get(BOOT_TOKEN))))
+    _prepare.prepare_here(
+        _with_bootstrap_cache(tmp_path), SecretStore(None), platform="rocky10", command=["spack"], env=env,
+        work=tmp_path / "toolchain", bootstrap_instance=_bootstrap_instance(tmp_path),
+    )
+    return spack, given[0], checked
+
+
+def test_prepare_pushes_the_first_stage_to_the_bootstrap_cache_once_it_is_built(monkeypatch, tmp_path):
+    env = {USER: "u", TOKEN: "t", BOOT_USER: "bu", BOOT_TOKEN: "bt"}
+    spack, given, checked = _prepare_with_bootstrap_cache(monkeypatch, tmp_path, env)
+
+    # Before a build of an hour, as for the project cache.
+    assert ("boot", "bt") in checked
+    instance = given["bootstrap_instance"]
+    assert (instance.env[BOOT_TOKEN], instance.env["SPACK_USER_CONFIG_PATH"]) == ("bt", "/b")
+
+    spack.calls.clear()
+    given["installed_first_stage"]()
+
+    assert ["bspack", "buildcache", "push", "--only", "package", "boot", "/aaa", "/bbb"] in spack.calls
+    # Then its index, without which concretization finds nothing.
+    assert spack.calls[-1][:2] == ["bspack", "python"] and spack.calls[-1][-1] == "boot"
+
+
+def test_prepare_needs_the_credentials_of_the_bootstrap_cache(monkeypatch, tmp_path):
+    with pytest.raises(ValueError, match="no credentials for build cache 'boot'"):
+        _prepare_with_bootstrap_cache(monkeypatch, tmp_path, {USER: "u", TOKEN: "t"})
+
+
+def test_prepare_pushes_no_first_stage_without_a_bootstrap_cache(monkeypatch, tmp_path):
+    Spack(monkeypatch)
+    given = []
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: given.append(kwargs) or type("Result", (), {"probe_ok": True}))
+    run_here(tmp_path, bootstrap_instance=_bootstrap_instance(tmp_path))
+    assert given[0]["installed_first_stage"] is None
+
+
+def test_prepare_publishes_the_lockfile_of_the_compiler_the_probe_accepted(monkeypatch, tmp_path):
+    spack = Spack(monkeypatch)
+
+    run_here(tmp_path)
+
+    (published,) = spack.published
+    assert published[:2] == ("target", tmp_path / "compiler" / "spack.lock")
+    assert published[2] == {"compiler": "gcc@15", "target": "x86_64_v3", "operating_system": "rocky10"}
+
+
+def test_prepare_publishes_no_lockfile_of_a_compiler_the_probe_refused(monkeypatch, tmp_path):
+    spack = Spack(monkeypatch)
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: type("Result", (), {"probe_ok": False, "probe": "zlib", "hash": "abc"}))
+    with pytest.raises(RuntimeError, match="does not use gcc@15"):
+        run_here(tmp_path)
+    assert spack.published == []
+
+
+def test_a_cache_outside_a_registry_gets_no_lockfile(monkeypatch, tmp_path):
+    spack = Spack(monkeypatch)
+    local = Resource(name="target", kind="spack-buildcache", url=(tmp_path / "cache").as_uri(), signed=False)
+    _prepare.prepare_here(
+        replace(config(tmp_path), resources={"target": local}), SecretStore(None), platform="rocky10", command=["spack"],
+        env={}, work=tmp_path / "toolchain",
+    )
+    assert spack.published == []
+
+
+def test_prepare_builds_the_compiler_with_its_jobs(monkeypatch, tmp_path):
+    Spack(monkeypatch)
+    given = []
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: given.append(kwargs["jobs"]) or type("Result", (), {"probe_ok": True}))
+    monkeypatch.setattr(_prepare, "default_jobs", lambda: 7)
+
+    run_here(tmp_path)
+    run_here(tmp_path, jobs=48)
+
+    assert given == [7, 48]

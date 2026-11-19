@@ -166,9 +166,79 @@ def test_the_jobs_that_fill_the_cache_build_in_a_long_padded_state_directory():
 
 def test_the_toolchain_job_can_be_started_by_hand_on_any_branch():
     rules = _toolchain_job()["rules"]
-    (by_hand,) = [rule for rule in rules if rule.get("when") == "manual"]
+    (by_hand,) = [rule for rule in rules if rule.get("when") == "manual" and '"web"' in rule["if"]]
     assert by_hand["if"] == '$CI_COMMIT_BRANCH && $CI_PIPELINE_SOURCE == "web"'
     assert by_hand["allow_failure"] is True
-    # Only the schedule of the default branch starts it by itself.
+    # The schedule of the default branch starts it by itself, and so does every pipeline while the toolchain is published.
     (scheduled,) = [rule for rule in rules if "when" not in rule]
     assert "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH" in scheduled["if"] and '"schedule"' in scheduled["if"]
+
+
+def test_the_rocky10_build_job_pushes_from_every_pipeline():
+    job = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))["build:rocky10"]
+    steps = _steps(job)
+    push = steps.index("spack buildcache push --only package seanerstack-buildcache $(spack find --format '/{hash}')")
+    # After the install, which keeps its status, and without a condition on the branch.
+    install = next(index for index, step in enumerate(steps) if step.startswith('status=0; spack -e "$ENVIRONMENT" install'))
+    assert install < push < steps.index("seanerstack buildcache update-index")
+    assert not any("CI_DEFAULT_BRANCH" in step for step in steps)
+
+
+def test_the_rocky10_build_job_publishes_the_toolchain_after_its_push_while_switched_on():
+    job = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))["build:rocky10"]
+    steps = _steps(job)
+    publish = next(index for index, step in enumerate(steps) if "seanerstack toolchain publish" in step)
+    # The lockfile names the compiler's binaries, which the push before it sent.
+    assert steps.index("seanerstack buildcache update-index") < publish < steps.index('exit "$status"')
+    assert '[ "$PUBLISH_TOOLCHAIN" = "true" ]' in steps[publish]
+    # On by default; a CI/CD variable switches it off without a commit.
+    ci = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+    assert ci["variables"]["PUBLISH_TOOLCHAIN"] == "true" and "PUBLISH_TOOLCHAIN" not in job["variables"]
+
+
+def test_the_toolchain_job_publishes_every_platform_from_every_pipeline_while_switched_on():
+    rules = _toolchain_job()["rules"]
+    (published,) = [rule for rule in rules if rule.get("when") == "on_success"]
+    assert published["if"].startswith('$PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE =~ /^(push|')
+    assert "|web)$/" in published["if"]
+    # A platform that fails, such as one whose system compiler Spack cannot use yet, does not fail the pipeline.
+    assert published["allow_failure"] is True
+    # Before the rule for a pipeline run by hand, which would otherwise make it wait for a click.
+    by_hand = next(rule for rule in rules if rule.get("when") == "manual" and '"web"' in rule["if"])
+    assert rules.index(published) < rules.index(by_hand)
+
+
+def test_the_rocky10_build_job_installs_with_the_jobs_the_runner_allows():
+    job = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))["build:rocky10"]
+    (install,) = [step for step in _steps(job) if step.startswith('status=0; spack -e "$ENVIRONMENT" install')]
+    # Spack takes 16 jobs whatever the runner has.
+    assert '--jobs "$(python -c \'import seanerstack.jobs; print(seanerstack.jobs.default_jobs())\')"' in install
+    assert install.endswith("|| status=$?")
+
+
+def test_a_merge_request_offers_the_toolchain_job_only_by_hand():
+    rules = _toolchain_job()["rules"]
+    (published,) = [rule for rule in rules if rule.get("when") == "on_success"]
+    assert "merge_request_event" not in published["if"]
+    (asked,) = [rule for rule in rules if "merge_request_event" in rule["if"]]
+    assert (asked["when"], asked["allow_failure"]) == ("manual", True)
+    assert asked["if"] == '$PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE == "merge_request_event"'
+
+
+def test_no_job_passes_credentials_of_a_resource_in_variables():
+    # Every job writes the job token to one secrets file, whose credential names cover every resource.
+    ci = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+    for name, job in ci.items():
+        variables = job.get("variables", {}) if isinstance(job, dict) else {}
+        assert not [key for key in variables if key.startswith("SEANERSTACK_RESOURCE_")], name
+
+
+def test_the_toolchain_job_passes_the_job_token_in_a_secrets_file():
+    job = _toolchain_job()
+    before = []
+    for step in job["before_script"]:
+        before += step if isinstance(step, list) else [step]
+    assert "keyloom encrypt /tmp/secrets.toml --password-file /tmp/vault-password" in before
+    for command in ("buildcache prepare", "buildcache explain"):
+        (step,) = [step for step in job["script"] if command in step]
+        assert "--secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password" in " ".join(step.split()), command

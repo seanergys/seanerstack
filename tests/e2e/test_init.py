@@ -110,10 +110,10 @@ def test_init_fails_on_a_build_cache_it_cannot_read(commands: Commands, password
 
 def test_init_refuses_another_spack_version(commands: Commands, tmp_path: Path):
     other = tmp_path / "spack"
-    other.write_text("#!/bin/sh\necho '1.3.0.dev0 (0123456789abcdef)'\n", encoding="utf-8")
+    other.write_text("#!/bin/sh\necho '1.2.2 (0123456789abcdef)'\n", encoding="utf-8")
     other.chmod(0o755)
 
     result = commands.run("seanerstack", "--state-dir", tmp_path / "state", "--spack-executable", other, "init", env=environment())
 
     assert result.returncode == 2, result.stdout + result.stderr
-    assert re.search(r"is Spack 1\.3\.0\.dev0, and Seanerstack needs Spack \d+\.\d+\.\d+", result.stderr), result.stderr
+    assert re.search(r"is Spack 1\.2\.2 at commit 0123456789, and Seanerstack needs Spack \S+ at commit [0-9a-f]{10}", result.stderr), result.stderr

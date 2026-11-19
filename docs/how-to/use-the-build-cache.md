@@ -2,6 +2,8 @@
 
 Seanerstack ships the SEANERGYS binary build cache as the `seanerstack-buildcache` resource: an OCI build cache in the seanerstack GitLab container registry, `registry.seanergys.fz-juelich.de/software/seanerstack/buildcache`. Spack cannot sign OCI build caches, so the cache is unsigned and registry access control is the trust boundary.
 
+Beside it, `seanerstack-buildcache-bootstrap`, `registry.seanergys.fz-juelich.de/software/seanerstack/buildcache-bootstrap`, holds the first stage of the compiler, which the system compiler builds ([why](../explanation/compiler-bootstrap.md#why-the-compiler-is-built-in-two-stages)). `[toolchain] bootstrap_cache` names it. Only the bootstrap instance of a state reads it, so nothing that the system compiler built reaches the stack. It takes the same `seanergys-registry` credentials.
+
 ## Provide credentials
 
 The registry takes a GitLab personal access token: `read_registry` to install, `write_registry` to push (`api` covers both). Store it in the secrets file under the name the resource refers to, and encrypt the file as described in [Create a secrets file](create-a-secrets-file.md):
@@ -18,7 +20,7 @@ Give the file to `init`, which stores the token in the state directory, readable
 seanerstack --secrets-file ./secrets.toml init
 ```
 
-Spack's mirror configuration names only the variables that hold the token. The state's `spack` wrapper loads them from the stored credentials for every command, and Seanerstack's own commands read the stored credentials too, so no later command needs the secrets file again. Variables that are already set, as in CI, take precedence: `SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME` and `SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD`.
+Spack's mirror configuration names only the variables that hold the token. The state's `spack` wrapper loads them from the stored credentials for every command, and Seanerstack's own commands read the stored credentials too, so no later command needs the secrets file again. Variables that are already set take precedence: `SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME` and `SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD`.
 
 ## Check the cache
 
@@ -80,7 +82,7 @@ seanerstack --config-file config.toml --secrets-file credentials.toml buildcache
 
 The build runs in the image of the platform, because the operating system is part of every hash: binaries from a desktop's own system would never match those the services install. What the configured caches already hold is reused, every finished package is pushed at once, and the state stays under `~/.cache/seanerstack`, or the directory of `--state-dir` or `SEANERSTACK_STATE_DIR`, one directory per platform, so running the command again continues where it stopped. Inside the image, the build uses `/opt/seanergys/state`, the default state directory, so that its binaries match every machine set up with `seanerstack init`.
 
-`--jobs` defaults to what the free memory allows, and the container gets at most 85 % of that memory. A CI job that already runs in the image of a platform uses `--no-container`.
+`--jobs` is the number of build jobs across the packages that Spack builds at once, which is 16 when Spack chooses. It defaults to what the machine allows: the CPUs the process may run on, within the CPU quota of its cgroup, and no more than its free memory takes at 2 GiB per job, within the memory limit of the cgroup, so that a CI job in a container limited with `--cpus` or `--memory` does not count the host's. The container gets at most 85 % of that memory. `toolchain bootstrap --jobs` takes the same default, for both stages of the compiler and the toolchain packages, and `build:rocky10` gives it to the install of the stack. A CI job that already runs in the image of a platform uses `--no-container`.
 
 When the build ends, the index of the cache is rebuilt: every package went to the cache as soon as it was built, and only the rebuilt index lets concretization on other machines find them.
 
@@ -99,6 +101,28 @@ package_manager = "dnf"
 
 `operating_system` is what `spack arch --operating-system` prints in that image. `package_manager` is `dnf`, `apt` or `pacman`, and chooses the system packages of `[toolchain.system_packages]` that the image gets before Spack runs. A platform can add its own with `system_packages`, and name another Python with `python`, as Rocky 9 does for Python 3.12. Seanerstack and Spack both run with that Python in the image. Fedora 45 names Python 3.14, because Spack 1.2.2 has a ready-made clingo, its solver, for Python up to 3.14, and builds it from source for the Python 3.15 that Fedora 45 has as `python3`.
 
+### Publish the lockfile of the compiler
+
+`toolchain bootstrap` and `buildcache prepare` install the compiler of the lockfile in the build cache, a tag of its registry repository named after the compiler, the platform and a digest of the pins, such as `compiler-gcc-15-rocky10-x86_64_v3-2efee779f543` ([why](../explanation/compiler-bootstrap.md#why-the-compiler-is-installed-from-a-lockfile)). `buildcache prepare` publishes it when the cache has none: after a change of the pinned Spack, of the builtin recipes or of the compiler of `[toolchain]`, the tag is another one, and the next run of the `toolchain` job publishes its lockfile. Nothing is committed. By hand, in the image of the platform:
+
+```console
+seanerstack --secrets-file credentials.toml buildcache prepare --platform rocky10
+```
+
+It builds the compiler in two stages, pushes it, and once the probe has accepted it prints the tag:
+
+```text
+compiler lockfile: compiler-gcc-15-rocky10-x86_64_v3-2efee779f543 in oci://registry.seanergys.fz-juelich.de/software/seanerstack/buildcache
+```
+
+In a state set up with `seanerstack toolchain bootstrap` instead, `seanerstack toolchain publish` does the same once the compiler is in the build cache: it pushes the first stage to the bootstrap cache and publishes the lockfile. `build:rocky10` runs it while its variable `PUBLISH_TOOLCHAIN` is `true`.
+
+A tag that exists is left as it is, and the line says so. To replace a lockfile, delete its tag in the registry (Deploy > Container registry); the next `prepare` concretizes the compiler and publishes a new one.
+
+The lockfile names the first stage of the compiler by its path, `<state>/bootstrap/store/gcc-VERSION`. Publish it from the state directory where the cache is filled, which is that of the `toolchain` job of the pipeline: there `buildcache prepare` can build the compiler of the lockfile again, and anywhere else it refuses to. Every other machine only installs it from the cache.
+
+A platform without a lockfile concretizes the compiler on each machine, in two stages. Its cache then matches only machines with a state in the same directory. A cleanup policy of the registry must keep the `compiler-*` tags.
+
 ### Build binaries that install into any directory
 
 Spack rewrites the install prefix inside a binary only into a path that is no longer than the one it was built in. Built below `/opt/seanergys/state`, binaries install only below a path of that length or shorter. `--padded-length` builds below a prefix padded to that many characters, so the binaries install into any shorter path, such as a state directory of the user's choice:
@@ -115,7 +139,7 @@ A state keeps the padding of its first build. `buildcache prepare` refuses anoth
 
 ### Build it every night
 
-The `toolchain` job of the CI pipeline runs `buildcache prepare --no-container` for every shipped platform, in parallel, on runners tagged `docker` and `seanerstack`. Each job runs in the image of its platform, so it needs no Docker daemon: it installs Python and the system packages of `[toolchain]`, clones Spack, and builds under `/opt/seanergys/state`, as `buildcache prepare` does in a container. It runs in a pipeline schedule of the default branch, which a maintainer creates under **Build → Pipeline schedules**, for example with the interval `0 1 * * *`, or by hand from **Build → Pipelines → Run pipeline**. A pipeline run by hand on another branch offers the job as well: a change to how the toolchain is built gives new hashes, and the pipelines of that branch find them in the cache only after the job has built them there. It pushes with the job token, which may write to the container registry of the project. After the build, each job runs `buildcache explain` for the compiler and the packages of `[toolchain]`, so the log of a night that built something shows how its specs differ from those the cache held; a failed explanation does not fail the job.
+The `toolchain` job of the CI pipeline runs `buildcache prepare --no-container` for every shipped platform, in parallel, on runners tagged `docker` and `seanerstack`. Each job runs in the image of its platform, so it needs no Docker daemon: it installs Python and the system packages of `[toolchain]`, clones Spack, and builds under `/opt/seanergys/state`, as `buildcache prepare` does in a container. It runs in a pipeline schedule of the default branch, which a maintainer creates under **Build → Pipeline schedules**, for example with the interval `0 1 * * *`, and in every push and web pipeline while the pipeline variable `PUBLISH_TOOLCHAIN` is `true`, which it is by default: each platform then has its first stage and its compiler lockfile in the caches as soon as a pipeline has built them. A merge request pipeline offers the job to start by hand, so that a merge request does not build the toolchain of nine platforms unasked. A platform that fails does not fail the pipeline. Set `PUBLISH_TOOLCHAIN` to anything else as a CI/CD variable of the project to stop this without a commit; the job is then offered in a pipeline run by hand from **Build → Pipelines → Run pipeline**, on the default branch or another one. It pushes with the job token, which may write to the container registry of the project, from a secrets file under `seanergys-registry`, as every job of the pipeline passes it. After the build, each job runs `buildcache explain` for the compiler and the packages of `[toolchain]`, so the log of a night that built something shows how its specs differ from those the cache held; a failed explanation does not fail the job.
 
 A night in which nothing changed only checks that the cache holds everything. When the hashes change, for example with the Spack version or the `spack-packages` pin, it builds again, which for GCC and Rust takes hours, so the job may run for 12 hours. A unit test keeps the platforms of the job, their images and their Python equal to those in the shipped `config.toml`, so a platform added there also needs an entry in the job's matrix.
 

@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 import subprocess
 
+import pytest
+
 import seanerstack.discovery as discovery
 import seanerstack.isolation as isolation
 
@@ -80,3 +82,11 @@ def test_what_init_detected_is_kept_in_the_state(tmp_path: Path):
     discovery.save_detected(x, detected)
     assert discovery.load_detected(x) == detected
     assert discovery.load_detected(_state(tmp_path / "other")) == {}
+
+
+def test_a_failed_detection_says_what_spack_said(monkeypatch):
+    error = "==> Error: by_path() missing 1 required keyword-only argument: 'repo'\n"
+    monkeypatch.setattr(discovery.subprocess, "run", lambda args, **kwargs: subprocess.CompletedProcess(args, 3, "", error))
+
+    with pytest.raises(RuntimeError, match="could not detect rust, capnproto: ==> Error: by_path\\(\\) missing"):
+        discovery.detect_packages(["spack"], {}, ["rust", "capnproto"], [])

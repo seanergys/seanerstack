@@ -34,6 +34,9 @@ def _init_args(tmp_path: Path, **overrides) -> "cli.argparse.Namespace":
         probe="zlib",
         probe_timeout=300.0,
         force=False,
+        concretize=False,
+        # What the machine allows, as without --jobs.
+        jobs=None,
         external=None,
         skip_buildcache_check=False,
         skip_validate=False,
@@ -54,7 +57,7 @@ def test_version_names_seanerstack_and_its_pinned_spack(capsys):
         build_parser().parse_args(["--version"])
     assert stop.value.code == 0
     import seanerstack.pins
-    spack = seanerstack.pins.SPACK_VERSION.removeprefix("v")
+    spack = f"{seanerstack.pins.SPACK_VERSION} at commit {seanerstack.pins.SPACK_COMMIT[:10]}"
     assert capsys.readouterr().out == f"seanerstack {importlib.metadata.version('seanerstack')} (Spack {spack})\n"
 
 
@@ -92,6 +95,10 @@ def _init_world(monkeypatch, tmp_path: Path, *, buildcache_ok=True, git_ok=True)
     toolchain = Toolchain(compiler="gcc@15", packages=(), cache="cache", target="x86_64_v3", platforms={})
     monkeypatch.setattr(cli, "load_config", lambda path: Config(path=path or tmp_path / "shipped.toml", resources={"cache": cache}, toolchain=toolchain))
     monkeypatch.setattr(cli, "_spack_runtime", lambda args: (x, tmp_path / "spack", ["spack"], {}))
+    # `spack arch --operating-system`, which bootstrap asks for the lockfile of the platform.
+    monkeypatch.setattr(cli.subprocess, "run", lambda args, **kwargs: cli.subprocess.CompletedProcess(args, 0, "rocky10\n", ""))
+    # The build cache has no compiler lockfile for it; the tests of the lockfile give one.
+    monkeypatch.setattr(cli, "find_compiler_lockfile", lambda config, env, **kwargs: None)
     monkeypatch.setattr(cli, "configure_buildcaches", lambda config, **kwargs: calls.append("configure"))
     monkeypatch.setattr(cli, "require_target", lambda spack_config, target: calls.append(f"target={target}"))
     # The build caches answer; the tests of the access check cover a refusal.
@@ -257,7 +264,7 @@ def _bootstrap_world(monkeypatch, tmp_path: Path, *, compilers=(), detected=None
         return BootstrapResult(compiler=compiler, installed=True, registered=True, languages=("c",), probe="zlib", probe_ok=True)
 
     monkeypatch.setattr(cli, "bootstrap", fake_bootstrap)
-    monkeypatch.setattr(cli, "install_packages", lambda command, packages, env: calls.append(("install", list(packages))))
+    monkeypatch.setattr(cli, "install_packages", lambda command, packages, env, **kwargs: calls.append(("install", list(packages))))
     monkeypatch.setattr(cli, "use_external_package", lambda command, name, prefix, env: calls.append(("external", name, prefix)))
     return calls
 
@@ -274,6 +281,72 @@ def test_bootstrap_builds_the_compiler_then_rust_and_the_other_packages(monkeypa
     assert calls == ["target=x86_64_v3", ("bootstrap", "gcc@15", None, None), ("install", ["rust", "capnproto"])]
 
 
+def test_bootstrap_installs_the_compiler_of_the_lockfile_for_this_operating_system(monkeypatch, tmp_path: Path, capsys):
+    _bootstrap_world(monkeypatch, tmp_path, system="rocky10")
+    given = []
+    shipped = {"rocky10": tmp_path / "rocky10.lock"}
+    monkeypatch.setattr(cli, "find_compiler_lockfile", lambda config, env, **kwargs: shipped.get(kwargs["operating_system"]))
+
+    def fake_bootstrap(compiler, **kwargs):
+        given.append(kwargs["lockfile"])
+        return BootstrapResult(
+            compiler=compiler, installed=True, registered=False, languages=("c",), probe="zlib", probe_ok=True,
+            hash="abcdefabcdef", lockfile=kwargs["lockfile"],
+        )
+
+    monkeypatch.setattr(cli, "bootstrap", fake_bootstrap)
+
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path)) == 0
+    assert "concretized: by the lockfile of rocky10" in capsys.readouterr().out
+    # For a new lockfile, or on purpose with the system compiler of this machine.
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path, concretize=True)) == 0
+    assert "concretized: on this machine" in capsys.readouterr().out
+
+    assert given == [tmp_path / "rocky10.lock", None]
+
+
+def test_bootstrap_builds_the_compiler_in_two_stages_and_takes_a_locked_one_from_the_caches_only(monkeypatch, tmp_path: Path, capsys):
+    _bootstrap_world(monkeypatch, tmp_path)
+    given = []
+
+    def fake_bootstrap(compiler, **kwargs):
+        given.append(kwargs)
+        return BootstrapResult(
+            compiler=compiler, installed=True, registered=False, languages=("c",), probe="zlib", probe_ok=True,
+            hash="abcdefabcdef", first_stage="/state/bootstrap/store/gcc-15.3.0",
+        )
+
+    monkeypatch.setattr(cli, "bootstrap", fake_bootstrap)
+
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path)) == 0
+
+    instance = given[0]["bootstrap_instance"]
+    bootstrap = tmp_path / "state" / "bootstrap"
+    # init searched nothing off PATH here.
+    assert instance.find == ()
+    assert instance.command[-2:] == ["-C", str(bootstrap / "config")]
+    assert (instance.environment, instance.store) == (bootstrap / "environments" / "compiler", bootstrap / "store")
+    # A build of the compiler takes hours; a machine takes the locked one from the caches or stops.
+    assert given[0]["cache_only"] is True
+    assert "built: in two stages, by the first stage in /state/bootstrap/store/gcc-15.3.0" in capsys.readouterr().out
+
+
+def test_bootstrap_concretizes_where_no_lockfile_is_shipped(monkeypatch, tmp_path: Path):
+    _bootstrap_world(monkeypatch, tmp_path, system="debian13")
+    given = []
+    shipped = {"rocky10": tmp_path / "rocky10.lock"}
+    monkeypatch.setattr(cli, "find_compiler_lockfile", lambda config, env, **kwargs: shipped.get(kwargs["operating_system"]))
+    monkeypatch.setattr(
+        cli, "bootstrap",
+        lambda compiler, **kwargs: given.append(kwargs["lockfile"]) or BootstrapResult(
+            compiler=compiler, installed=True, registered=False, languages=("c",), probe="zlib", probe_ok=True
+        ),
+    )
+
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path)) == 0
+    assert given == [None]
+
+
 def test_bootstrap_gives_spack_the_stored_credentials_of_the_build_cache(monkeypatch, tmp_path: Path):
     import json
     import seanerstack.isolation
@@ -287,7 +360,7 @@ def test_bootstrap_gives_spack_the_stored_credentials_of_the_build_cache(monkeyp
         return BootstrapResult(compiler=compiler, installed=True, registered=True, languages=("c",), probe="zlib", probe_ok=True)
 
     monkeypatch.setattr(cli, "bootstrap", fake_bootstrap)
-    monkeypatch.setattr(cli, "install_packages", lambda command, packages, env: environments.append(env))
+    monkeypatch.setattr(cli, "install_packages", lambda command, packages, env, **kwargs: environments.append(env))
 
     cli._run_bootstrap(_bootstrap_args(tmp_path))
 
@@ -416,3 +489,183 @@ def test_init_pads_the_state_only_when_told_to(monkeypatch, tmp_path: Path):
     assert padded == [(x.config, 256), (x.config, 0)]
     assert build_parser().parse_args(["init", "--padded-length", "256"]).padded_length == 256
     assert build_parser().parse_args(["init"]).padded_length is None
+
+
+def test_prepare_without_a_container_builds_with_the_bootstrap_instance_of_the_state(monkeypatch, tmp_path: Path):
+    import seanerstack.isolation
+    x = seanerstack.isolation.prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    monkeypatch.setattr(cli, "_runtime", lambda args: (Config(path=tmp_path / "config.toml", resources={}), None))
+    monkeypatch.setattr(cli, "_spack_runtime", lambda args: (x, tmp_path / "spack", ["spack"], {}))
+    given = []
+    monkeypatch.setattr(cli, "prepare_here", lambda config, secrets, **kwargs: given.append(kwargs) or 0)
+
+    args = build_parser().parse_args(["buildcache", "prepare", "--no-container", "--platform", "rocky10"])
+    assert cli._run_buildcache(args) == 0
+
+    instance = given[0]["bootstrap_instance"]
+    assert instance.command == [str(tmp_path / "spack"), "-C", str(x.state / "bootstrap" / "config")]
+    assert instance.store == x.state / "bootstrap" / "store"
+
+
+def test_the_bootstrap_instance_searches_where_init_searched_for_compilers(tmp_path: Path):
+    import json
+    import seanerstack.isolation
+    x = seanerstack.isolation.prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    toolset = tmp_path / "gcc-toolset-15"
+    (toolset / "bin").mkdir(parents=True)
+    x.record.write_text(json.dumps({"find": [str(toolset), str(tmp_path / "no-bin")]}), encoding="utf-8")
+
+    instance = cli._bootstrap_instance(x, tmp_path / "spack", {})
+
+    assert instance.find == (str(toolset / "bin"), str(tmp_path / "no-bin"))
+
+
+def test_the_bootstrap_instance_reads_the_bootstrap_cache_and_builds_for_the_target(monkeypatch, tmp_path: Path):
+    import seanerstack.isolation
+    from seanerstack.config import Resource, Toolchain
+    x = seanerstack.isolation.prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    boot = Resource(name="boot", kind="spack-buildcache", url="oci://registry.example.org/cache-bootstrap", credentials="c", signed=False)
+    toolchain = Toolchain(compiler="gcc@15", packages=(), cache="cache", target="x86_64_v3", platforms={}, bootstrap_cache="boot")
+    configured = []
+    monkeypatch.setattr(cli, "configure_buildcache", lambda resource, *, command, env: configured.append((resource.name, command)))
+
+    instance = cli._bootstrap_instance(
+        x, tmp_path / "spack", {}, Config(path=tmp_path / "config.toml", resources={"boot": boot}, toolchain=toolchain), "x86_64_v3"
+    )
+
+    assert configured == [("boot", instance.command)]
+    assert (instance.config, instance.target) == (x.state / "bootstrap" / "config", "x86_64_v3")
+
+
+def test_bootstrap_checks_the_bootstrap_cache_only_where_it_builds_the_compiler(monkeypatch, tmp_path: Path):
+    _bootstrap_world(monkeypatch, tmp_path)
+    asked = []
+    monkeypatch.setattr(cli, "require_cache_access", lambda command, env: asked.append(command))
+    bootstrap_config = str(tmp_path / "state" / "bootstrap" / "config")
+
+    # No lockfile: the compiler is built, and its first stage comes from the bootstrap cache.
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path)) == 0
+    assert any(command[-1] == bootstrap_config for command in asked)
+
+    asked.clear()
+    monkeypatch.setattr(cli, "find_compiler_lockfile", lambda config, env, **kwargs: tmp_path / "rocky10.lock")
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path)) == 0
+    assert not any(command[-1] == bootstrap_config for command in asked)
+
+
+def test_bootstrap_asks_the_build_cache_for_the_lockfile_of_this_compiler_target_and_system(monkeypatch, tmp_path: Path):
+    _bootstrap_world(monkeypatch, tmp_path, system="fedora45")
+    asked = []
+    monkeypatch.setattr(cli, "find_compiler_lockfile", lambda config, env, **kwargs: asked.append(kwargs))
+
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path)) == 0
+
+    (kwargs,) = asked
+    assert (kwargs["compiler"], kwargs["target"], kwargs["operating_system"]) == ("gcc@15", "x86_64_v3", "fedora45")
+    assert kwargs["directory"] == tmp_path / "state" / "spack" / "environments" / "compiler-lockfiles"
+
+
+def test_bootstrap_asks_for_no_lockfile_where_it_would_not_use_one(monkeypatch, tmp_path: Path):
+    _bootstrap_world(monkeypatch, tmp_path)
+    asked = []
+    monkeypatch.setattr(cli, "find_compiler_lockfile", lambda config, env, **kwargs: asked.append(kwargs))
+    for overrides in ({"concretize": True}, {"dry_run": True}):
+        assert cli._run_bootstrap(_bootstrap_args(tmp_path, **overrides)) == 0
+    assert asked == []
+
+
+def test_bootstrap_with_a_config_of_no_resources_has_no_bootstrap_cache(monkeypatch, tmp_path: Path):
+    # The end-to-end tests set up a state with a config.toml of no resources, which takes the shipped [toolchain].
+    import seanerstack.isolation
+    from seanerstack.config import load_config
+    path = tmp_path / "config.toml"
+    path.write_text("", encoding="utf-8")
+    config = load_config(path)
+    x = seanerstack.isolation.prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    configured = []
+    monkeypatch.setattr(cli, "configure_buildcache", lambda resource, **kwargs: configured.append(resource.name))
+
+    instance = cli._bootstrap_instance(x, tmp_path / "spack", {}, config, config.toolchain.target)
+
+    assert config.toolchain.bootstrap_cache == "seanerstack-buildcache-bootstrap" and configured == []
+    assert instance.target == "x86_64_v3"
+
+
+def _publish_world(monkeypatch, tmp_path: Path, *, bootstrap_cache=True, compiler_lock=True):
+    """init's world with a bootstrap cache and a compiler environment, recording what publish sends."""
+    import json
+    from seanerstack.config import Resource, Toolchain
+    x, _ = _init_world(monkeypatch, tmp_path)
+    cache = Resource(name="cache", kind="spack-buildcache", url="oci://registry.example.org/cache", credentials="registry", signed=False)
+    boot = Resource(name="boot", kind="spack-buildcache", url="oci://registry.example.org/cache-bootstrap", credentials="registry", signed=False)
+    toolchain = Toolchain(
+        compiler="gcc@15", packages=(), cache="cache", target="x86_64_v3", platforms={},
+        bootstrap_cache="boot" if bootstrap_cache else None,
+    )
+    monkeypatch.setattr(cli, "load_config", lambda path: Config(path=tmp_path / "config.toml", resources={"cache": cache, "boot": boot}, toolchain=toolchain))
+    sent = []
+    monkeypatch.setattr(cli, "configure_buildcache", lambda resource, **kwargs: None)
+    monkeypatch.setattr(cli, "push_installed", lambda resource, *, command, env: sent.append(("push", resource.name, command)) or 3)
+    monkeypatch.setattr(
+        cli, "publish_compiler_lockfile",
+        lambda resource, path, env, **kwargs: sent.append(("lockfile", resource.name, path, kwargs)) or ("compiler-tag", True),
+    )
+    if compiler_lock:
+        environment = x.environments / "compiler"
+        environment.mkdir(parents=True)
+        (environment / "spack.lock").write_text(json.dumps({"roots": [{"hash": "abc", "spec": "gcc@15 %c,cxx=gcc@15"}]}))
+    return x, sent
+
+
+def test_publish_pushes_the_first_stage_and_publishes_the_compiler_lockfile(monkeypatch, tmp_path: Path, capsys):
+    x, sent = _publish_world(monkeypatch, tmp_path)
+
+    assert cli._run_publish(_init_args(tmp_path)) == 0
+
+    push, lock = sent
+    assert push[:2] == ("push", "boot") and push[2][-2:] == ["-C", str(x.state / "bootstrap" / "config")]
+    assert lock[:3] == ("lockfile", "cache", x.environments / "compiler" / "spack.lock")
+    # `spack arch --operating-system` of the stand-in answers rocky10.
+    assert lock[3] == {"compiler": "gcc@15", "target": "x86_64_v3", "operating_system": "rocky10"}
+    out = capsys.readouterr().out
+    assert "first stage: 3 specs of the bootstrap instance in oci://registry.example.org/cache-bootstrap" in out
+    assert "compiler lockfile: compiler-tag in oci://registry.example.org/cache" in out
+
+
+def test_publish_leaves_out_what_the_state_or_the_config_does_not_have(monkeypatch, tmp_path: Path, capsys):
+    _, sent = _publish_world(monkeypatch, tmp_path / "a", bootstrap_cache=False)
+    assert cli._run_publish(_init_args(tmp_path / "a")) == 0
+    assert [entry[0] for entry in sent] == ["lockfile"]
+    assert "first stage: config.toml names no bootstrap cache" in capsys.readouterr().out
+
+    _, sent = _publish_world(monkeypatch, tmp_path / "b", compiler_lock=False)
+    assert cli._run_publish(_init_args(tmp_path / "b")) == 0
+    assert [entry[0] for entry in sent] == ["push"]
+    assert "compiler lockfile: none, the compiler environment holds no gcc@15 of two stages" in capsys.readouterr().out
+
+
+def test_toolchain_publish_is_a_command():
+    args = build_parser().parse_args(["toolchain", "publish"])
+    assert (args.command, args.toolchain_command) == ("toolchain", "publish")
+
+
+def test_bootstrap_builds_with_the_jobs_the_machine_allows_unless_told(monkeypatch, tmp_path: Path):
+    _bootstrap_world(monkeypatch, tmp_path)
+    given = []
+    monkeypatch.setattr(cli, "default_jobs", lambda: 7)
+    monkeypatch.setattr(
+        cli, "bootstrap",
+        lambda compiler, **kwargs: given.append(("bootstrap", kwargs["jobs"])) or BootstrapResult(
+            compiler=compiler, installed=True, registered=False, languages=("c",), probe="zlib", probe_ok=True
+        ),
+    )
+    monkeypatch.setattr(cli, "install_packages", lambda command, packages, env, jobs=None: given.append(("packages", jobs)))
+
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path)) == 0
+    assert cli._run_bootstrap(_bootstrap_args(tmp_path, jobs=3)) == 0
+
+    assert given == [("bootstrap", 7), ("packages", 7), ("bootstrap", 3), ("packages", 3)]
+
+
+def test_toolchain_bootstrap_takes_jobs():
+    assert build_parser().parse_args(["toolchain", "bootstrap", "--jobs", "12"]).jobs == 12

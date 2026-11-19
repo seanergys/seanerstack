@@ -9,6 +9,48 @@ and release process.
 
 ### Added
 
+- The compiler of the stack is built in two stages. The system compiler builds
+  a first GCC, for C and C++ only, in a Spack instance of its own below
+  `<state>/bootstrap`; the actual instance knows it only as an external at
+  `<state>/bootstrap/store/gcc-VERSION`, and it builds the compiler of the
+  stack with everything that compiler links against. On Fedora 44 and 45,
+  whose system GCC 16 is newer than the compiler, nothing concretized with a
+  compiler that GCC 16 had built: Spack's gcc recipe lets whatever gcc@15
+  compiles depend only on gcc@:15. The hash of the compiler no longer depends
+  on the system compiler, only on the state directory.
+- The first stage of the compiler has a build cache of its own,
+  `seanerstack-buildcache-bootstrap` (`[toolchain] bootstrap_cache`), the
+  registry repository `software/seanerstack/buildcache-bootstrap`, with the
+  `seanergys-registry` credentials of the project cache. Only the bootstrap
+  instance reads it. `buildcache prepare` pushes the first stage there as soon
+  as it is built, and a machine that builds the compiler takes the first stage
+  from there. The first stage is built for the target of the toolchain, so
+  that one binary serves every machine of a platform.
+- The lockfile of the compiler environment is kept in the build cache, as a
+  tag of its registry repository such as
+  `compiler-gcc-15-rocky10-x86_64_v3-2efee779f543`, which Spack ignores. The
+  tag ends in a digest of the pinned Spack and recipes, the compiler, both
+  stages, the operating system and the target. `buildcache prepare` publishes
+  it once the probe accepted the compiler, unless the cache has it already.
+  `toolchain bootstrap` and `buildcache prepare` install the compiler from it
+  without concretizing, so every machine installs the compiler that the cache
+  holds, whatever its system compiler and state directory. Seanerstack reads
+  and writes the tag itself, over the registry's HTTP API. No lockfile is in
+  the source tree.
+- `toolchain bootstrap --jobs N` and `buildcache prepare` build with as many
+  jobs as the machine allows, for both stages of the compiler and the toolchain
+  packages: the CPUs the process may run on, within the CPU quota of its cgroup,
+  and no more than the free memory takes at 2 GiB per job, within the memory
+  limit of the cgroup. Spack used 16 jobs, a third of a CI node of 48 cores,
+  and a container limited by a quota counted all of the host's cores.
+- `seanerstack toolchain publish` pushes the first stage of the compiler to the
+  bootstrap cache and publishes the compiler lockfile in the build cache,
+  unless the cache has its tag, as `buildcache prepare` does by itself. It runs
+  after `toolchain bootstrap`, once the compiler is in the build cache.
+- `toolchain bootstrap` takes the compiler of that lockfile from the build
+  caches only (`spack install --cache-only`), and stops when they lack it
+  instead of building for hours. Without a lockfile in the cache, or with
+  `--concretize`, it builds the compiler on the machine.
 - `seanerstack buildcache prepare --probe-timeout SECONDS` sets how long the
   compiler probe may take, as `init` and `toolchain bootstrap` already do; 0
   waits indefinitely. In a container, the build inside gets the same limit.
@@ -52,6 +94,12 @@ and release process.
 
 ### Changed
 
+- The stack reuses the compiler alone from the compiler environment. What the
+  compiler was built with, such as `ncurses`, `readline` and `gmake`, was
+  compiled by the system compiler, and every package that needed one of them
+  took the compiler's. The stack now builds its own with the project
+  compiler; only `zlib-ng` and `zstd`, which the compiler links against, are
+  shared. Every hash of the toolchain packages and the stack changes.
 - `buildcache prepare` pushes the compiler and updates the index of the cache
   as soon as the compiler is built, before the probe and the packages of the
   toolchain. A later failure no longer costs the build of the compiler again.
@@ -82,6 +130,12 @@ and release process.
 
 ### Fixed
 
+- No registered compiler that the compiler spec matches builds the stack in
+  place of the installed compiler. On Ubuntu 26.04, whose only compiler is the
+  system gcc 15.2.0, `buildcache prepare` refused the compiler it had just
+  built: removed from the configuration, gcc 15.2.0 came back when Spack
+  registered the compilers on PATH again, and it satisfies `gcc@15`. The
+  concretizer now reuses every external but those.
 - `toolchain bootstrap` and `buildcache prepare` no longer stop at a compiler
   probe that never finishes. The compiler was required on the languages `c`,
   `cxx` and `fortran`, which Spack also applies to the compiler's own

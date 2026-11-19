@@ -273,3 +273,87 @@ def test_build_caches_that_answer_pass_the_access_check(monkeypatch):
     monkeypatch.setattr(buildcache.subprocess, "run", lambda args, **kwargs: subprocess.CompletedProcess(args, 0, "", ""))
 
     buildcache.require_cache_access(["spack"], {})
+
+
+def _with_bootstrap_cache(tmp_path: Path) -> Config:
+    from seanerstack.config import Toolchain
+    config = _registry_config(tmp_path)
+    bootstrap = Resource(
+        name="bootstrap", kind="spack-buildcache", url="oci://registry.example.org/group/project/buildcache-bootstrap",
+        credentials="gitlab", signed=False,
+    )
+    toolchain = Toolchain(compiler="gcc@15", packages=(), cache="registry", target="x86_64_v3", platforms={}, bootstrap_cache="bootstrap")
+    return Config(path=config.path, resources={**config.resources, "bootstrap": bootstrap}, toolchain=toolchain)
+
+
+def test_the_stack_never_reads_the_bootstrap_cache(monkeypatch, tmp_path: Path):
+    calls = []
+    monkeypatch.setattr(buildcache.subprocess, "run", lambda args, **kwargs: calls.append(args) or subprocess.CompletedProcess(args, 0, "", ""))
+    config = _with_bootstrap_cache(tmp_path)
+
+    assert [resource.name for resource in buildcache.buildcaches(config)] == ["registry"]
+    assert buildcache.bootstrap_buildcache(config).name == "bootstrap"
+    buildcache.configure_buildcaches(config, command=["spack"])
+    assert not any("bootstrap" in args for args in calls)
+
+
+def test_no_bootstrap_cache_is_none_and_another_kind_is_refused(tmp_path: Path):
+    from dataclasses import replace
+    config = _with_bootstrap_cache(tmp_path)
+    assert buildcache.bootstrap_buildcache(replace(config, toolchain=replace(config.toolchain, bootstrap_cache=None))) is None
+    assert buildcache.bootstrap_buildcache(_registry_config(tmp_path)) is None
+    git = Resource(name="bootstrap", kind="git", url="https://gitlab.example.org/")
+    with pytest.raises(ValueError, match="not a spack-buildcache"):
+        buildcache.bootstrap_buildcache(replace(config, resources={**config.resources, "bootstrap": git}))
+
+
+def test_the_environment_has_the_credentials_of_the_bootstrap_cache(tmp_path: Path):
+    # The bootstrap instance takes its environment from the actual one.
+    secrets = SecretStore(Path("vault"), _data={"credentials": {"gitlab": {"token": "glpat"}}})
+    env = buildcache.buildcache_environment(_with_bootstrap_cache(tmp_path), secrets, {})
+    assert env["SEANERSTACK_RESOURCE_BOOTSTRAP_PASSWORD"] == "glpat"
+    assert env["SEANERSTACK_RESOURCE_REGISTRY_PASSWORD"] == "glpat"
+
+
+def test_one_build_cache_is_configured_in_the_instance_given(monkeypatch, tmp_path: Path):
+    calls = []
+    monkeypatch.setattr(buildcache.subprocess, "run", lambda args, **kwargs: calls.append(args) or subprocess.CompletedProcess(args, 0, "", ""))
+    resource = buildcache.bootstrap_buildcache(_with_bootstrap_cache(tmp_path))
+
+    buildcache.configure_buildcache(resource, command=["spack", "-C", "/state/bootstrap/config"])
+
+    assert calls[0] == ["spack", "-C", "/state/bootstrap/config", "mirror", "remove", "--scope", "user", "bootstrap"]
+    assert calls[1][-2:] == ["bootstrap", "oci://registry.example.org/group/project/buildcache-bootstrap"]
+
+
+def test_a_config_without_the_bootstrap_cache_it_names_has_none(tmp_path: Path):
+    # The [toolchain] of the shipped config.toml names it, and a config.toml of other resources does not define it.
+    from dataclasses import replace
+    config = _with_bootstrap_cache(tmp_path)
+    without = replace(config, resources={name: value for name, value in config.resources.items() if name != "bootstrap"})
+    assert buildcache.bootstrap_buildcache(without) is None
+    assert [resource.name for resource in buildcache.buildcaches(without)] == ["registry"]
+
+
+def test_everything_an_instance_installed_is_pushed_and_indexed(monkeypatch, tmp_path: Path):
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "/aaa\n/bbb\n" if "find" in args else "", "")
+
+    monkeypatch.setattr(buildcache.subprocess, "run", fake_run)
+    resource = buildcache.bootstrap_buildcache(_with_bootstrap_cache(tmp_path))
+
+    assert buildcache.push_installed(resource, command=["bspack"], env={}) == 2
+
+    assert calls[1] == ["bspack", "buildcache", "push", "--only", "package", "bootstrap", "/aaa", "/bbb"]
+    assert calls[2][:2] == ["bspack", "python"] and calls[2][-1] == "bootstrap"
+
+
+def test_an_instance_with_nothing_installed_sends_nothing(monkeypatch, tmp_path: Path):
+    calls = []
+    monkeypatch.setattr(buildcache.subprocess, "run", lambda args, **kwargs: calls.append(args) or subprocess.CompletedProcess(args, 0, "", ""))
+    resource = buildcache.bootstrap_buildcache(_with_bootstrap_cache(tmp_path))
+    assert buildcache.push_installed(resource, command=["bspack"], env={}) == 0
+    assert calls == [["bspack", "find", "--format", "/{hash}"]]

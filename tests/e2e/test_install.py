@@ -31,4 +31,5 @@ def test_version_names_the_pinned_spack(commands: Commands):
 
     assert result.returncode == 0, result.stderr
     assert result.stdout.startswith("seanerstack "), result.stdout
-    assert re.search(r"\(Spack \d+\.\d+\.\d+\)$", result.stdout.rstrip()), result.stdout
+    # The version and the commit of the pinned Spack, such as "(Spack 1.3.0.dev0 at commit 7188f9d6e0)".
+    assert re.search(r"\(Spack \d+\.\d+\.\d+(\.dev\d+)? at commit [0-9a-f]{10}\)$", result.stdout.rstrip()), result.stdout
