@@ -135,6 +135,8 @@ An external records nothing about what built it. No record of the compiler envir
 
 The bootstrap instance has its own configuration and install tree, with the same Spack, recipes and source cache, so nothing that the system compiler built enters the Spack of the stack. It installs the first stage at `<state>/bootstrap/store/gcc-15.3.0`, without a hash in the path. The compiler is hashed with the path of the external that built it, so its hash depends on the state directory, and no longer on the version of the system compiler. A first stage built earlier by another system compiler has another hash at the same path, and is uninstalled first.
 
+The first stage has a build cache of its own, `seanerstack-buildcache-bootstrap`, which only the bootstrap instance reads. `seanerstack buildcache prepare` pushes the first stage there as soon as it is built, before the second stage is built with it, and a machine that builds the compiler takes the first stage from there instead of building it. The first stage is built for the target of the toolchain, as the stack is, so that one binary serves every machine of a platform. A machine that installs the compiler from the lockfile needs no first stage at all.
+
 ## Using a compiler that is already installed
 
 A machine may already have the compiler the stack needs: GCC 16 from the distribution, or a GCC toolset in `/opt/rh`. `seanerstack init` finds it, on `PATH` or below a prefix given with `--find`, and `--external` makes it the project compiler instead of building one:

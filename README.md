@@ -169,7 +169,9 @@ resource must set `signed = false`. A build cache with a `file://` URL is a
 directory on a local or shared filesystem. It takes no credentials, because file
 permissions control access to it, and it is unsigned unless the resource sets
 `signed = true`. Any other URL is S3 and takes the access key pair. The project
-cache, `seanerstack-buildcache`, is the seanerstack GitLab container registry.
+cache, `seanerstack-buildcache`, is the seanerstack GitLab container registry;
+`seanerstack-buildcache-bootstrap` beside it holds the first stage of the
+compiler, with the same credentials, and only the bootstrap instance reads it.
 
 Seanerstack stores only environment-variable references in Spack's mirror
 configuration. It never writes S3 keys or registry tokens into Spack

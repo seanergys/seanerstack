@@ -2,6 +2,8 @@
 
 Seanerstack ships the SEANERGYS binary build cache as the `seanerstack-buildcache` resource: an OCI build cache in the seanerstack GitLab container registry, `registry.seanergys.fz-juelich.de/software/seanerstack/buildcache`. Spack cannot sign OCI build caches, so the cache is unsigned and registry access control is the trust boundary.
 
+Beside it, `seanerstack-buildcache-bootstrap`, `registry.seanergys.fz-juelich.de/software/seanerstack/buildcache-bootstrap`, holds the first stage of the compiler, which the system compiler builds ([why](../explanation/compiler-bootstrap.md#why-the-compiler-is-built-in-two-stages)). `[toolchain] bootstrap_cache` names it. Only the bootstrap instance of a state reads it, so nothing that the system compiler built reaches the stack. It takes the same `seanergys-registry` credentials.
+
 ## Provide credentials
 
 The registry takes a GitLab personal access token: `read_registry` to install, `write_registry` to push (`api` covers both). Store it in the secrets file under the name the resource refers to, and encrypt the file as described in [Create a secrets file](create-a-secrets-file.md):

@@ -57,7 +57,7 @@ All mutable Spack state controlled by Seanerstack is redirected below the select
 
 The install tree, build stages, source cache, miscellaneous cache, test stage, and managed-environment root therefore do not reuse corresponding state from another Spack setup.
 
-The bootstrap instance has a configuration and install tree of its own, and shares the pinned Spack, the recipes and the source cache. Only the first stage of the compiler is built there, by the system compiler, so that nothing the system compiler built enters the Spack of the stack: see [Why the compiler is built in two stages](compiler-bootstrap.md#why-the-compiler-is-built-in-two-stages).
+The bootstrap instance has a configuration, install tree and build cache of its own, and shares the pinned Spack, the recipes and the source cache. Only the first stage of the compiler is built there, by the system compiler, so that nothing the system compiler built enters the Spack of the stack: see [Why the compiler is built in two stages](compiler-bootstrap.md#why-the-compiler-is-built-in-two-stages).
 
 ## Pinned builtin recipes
 
