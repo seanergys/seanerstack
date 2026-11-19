@@ -58,6 +58,12 @@ and release process.
 
 ### Changed
 
+- The stack reuses the compiler alone from the compiler environment. What the
+  compiler was built with, such as `ncurses`, `readline` and `gmake`, was
+  compiled by the system compiler, and every package that needed one of them
+  took the compiler's. The stack now builds its own with the project
+  compiler; only `zlib-ng` and `zstd`, which the compiler links against, are
+  shared. Every hash of the toolchain packages and the stack changes.
 - `buildcache prepare` pushes the compiler and updates the index of the cache
   as soon as the compiler is built, before the probe and the packages of the
   toolchain. A later failure no longer costs the build of the compiler again.

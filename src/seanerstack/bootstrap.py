@@ -245,8 +245,8 @@ def _install_compiler(
     _run_streaming([*command, "-e", str(environment), "install"], env=env)
 
 
-def _reuse_environment(spack_config: Path, environment: Path) -> None:
-    """Let the concretizer reuse what the compiler environment installed, and nothing else.
+def _reuse_environment(spack_config: Path, environment: Path, compiler: str) -> None:
+    """Let the concretizer reuse the compiler that the compiler environment installed, and nothing else.
 
     Spack takes a compiler only when it is an external or a concrete spec it
     may reuse. A state concretizes everything fresh, so that the same recipes
@@ -255,12 +255,48 @@ def _reuse_environment(spack_config: Path, environment: Path) -> None:
     builds by its own hash, which is the same wherever it is installed, and
     not by its path, as an external does.
 
+    Only the compiler: the environment also holds what the compiler was built
+    with, such as ncurses, readline and gmake, which the system compiler
+    compiled. Left reusable, Spack takes them for every package that needs
+    them, because it prefers an installed package to a new one. With `include`
+    the stack builds its own with the project compiler. What the compiler
+    itself links against, zlib-ng and zstd, stays the compiler's.
+
     @param spack_config: the Spack configuration directory of the state
     @param environment: the directory of the compiler environment
+    @param compiler: the compiler spec, such as gcc@15
     @return: nothing
     """
-    settings = {"concretizer": {"reuse": {"from": [{"type": "environment", "path": str(environment)}]}}}
+    source = {"type": "environment", "path": str(environment), "include": [compiler]}
+    settings = {"concretizer": {"reuse": {"from": [source]}}}
     (spack_config / "concretizer.yaml").write_text(yaml.safe_dump(settings), encoding="utf-8")
+
+
+def _concretize_as_a_new_state_does(spack_config: Path) -> None:
+    """Take out of the configuration what an earlier bootstrap wrote for the compiler.
+
+    The compiler environment has to concretize to the same compiler whenever
+    it is concretized. With the compiler rule in place and the earlier compiler
+    reusable, its dependencies would be new packages that the rule compiles
+    with that earlier compiler, and the result another compiler with another
+    hash. A new state has neither, so they are removed first; bootstrap writes
+    both again once the compiler is installed.
+
+    @param spack_config: the Spack configuration directory of the state
+    @return: nothing
+    """
+    (spack_config / "concretizer.yaml").write_text(yaml.safe_dump({"concretizer": {"reuse": False}}), encoding="utf-8")
+
+    def change(packages: dict) -> None:
+        for language in LANGUAGE_VIRTUALS:
+            section = packages.get(language) or {}
+            section.pop("require", None)
+            if not section:
+                packages.pop(language, None)
+        requirements = _requirements_of_all(packages)
+        requirements[:] = [found for found in requirements if not _is_compiler_rule(found)]
+
+    _edit_packages(spack_config, change)
 
 
 def _forget_registered_compilers(command: list[str], compiler: str, env) -> None:
@@ -453,6 +489,8 @@ def bootstrap(
     already_installed = installed is not None
     if (force or not already_installed) and not dry_run:
         _ensure_system_compiler(command, env)
+        if locked is None:
+            _concretize_as_a_new_state_does(spack_config)
         _install_compiler(command, environment, compiler, env, source_compiler, locked)
         installed = _environment_compiler(command, environment, compiler, env)
 
@@ -463,7 +501,7 @@ def bootstrap(
             installed_compiler()
         # Before the rule: only a compiler that the concretizer may reuse can
         # satisfy it.
-        _reuse_environment(spack_config, environment)
+        _reuse_environment(spack_config, environment, compiler)
         _forget_registered_compilers(command, compiler, env)
         _require_compiler_where_used(spack_config, languages, compiler)
 
