@@ -223,3 +223,22 @@ def test_a_merge_request_offers_the_toolchain_job_only_by_hand():
     (asked,) = [rule for rule in rules if "merge_request_event" in rule["if"]]
     assert (asked["when"], asked["allow_failure"]) == ("manual", True)
     assert asked["if"] == '$PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE == "merge_request_event"'
+
+
+def test_no_job_passes_credentials_of_a_resource_in_variables():
+    # Every job writes the job token to one secrets file, whose credential names cover every resource.
+    ci = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+    for name, job in ci.items():
+        variables = job.get("variables", {}) if isinstance(job, dict) else {}
+        assert not [key for key in variables if key.startswith("SEANERSTACK_RESOURCE_")], name
+
+
+def test_the_toolchain_job_passes_the_job_token_in_a_secrets_file():
+    job = _toolchain_job()
+    before = []
+    for step in job["before_script"]:
+        before += step if isinstance(step, list) else [step]
+    assert "keyloom encrypt /tmp/secrets.toml --password-file /tmp/vault-password" in before
+    for command in ("buildcache prepare", "buildcache explain"):
+        (step,) = [step for step in job["script"] if command in step]
+        assert "--secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password" in " ".join(step.split()), command
