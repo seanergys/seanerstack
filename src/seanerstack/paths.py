@@ -51,6 +51,16 @@ def repository_path() -> Path:
     return path
 
 
+def toolchain_lockfile(operating_system: str) -> Path | None:
+    """The shipped lockfile of the compiler environment for an operating system, or None.
+
+    @param operating_system: the operating system as Spack names it, such as rocky10
+    @return: the path of the lockfile, or None when Seanerstack ships none for it
+    """
+    path = share_path() / "toolchain" / operating_system / "spack.lock"
+    return path if path.is_file() else None
+
+
 def environments_path() -> Path:
     path = share_path() / "environments"
     if not path.is_dir():

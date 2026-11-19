@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 
 import yaml
@@ -30,6 +31,8 @@ class BootstrapResult:
     external: str | None = None
     # The hash of the installed compiler that the concretizer reuses.
     hash: str | None = None
+    # The lockfile that the compiler was installed from, when it was not concretized here.
+    lockfile: Path | None = None
 
 
 def _run(
@@ -176,7 +179,35 @@ def _check_external(command: list[str], compiler: str, prefix: str, env, timeout
         )
 
 
-def _install_compiler(command: list[str], environment: Path, compiler: str, env, source: str | None = None) -> None:
+def _compiler_root(compiler: str, source: str | None = None) -> str:
+    """The root spec of the compiler environment.
+
+    @param compiler: the compiler spec, such as gcc@15
+    @param source: the registered compiler that builds it, or None for Spack's choice
+    @return: the spec that the environment asks for
+    """
+    return f"{compiler} %c,cxx={source}" if source else f"{compiler} %c"
+
+
+def lockfile_for(lockfile: Path | None, compiler: str) -> Path | None:
+    """`lockfile` when it holds the compiler environment of COMPILER, and None otherwise.
+
+    A lockfile is shipped for the compiler of the shipped `[toolchain]`. A
+    config.toml that names another compiler has no lockfile, and concretizes.
+
+    @param lockfile: a lockfile of a compiler environment, or None
+    @param compiler: the compiler spec, such as gcc@15
+    @return: the lockfile, or None when there is none or it is for another compiler
+    """
+    if lockfile is None:
+        return None
+    roots = [root.get("spec") for root in json.loads(lockfile.read_text(encoding="utf-8")).get("roots", [])]
+    return lockfile if roots == [_compiler_root(compiler)] else None
+
+
+def _install_compiler(
+    command: list[str], environment: Path, compiler: str, env, source: str | None = None, lockfile: Path | None = None
+) -> None:
     """Build the compiler in an environment of its own, even where the system compiler has the same version.
 
     The system compiler is registered as an external, and an external that
@@ -189,18 +220,28 @@ def _install_compiler(command: list[str], environment: Path, compiler: str, env,
     The environment records which installation is the compiler, with
     everything it links to: its lockfile is what the concretizer reuses.
 
+    With `lockfile`, the environment is not concretized here. The compiler is
+    built by the system compiler, an external whose hash holds its version and
+    the languages it offers, so a machine with another system compiler, or
+    without gfortran, concretizes the compiler to a hash that no build cache
+    holds. The lockfile is the concretization of the machine that filled the
+    cache, and Spack installs exactly its specs.
+
     @param command: the isolated Spack command
     @param environment: the directory of the compiler environment, written here
     @param compiler: the compiler spec, such as gcc@15
     @param env: the environment of the command
     @param source: the registered compiler that builds it, or None for Spack's choice
+    @param lockfile: the concretized environment to install, or None to concretize here
     @return: nothing; a failed build raises CalledProcessError
     """
     environment.mkdir(parents=True, exist_ok=True)
-    root = f"{compiler} %c,cxx={source}" if source else f"{compiler} %c"
-    manifest = {"spack": {"specs": [root], "view": False, "concretizer": {"unify": True}}}
+    manifest = {"spack": {"specs": [_compiler_root(compiler, source)], "view": False, "concretizer": {"unify": True}}}
     (environment / "spack.yaml").write_text(yaml.safe_dump(manifest), encoding="utf-8")
-    _run_streaming([*command, "-e", str(environment), "concretize", "--force"], env=env)
+    if lockfile is None:
+        _run_streaming([*command, "-e", str(environment), "concretize", "--force"], env=env)
+    else:
+        shutil.copyfile(lockfile, environment / "spack.lock")
     _run_streaming([*command, "-e", str(environment), "install"], env=env)
 
 
@@ -368,6 +409,7 @@ def bootstrap(
     environment: Path | None = None,
     spack_config: Path | None = None,
     installed_compiler: Callable[[], None] | None = None,
+    lockfile: Path | None = None,
 ) -> BootstrapResult:
     """Make COMPILER the compiler of every SEANERGYS build.
 
@@ -383,6 +425,9 @@ def bootstrap(
     @param installed_compiler: called once the compiler environment holds the
         compiler, before anything requires or probes it, so that a caller can
         keep the build whatever happens next; not called for an external
+    @param lockfile: the concretized compiler environment of this platform. The
+        compiler is installed from it and not concretized here, unless it is
+        for another compiler or `source_compiler` names what builds it
     """
     command = command or ["spack"]
     if not languages:
@@ -403,11 +448,12 @@ def bootstrap(
 
     if environment is None or spack_config is None:
         raise ValueError("the compiler environment and the Spack configuration of the state are required")
+    locked = None if source_compiler else lockfile_for(lockfile, compiler)
     installed = _environment_compiler(command, environment, compiler, env)
     already_installed = installed is not None
     if (force or not already_installed) and not dry_run:
         _ensure_system_compiler(command, env)
-        _install_compiler(command, environment, compiler, env, source_compiler)
+        _install_compiler(command, environment, compiler, env, source_compiler, locked)
         installed = _environment_compiler(command, environment, compiler, env)
 
     if not dry_run:
@@ -448,6 +494,7 @@ def bootstrap(
         probe=probe,
         probe_ok=probe_ok,
         hash=installed,
+        lockfile=locked,
     )
 
 
