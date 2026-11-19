@@ -14,7 +14,10 @@ from .bootstrap import (
     DEFAULT_LANGUAGES, DEFAULT_PROBE, DEFAULT_PROBE_TIMEOUT, BootstrapInstance, bootstrap, install_packages, require_target,
     use_external_package,
 )
-from .buildcache import buildcache_environment, buildcaches, check_buildcaches, configure_buildcaches, require_cache_access, update_index
+from .buildcache import (
+    bootstrap_buildcache, buildcache_environment, buildcaches, check_buildcaches, configure_buildcache, configure_buildcaches,
+    require_cache_access, update_index,
+)
 from .config import Config, load_config
 from .discovery import (
     describe, detect_packages, find_compilers, load_detected, matching, registered_compilers, save_detected, search_directories,
@@ -302,18 +305,28 @@ def _spack_runtime(args: argparse.Namespace):
     env.update(spack_env(x))
     return x, real_spack, spack_command(x, real_spack), env
 
-def _bootstrap_instance(x, real_spack: Path, env) -> BootstrapInstance:
+def _bootstrap_instance(x, real_spack: Path, env, config: Config | None = None, target: str | None = None) -> BootstrapInstance:
     """The Spack instance that builds the first stage of the compiler of a state.
+
+    It reads the bootstrap cache of `config`, and builds for the target of the
+    toolchain, so that the first stage has the same hash on every machine of a
+    platform and the cache holds it for all of them.
 
     @param x: the layout of the state
     @param real_spack: the pinned Spack executable
-    @param env: the environment of the actual instance
+    @param env: the environment of the actual instance, with the credentials of the caches
+    @param config: the Seanerstack configuration, or None for no bootstrap cache
+    @param target: the target of the toolchain, or None for the host's
     @return: the bootstrap instance, set up
     """
     command, bootstrap_env, b = prepare_bootstrap_instance(x, real_spack, env)
+    cache = bootstrap_buildcache(config) if config is not None else None
+    if cache is not None:
+        configure_buildcache(cache, command=command, env=bootstrap_env)
     find = tuple(str(directory) for directory in search_directories(recorded_find(x.state)))
     return BootstrapInstance(
-        command=command, env=bootstrap_env, environment=b.environments / "compiler", store=b.store, find=find
+        command=command, env=bootstrap_env, environment=b.environments / "compiler", store=b.store, find=find,
+        config=b.config, target=target,
     )
 
 
@@ -379,6 +392,12 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
 
     if target and not args.dry_run:
         require_target(x.config, target)
+    instance = _bootstrap_instance(x, real_spack, env, config, target)
+    # Without a lockfile the compiler is built here, and its first stage comes
+    # from the bootstrap cache, which Spack would also take as lacking the
+    # binary when it refuses.
+    if lockfile is None and external_compiler is None and not args.dry_run:
+        require_cache_access(instance.command, instance.env)
     result = bootstrap(
         compiler,
         languages=languages,
@@ -393,7 +412,7 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
         environment=x.environments / "compiler",
         spack_config=x.config,
         lockfile=lockfile,
-        bootstrap_instance=_bootstrap_instance(x, real_spack, env),
+        bootstrap_instance=instance,
         # A machine takes the compiler of the lockfile from the caches, or stops: a build takes hours.
         cache_only=True,
     )
@@ -611,7 +630,10 @@ def _run_buildcache(args: argparse.Namespace) -> int:
                 config, secrets, platform=args.platform, command=command, env=env,
                 work=x.environments / "toolchain", jobs=args.jobs,
                 padded_length=args.padded_length, spack_config=x.config, probe_timeout=args.probe_timeout or None,
-                concretize=args.concretize, bootstrap_instance=_bootstrap_instance(x, real_spack, env),
+                concretize=args.concretize,
+                bootstrap_instance=_bootstrap_instance(
+                    x, real_spack, env, config, config.toolchain.target if config.toolchain else None
+                ),
             )
         state_dir = args.state_dir or Path(os.environ.get("SEANERSTACK_STATE_DIR", "~/.cache/seanerstack"))
         toolchain = config.toolchain

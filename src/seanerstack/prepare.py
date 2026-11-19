@@ -9,6 +9,7 @@ with `--no-container`.
 from __future__ import annotations
 
 import base64
+from collections.abc import Callable
 from dataclasses import replace
 from importlib import metadata
 import json
@@ -27,7 +28,7 @@ import yaml
 
 from .auth import spack_resource_environment
 from .bootstrap import DEFAULT_PROBE_TIMEOUT, BootstrapInstance, bootstrap, require_target
-from .buildcache import buildcaches, configure_buildcaches, update_index
+from .buildcache import bootstrap_buildcache, buildcaches, configure_buildcaches, update_index
 from .config import Config, Platform, Resource, Toolchain
 from .isolation import DEFAULT_STATE_DIR, clone_pinned_spack_commands
 from .pins import SPACK_COMMIT
@@ -219,7 +220,8 @@ def prepare_here(
     The compiler is the one of the shipped lockfile of the platform, so that
     the cache holds what every machine installs; with `concretize`, it is
     concretized here, for a new lockfile. `bootstrap_instance` builds the
-    first stage of the compiler, where the compiler is built.
+    first stage of the compiler, where the compiler is built, and the first
+    stage goes to the bootstrap cache as soon as it is built.
     """
     toolchain, target = _toolchain(config)
     wanted = toolchain.platform(platform)
@@ -254,14 +256,18 @@ def prepare_here(
         # leaving out the specs this one cannot read.
         update_index(target, command=command, env=env)
 
+    push_first_stage = None
+    if bootstrap_instance is not None:
+        bootstrap_instance, push_first_stage = _first_stage_cache(config, secrets, bootstrap_instance, env)
+
     # The compiler is in the cache, index included, before anything is asked of
     # it: a probe or a package that fails afterwards does not cost its build
-    # again, here or on any other machine.
+    # again, here or on any other machine. The same holds for its first stage.
     result = bootstrap(
         toolchain.compiler, command=command, env=env, environment=work.parent / "compiler", spack_config=spack_config,
         installed_compiler=push, probe_timeout=probe_timeout,
         lockfile=None if concretize else toolchain_lockfile(wanted.operating_system),
-        bootstrap_instance=bootstrap_instance,
+        bootstrap_instance=bootstrap_instance, installed_first_stage=push_first_stage,
     )
     print(f"compiler environment: {work.parent / 'compiler' / 'spack.lock'}")
     if not result.probe_ok:
@@ -281,6 +287,37 @@ def prepare_here(
     push()
     print(f"the toolchain for {wanted.name} is in {target.url}")
     return 0
+
+
+def _first_stage_cache(
+    config: Config, secrets: SecretStore, instance: BootstrapInstance, env,
+) -> tuple[BootstrapInstance, Callable[[], None] | None]:
+    """The bootstrap instance with the push credentials of the bootstrap cache, and what pushes the first stage.
+
+    @param config: the Seanerstack configuration
+    @param secrets: where the credentials of the cache are
+    @param instance: the bootstrap instance, which reads the bootstrap cache
+    @param env: the environment of the actual instance, with the credentials of its caches
+    @return: the instance, and the function that pushes everything it holds
+        and rebuilds the index; None when config names no bootstrap cache
+    """
+    cache = bootstrap_buildcache(config)
+    if cache is None:
+        return instance, None
+    environment = {**instance.env, **{name: value for name, value in env.items() if name.startswith("SEANERSTACK_RESOURCE_")}}
+    if cache.credentials and not all(name in environment for name in cache.credential_variables):
+        if secrets.path is None or not secrets.has_credentials(cache.credentials):
+            raise ValueError(f"no credentials for build cache {cache.name!r}; provide --secrets-file FILE")
+        environment.update(spack_resource_environment(cache, secrets))
+    check_push_access(cache, environment)
+    instance = replace(instance, env=environment)
+
+    def push() -> None:
+        specs = _output([*instance.command, "find", "--format", "/{hash}"], environment).split()
+        _stream([*instance.command, "buildcache", "push", "--only", "package", cache.name, *specs], environment)
+        update_index(cache, command=instance.command, env=environment)
+
+    return instance, push
 
 
 def install_command(platform: Platform) -> str:

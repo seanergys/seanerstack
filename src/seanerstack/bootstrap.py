@@ -47,6 +47,10 @@ class BootstrapInstance:
     @param store: its install tree, where the first stage is installed
     @param find: the directories off PATH where init searched for compilers,
         searched in both instances, so that both know the compilers init found
+    @param config: its Spack configuration directory
+    @param target: the target to build the first stage for, or None for the
+        host's; with the toolchain's, the first stage has the same hash on
+        every machine of a platform, and one build cache holds it for all
     """
 
     command: list[str]
@@ -54,6 +58,8 @@ class BootstrapInstance:
     environment: Path
     store: Path
     find: tuple[str, ...] = ()
+    config: Path | None = None
+    target: str | None = None
 
 
 def _run(
@@ -302,6 +308,8 @@ def _build_first_stage(instance: BootstrapInstance, compiler: str, source: str |
     """
     command, env, environment = instance.command, instance.env, instance.environment
     _ensure_system_compiler(command, env, instance.find)
+    if instance.target and instance.config is not None:
+        require_target(instance.config, instance.target)
     environment.mkdir(parents=True, exist_ok=True)
     root = _first_stage_root(compiler, source)
     manifest = {"spack": {"specs": [root], "view": False, "concretizer": {"unify": True}}}

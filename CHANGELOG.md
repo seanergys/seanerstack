@@ -18,6 +18,14 @@ and release process.
   compiler that GCC 16 had built: Spack's gcc recipe lets whatever gcc@15
   compiles depend only on gcc@:15. The hash of the compiler no longer depends
   on the system compiler, only on the state directory.
+- The first stage of the compiler has a build cache of its own,
+  `seanerstack-buildcache-bootstrap` (`[toolchain] bootstrap_cache`), the
+  registry repository `software/seanerstack/buildcache-bootstrap`, with the
+  `seanergys-registry` credentials of the project cache. Only the bootstrap
+  instance reads it. `buildcache prepare` pushes the first stage there as soon
+  as it is built, and a machine that builds the compiler takes the first stage
+  from there. The first stage is built for the target of the toolchain, so
+  that one binary serves every machine of a platform.
 - `toolchain bootstrap` takes the compiler of a shipped lockfile from the build
   caches only (`spack install --cache-only`), and stops when they lack it
   instead of building for hours; `--concretize` builds it on the machine.
