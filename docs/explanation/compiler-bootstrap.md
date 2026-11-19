@@ -94,9 +94,13 @@ concretizer:
     - type: environment
       path: /opt/seanergys/state/spack/environments/compiler
       include: ["gcc@15"]
+    - type: external
+      exclude: ["gcc@15"]
 ```
 
 `include` matters. The environment also holds what the compiler was built with, such as `ncurses`, `readline` and `gmake`, which the system compiler compiled. Spack prefers an installed package to a new one, so without `include` every package of the stack that needs one of them would take the compiler's. With it, the stack builds its own with the project compiler. Only what the compiler itself links against, `zlib-ng` and `zstd`, is shared.
+
+The second source keeps every external of the configuration but those that the compiler spec matches. Spack takes an external only by reusing it, so a registered compiler that also satisfies `gcc@15`, such as the system gcc 15.2.0 of Ubuntu 26.04, cannot build the stack in place of the installed compiler.
 
 The compiler environment is always concretized as a new state concretizes it. Before `bootstrap` concretizes it again, it takes the compiler rule and the reuse out of the configuration, and writes both back once the compiler is installed. With them in place, the dependencies of the compiler would be new packages compiled by the earlier compiler, and the result a compiler with another hash.
 
@@ -179,7 +183,7 @@ A newer system compiler in the image of a platform changes neither the compiler 
 
 The bootstrap instance registers the system compilers before it builds the first stage, because that build needs a C compiler. An external that satisfies the requested spec would then be taken instead of a build: on Ubuntu 26.04, whose system GCC is 15.2.0, `spack install gcc@15` installs nothing. Seanerstack therefore asks for `gcc@15 languages:=c,c++ ~bootstrap ~binutils %c`. An external is a leaf without dependencies, so asking for a C compiler as a dependency rules it out, while the system compiler can still be that C compiler. The second stage, `gcc@15 %c,cxx=gcc@15`, rules out the first stage in the same way. The compiler is built whatever version the system has, the same version included.
 
-After the second stage, the system compilers come back, and every registered compiler that the spec matches, such as a system gcc 15.2.0 for `gcc@15`, is removed, so that only the installed compiler satisfies the language requirements. Otherwise a system compiler of a matching version could build packages instead. Other compilers, such as a system gcc 16 or clang, stay registered.
+After the second stage, the system compilers come back, and every registered compiler that the spec matches, such as a system gcc 15.2.0 for `gcc@15`, is removed. Where that was the only compiler, Spack registers the compilers on PATH again at the next concretization, so the removal alone does not keep it out: the reuse settings above exclude it, and only the installed compiler satisfies the language requirements. Other compilers, such as a system gcc 16 or clang, stay registered and usable.
 
 ## Choosing the compilers
 
