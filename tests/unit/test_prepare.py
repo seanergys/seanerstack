@@ -51,11 +51,10 @@ class Spack:
         monkeypatch.setattr(_prepare.subprocess, "run", self.run)
         # The build cache has no compiler lockfile; publishing one is recorded, not sent.
         self.published = []
-        monkeypatch.setattr(_prepare, "find_compiler_lockfile", lambda config, env, **kwargs: None, raising=False)
+        monkeypatch.setattr(_prepare, "find_compiler_lockfile", lambda config, env, **kwargs: None)
         monkeypatch.setattr(
             _prepare, "publish_compiler_lockfile",
             lambda resource, path, env, **kwargs: self.published.append((resource.name, path, kwargs)) or ("tag", True),
-            raising=False,
         )
 
     def configure(self, config, **kwargs):
@@ -488,10 +487,8 @@ def test_the_container_builds_with_the_probe_timeout_it_was_given():
 def test_prepare_installs_the_compiler_of_the_lockfile_of_the_platform(monkeypatch, tmp_path):
     Spack(monkeypatch)
     given = []
-    monkeypatch.setattr(_prepare, "toolchain_lockfile", lambda system: tmp_path / f"{system}.lock", raising=False)
     monkeypatch.setattr(
         _prepare, "find_compiler_lockfile", lambda config, env, **kwargs: tmp_path / f"{kwargs['operating_system']}.lock",
-        raising=False,
     )
     monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: given.append(kwargs["lockfile"]) or type("Result", (), {"probe_ok": True}))
 
@@ -647,3 +644,31 @@ def test_prepare_pushes_no_first_stage_without_a_bootstrap_cache(monkeypatch, tm
     monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: given.append(kwargs) or type("Result", (), {"probe_ok": True}))
     run_here(tmp_path, bootstrap_instance=_bootstrap_instance(tmp_path))
     assert given[0]["installed_first_stage"] is None
+
+
+def test_prepare_publishes_the_lockfile_of_the_compiler_the_probe_accepted(monkeypatch, tmp_path):
+    spack = Spack(monkeypatch)
+
+    run_here(tmp_path)
+
+    (published,) = spack.published
+    assert published[:2] == ("target", tmp_path / "compiler" / "spack.lock")
+    assert published[2] == {"compiler": "gcc@15", "target": "x86_64_v3", "operating_system": "rocky10"}
+
+
+def test_prepare_publishes_no_lockfile_of_a_compiler_the_probe_refused(monkeypatch, tmp_path):
+    spack = Spack(monkeypatch)
+    monkeypatch.setattr(_prepare, "bootstrap", lambda compiler, **kwargs: type("Result", (), {"probe_ok": False, "probe": "zlib", "hash": "abc"}))
+    with pytest.raises(RuntimeError, match="does not use gcc@15"):
+        run_here(tmp_path)
+    assert spack.published == []
+
+
+def test_a_cache_outside_a_registry_gets_no_lockfile(monkeypatch, tmp_path):
+    spack = Spack(monkeypatch)
+    local = Resource(name="target", kind="spack-buildcache", url=(tmp_path / "cache").as_uri(), signed=False)
+    _prepare.prepare_here(
+        replace(config(tmp_path), resources={"target": local}), SecretStore(None), platform="rocky10", command=["spack"],
+        env={}, work=tmp_path / "toolchain",
+    )
+    assert spack.published == []

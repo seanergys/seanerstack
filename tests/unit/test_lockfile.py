@@ -68,3 +68,16 @@ def test_a_tag_with_something_else_is_an_error(cache, tmp_path):
     FakeRegistry.manifests["other"] = json.dumps({"schemaVersion": 2, "layers": [{"mediaType": "application/x-other"}]}).encode()
     with pytest.raises(RegistryError, match="holds no compiler lockfile"):
         lockfile.fetch_compiler_lockfile(cache, "other", {}, tmp_path)
+
+
+def test_the_lockfile_of_the_toolchain_is_looked_for_in_its_build_cache(cache, tmp_path):
+    from seanerstack.config import Config, Toolchain
+    tag, _ = _publish(cache, tmp_path)
+    toolchain = Toolchain(compiler="gcc@15", packages=(), cache="cache", target="x86_64_v3", platforms={})
+    config = Config(path=tmp_path / "config.toml", resources={"cache": cache}, toolchain=toolchain)
+
+    found = lockfile.find_compiler_lockfile(config, {}, **WHERE, directory=tmp_path / "found")
+
+    assert found == tmp_path / "found" / f"{tag}.lock"
+    without = Config(path=config.path, resources=config.resources)
+    assert lockfile.find_compiler_lockfile(without, {}, **WHERE, directory=tmp_path) is None
