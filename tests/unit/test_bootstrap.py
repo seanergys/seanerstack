@@ -580,3 +580,19 @@ def test_installing_the_compiler_needs_the_bootstrap_instance(monkeypatch, tmp_p
     calls, state = _toolchain_spack(monkeypatch, tmp_path / "installed", installed=True)
     del state["bootstrap_instance"]
     assert bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", **state).probe_ok
+
+
+def test_both_instances_search_where_init_searched_for_compilers(monkeypatch, tmp_path):
+    calls, state = _toolchain_spack(monkeypatch, tmp_path)
+    instance = state["bootstrap_instance"]
+    state["bootstrap_instance"] = bootstrap_module.BootstrapInstance(
+        command=instance.command, env=instance.env, environment=instance.environment, store=instance.store,
+        find=("/opt/rh/gcc-toolset-15/root/usr/bin",),
+    )
+
+    bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", source_compiler="gcc@15.1.1", **state)
+
+    steps = _where(calls)
+    # Where the source compiler is, and where the system compilers come back.
+    assert steps.index("bootstrap: compiler find /opt/rh/gcc-toolset-15/root/usr/bin") < steps.index("bootstrap: concretize --force")
+    assert steps.index("actual: install") < steps.index("actual: compiler find /opt/rh/gcc-toolset-15/root/usr/bin")

@@ -320,6 +320,8 @@ def test_bootstrap_builds_the_compiler_in_two_stages_and_takes_a_locked_one_from
 
     instance = given[0]["bootstrap_instance"]
     bootstrap = tmp_path / "state" / "bootstrap"
+    # init searched nothing off PATH here.
+    assert instance.find == ()
     assert instance.command[-2:] == ["-C", str(bootstrap / "config")]
     assert (instance.environment, instance.store) == (bootstrap / "environments" / "compiler", bootstrap / "store")
     # A build of the compiler takes hours; a machine takes the locked one from the caches or stops.
@@ -500,3 +502,16 @@ def test_prepare_without_a_container_builds_with_the_bootstrap_instance_of_the_s
     instance = given[0]["bootstrap_instance"]
     assert instance.command == [str(tmp_path / "spack"), "-C", str(x.state / "bootstrap" / "config")]
     assert instance.store == x.state / "bootstrap" / "store"
+
+
+def test_the_bootstrap_instance_searches_where_init_searched_for_compilers(tmp_path: Path):
+    import json
+    import seanerstack.isolation
+    x = seanerstack.isolation.prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    toolset = tmp_path / "gcc-toolset-15"
+    (toolset / "bin").mkdir(parents=True)
+    x.record.write_text(json.dumps({"find": [str(toolset), str(tmp_path / "no-bin")]}), encoding="utf-8")
+
+    instance = cli._bootstrap_instance(x, tmp_path / "spack", {})
+
+    assert instance.find == (str(toolset / "bin"), str(tmp_path / "no-bin"))
