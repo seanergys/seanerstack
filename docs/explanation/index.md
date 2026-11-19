@@ -9,6 +9,7 @@ These pages describe the design of Seanerstack and the reasons behind it. For a 
 | [Architecture](architecture.md) | What Seanerstack ships, what it keeps in the state directory, and what it leaves to Spack. |
 | [Isolation](isolation.md) | How the state stays apart from other Spack configuration on the machine. |
 | [Compiler bootstrap](compiler-bootstrap.md) | How the project compiler is installed and becomes the compiler of every build. |
+| [The compiler as a package](compiler-as-a-package.md) | What Spack does with a compiler that is a package, which ways of requiring it fail, and what is still open. |
 | [Packages and environments](packages-and-environments.md) | Which recipes and environments Seanerstack ships, and where their information lives. |
 | [Synchronization](synchronization.md) | How recipe versions follow the upstream repositories. |
 
