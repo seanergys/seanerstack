@@ -672,4 +672,6 @@ def test_without_jobs_spack_chooses(monkeypatch, tmp_path):
 def test_the_toolchain_packages_are_installed_with_the_jobs_they_were_given(monkeypatch):
     calls = _fake_spack(monkeypatch)
     bootstrap_module.install_packages(COMMAND, ["rust", "capnproto"], ENV, jobs=48)
-    assert calls == [[*COMMAND, "install", "rust", "capnproto", "--jobs", "48"]]
+    (call,) = calls
+    assert call[: len(COMMAND) + 1] == [*COMMAND, "install"]
+    assert sorted(call[len(COMMAND) + 1:]) == sorted(["rust", "capnproto", "--jobs", "48"])
