@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import os
 from pathlib import Path
@@ -269,15 +269,7 @@ def prepare_isolation(state_dir: Path, real_spack: Path) -> SpackLayout:
     # Rewritten every time, so an existing state follows a new pin or a moved
     # installation. The clone directory names the commit: a new pin gets a fresh
     # clone at that commit, where reusing the old one would need `spack repo update`.
-    _write(
-        x.config / "repos.yaml",
-        "repos::\n"
-        f"  seanerstack: {repository_path()}\n"
-        "  builtin:\n"
-        f"    git: {resolve_builtin_repo_git()}\n"
-        f"    commit: {BUILTIN_REPO_COMMIT}\n"
-        f"    destination: {x.package_repos / f'builtin-{BUILTIN_REPO_COMMIT[:12]}'}\n",
-    )
+    _write(x.config / "repos.yaml", _repos_yaml(x))
 
     # Runs Spack in this state from any shell, so that putting x.bin on PATH
     # once is all a user does: no activation, no variables to set.
@@ -293,6 +285,89 @@ def prepare_isolation(state_dir: Path, real_spack: Path) -> SpackLayout:
     )
     shim.chmod(shim.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return x
+
+
+def _repos_yaml(x: SpackLayout) -> str:
+    """The repositories of a state: Seanerstack's own first, then builtin at the pinned commit.
+
+    @param x: the layout of the state
+    @return: the text of repos.yaml
+    """
+    return (
+        "repos::\n"
+        f"  seanerstack: {repository_path()}\n"
+        "  builtin:\n"
+        f"    git: {resolve_builtin_repo_git()}\n"
+        f"    commit: {BUILTIN_REPO_COMMIT}\n"
+        f"    destination: {x.package_repos / f'builtin-{BUILTIN_REPO_COMMIT[:12]}'}\n"
+    )
+
+
+def bootstrap_layout(state_dir: Path) -> SpackLayout:
+    """The layout of the bootstrap instance of a state, below `<state>/bootstrap`.
+
+    @param state_dir: the state directory
+    @return: the layout; only its configuration, store, stage, cache and
+        environments are used
+    """
+    state = state_dir.expanduser().resolve()
+    root = state / "bootstrap"
+    return replace(
+        layout(state),
+        config=root / "config",
+        store=root / "store",
+        stage=root / "stage",
+        cache=root / "cache",
+        environments=root / "environments",
+        bin=root / "bin",
+    )
+
+
+def prepare_bootstrap_instance(x: SpackLayout, real_spack: Path, env: Mapping[str, str]) -> tuple[list[str], dict[str, str], SpackLayout]:
+    """Set up the Spack instance that builds the first stage of the compiler.
+
+    The compiler of the stack is built twice. The system compiler builds a
+    first GCC here, and that GCC, known to the actual instance only as an
+    external at a fixed path, builds the compiler of the stack there. Spack's
+    gcc recipe lets whatever gcc@15 compiles depend only on gcc@:15, and a
+    compiler built directly by a system GCC 16 would carry that GCC 16 into
+    every build. An external records nothing about what built it.
+
+    The instance has its own configuration and installations, so that nothing
+    the system compiler built enters the actual instance, and the same Spack
+    and recipes. The first stage is installed at `store/gcc-VERSION`, without
+    a hash: the actual instance hashes the external by that path, and the path
+    stays the same when the system compiler changes.
+
+    @param x: the layout of the actual instance
+    @param real_spack: the pinned Spack executable
+    @param env: the environment of the actual instance
+    @return: the command and environment of the bootstrap instance, and its layout
+    """
+    b = bootstrap_layout(x.state)
+    for directory in (b.config, b.store, b.stage, b.cache, b.environments):
+        directory.mkdir(parents=True, exist_ok=True)
+    _write_if_missing(
+        b.config / "config.yaml",
+        "config::\n"
+        f"  install_tree:\n    root: {b.store}\n"
+        "    projections:\n"
+        "      gcc: '{name}-{version}'\n"
+        "      all: '{name}-{version}-{hash}'\n"
+        f"  build_stage:\n  - {b.stage}\n"
+        f"  source_cache: {x.source_cache}\n"
+        f"  misc_cache: {b.cache / 'misc'}\n"
+        f"  test_stage: {b.cache / 'test'}\n"
+        f"  environments_root: {b.environments}\n",
+    )
+    _write_if_missing(b.config / "packages.yaml", "packages:: {}\n")
+    _write_if_missing(b.config / "mirrors.yaml", "mirrors:: {}\n")
+    _write_if_missing(b.config / "upstreams.yaml", "upstreams:: {}\n")
+    _write_if_missing(b.config / "concretizer.yaml", "concretizer:\n  reuse: false\n")
+    _write(b.config / "repos.yaml", _repos_yaml(x))
+    # The user cache holds Spack's own bootstrap, such as clingo, which both instances share.
+    bootstrap_env = {**env, "SPACK_USER_CONFIG_PATH": str(b.config)}
+    return spack_command(b, real_spack), bootstrap_env, b
 
 
 def spack_env(x: SpackLayout) -> dict[str, str]:
