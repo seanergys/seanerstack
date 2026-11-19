@@ -26,16 +26,21 @@ and release process.
   as it is built, and a machine that builds the compiler takes the first stage
   from there. The first stage is built for the target of the toolchain, so
   that one binary serves every machine of a platform.
-- `toolchain bootstrap` takes the compiler of a shipped lockfile from the build
+- The lockfile of the compiler environment is kept in the build cache, as a
+  tag of its registry repository such as
+  `compiler-gcc-15-rocky10-x86_64_v3-2efee779f543`, which Spack ignores. The
+  tag ends in a digest of the pinned Spack and recipes, the compiler, both
+  stages, the operating system and the target. `buildcache prepare` publishes
+  it once the probe accepted the compiler, unless the cache has it already.
+  `toolchain bootstrap` and `buildcache prepare` install the compiler from it
+  without concretizing, so every machine installs the compiler that the cache
+  holds, whatever its system compiler and state directory. Seanerstack reads
+  and writes the tag itself, over the registry's HTTP API. No lockfile is in
+  the source tree.
+- `toolchain bootstrap` takes the compiler of that lockfile from the build
   caches only (`spack install --cache-only`), and stops when they lack it
-  instead of building for hours; `--concretize` builds it on the machine.
-- Seanerstack can ship the lockfile of the compiler environment of a
-  platform, and `toolchain bootstrap` and `buildcache prepare` install the
-  compiler from it without concretizing. A machine with another system
-  compiler, or without `gfortran`, then installs the compiler that the build
-  cache holds and no longer builds its own. `--concretize` concretizes on the
-  machine, for a new lockfile. No lockfile is shipped yet: the first comes
-  from the pipeline that builds the compiler in two stages.
+  instead of building for hours. Without a lockfile in the cache, or with
+  `--concretize`, it builds the compiler on the machine.
 - `seanerstack buildcache prepare --probe-timeout SECONDS` sets how long the
   compiler probe may take, as `init` and `toolchain bootstrap` already do; 0
   waits indefinitely. In a container, the build inside gets the same limit.

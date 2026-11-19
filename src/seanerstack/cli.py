@@ -22,7 +22,8 @@ from .config import Config, load_config
 from .discovery import (
     describe, detect_packages, find_compilers, load_detected, matching, registered_compilers, save_detected, search_directories,
 )
-from .paths import environments_path, repository_path, share_path, toolchain_lockfile
+from .lockfile import find_compiler_lockfile
+from .paths import environments_path, repository_path, share_path
 from .prepare import pad_install_tree, prepare_here, prepare_in_container
 from .secrets import SecretStore
 from .isolation import (
@@ -122,8 +123,8 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap_parser.add_argument("--force", action="store_true", help="ask Spack to install the compiler even when it is already installed")
     bootstrap_parser.add_argument(
         "--concretize", action="store_true",
-        help="concretize the compiler on this machine, and do not install the one of the lockfile that Seanerstack "
-        "ships for this operating system. Its hash then depends on the system compiler of this machine",
+        help="concretize the compiler on this machine, and do not install the one of the lockfile in the build "
+        "cache. Its hash then depends on the state directory of this machine",
     )
     bootstrap_parser.add_argument(
         "--external", action="append", metavar="SPEC",
@@ -215,8 +216,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     prepare_parser.add_argument(
         "--concretize", action="store_true",
-        help="concretize the compiler in the image of the platform, and do not install the one of the shipped "
-        "lockfile; for a new lockfile, after the pinned Spack, the recipes or the compiler of [toolchain] changed",
+        help="concretize the compiler in the image of the platform, and do not install the one of the lockfile in "
+        "the build cache; a lockfile is published only where the cache has none for the compiler",
     )
     prepare_parser.add_argument("--probe-timeout", type=float, default=DEFAULT_PROBE_TIMEOUT, help=f"seconds to allow the probe before giving up (default: {DEFAULT_PROBE_TIMEOUT:g}); 0 waits indefinitely")
 
@@ -364,7 +365,6 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
     ).stdout.strip()
     if args.os is not None and system != args.os:
         raise ValueError(f"this machine is {system}, not {args.os}")
-    lockfile = None if args.concretize else toolchain_lockfile(system)
 
     compilers = registered_compilers(x)
     detected = load_detected(x)
@@ -392,6 +392,13 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
 
     if target and not args.dry_run:
         require_target(x.config, target)
+    lockfile = None
+    if not (args.concretize or args.dry_run or external_compiler is not None or source):
+        # The compiler that the build cache holds, as the machine that filled it concretized it.
+        lockfile = find_compiler_lockfile(
+            config, env, compiler=compiler, target=target, operating_system=system,
+            directory=x.environments / "compiler-lockfiles",
+        )
     instance = _bootstrap_instance(x, real_spack, env, config, target)
     # Without a lockfile the compiler is built here, and its first stage comes
     # from the bootstrap cache, which Spack would also take as lacking the

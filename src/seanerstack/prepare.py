@@ -32,7 +32,8 @@ from .buildcache import bootstrap_buildcache, buildcaches, configure_buildcaches
 from .config import Config, Platform, Resource, Toolchain
 from .isolation import DEFAULT_STATE_DIR, clone_pinned_spack_commands
 from .pins import SPACK_COMMIT
-from .paths import source_checkout, toolchain_lockfile
+from .lockfile import find_compiler_lockfile, publish_compiler_lockfile
+from .paths import source_checkout
 from .secrets import SecretStore
 
 
@@ -217,9 +218,10 @@ def prepare_here(
     With `spack_config`, the configuration directory of the state, the install
     prefix is padded to `padded_length` characters first, or left unpadded.
     The compiler probe gets `probe_timeout` seconds, or any time with None.
-    The compiler is the one of the shipped lockfile of the platform, so that
-    the cache holds what every machine installs; with `concretize`, it is
-    concretized here, for a new lockfile. `bootstrap_instance` builds the
+    The compiler is the one of the lockfile in the build cache, so that the
+    cache holds what every machine installs. Without one, or with
+    `concretize`, it is concretized here, and its lockfile goes to the cache
+    unless the cache has one for the compiler already. `bootstrap_instance` builds the
     first stage of the compiler, where the compiler is built, and the first
     stage goes to the bootstrap cache as soon as it is built.
     """
@@ -266,7 +268,10 @@ def prepare_here(
     result = bootstrap(
         toolchain.compiler, command=command, env=env, environment=work.parent / "compiler", spack_config=spack_config,
         installed_compiler=push, probe_timeout=probe_timeout,
-        lockfile=None if concretize else toolchain_lockfile(wanted.operating_system),
+        lockfile=None if concretize else find_compiler_lockfile(
+            config, env, compiler=toolchain.compiler, target=toolchain.target,
+            operating_system=wanted.operating_system, directory=work.parent / "compiler-lockfiles",
+        ),
         bootstrap_instance=bootstrap_instance, installed_first_stage=push_first_stage,
     )
     print(f"compiler environment: {work.parent / 'compiler' / 'spack.lock'}")
@@ -275,6 +280,14 @@ def prepare_here(
             f"Spack does not use {toolchain.compiler}: the probe {result.probe} is not compiled by the installed "
             f"compiler /{(result.hash or '')[:7]}. `spack spec {result.probe}` shows the compiler it takes instead."
         )
+    # Only a compiler the probe accepted, whose binaries are in the cache by now.
+    # A compiler of the lockfile has its tag already, and nothing is sent.
+    if target.oci:
+        tag, stored = publish_compiler_lockfile(
+            target, work.parent / "compiler" / "spack.lock", env,
+            compiler=toolchain.compiler, target=toolchain.target, operating_system=wanted.operating_system,
+        )
+        print(f"compiler lockfile: {tag} in {target.url}" + ("" if stored else ", there already and left as it is"))
 
     work.mkdir(parents=True, exist_ok=True)
     (work / "spack.yaml").write_text(

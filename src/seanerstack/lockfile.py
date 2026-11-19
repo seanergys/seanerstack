@@ -21,7 +21,7 @@ from pathlib import Path
 import re
 
 from .bootstrap import stage_roots
-from .config import Resource
+from .config import Config, Resource
 from .pins import BUILTIN_REPO_COMMIT, SPACK_COMMIT
 from .registry import MANIFEST_MEDIA_TYPE, Registry, RegistryError
 
@@ -76,6 +76,25 @@ def fetch_compiler_lockfile(resource: Resource, tag: str, env, directory: Path) 
     path = directory / f"{tag}.lock"
     path.write_bytes(data)
     return path
+
+
+def find_compiler_lockfile(
+    config: Config, env, *, compiler: str, target: str | None, operating_system: str, directory: Path,
+) -> Path | None:
+    """The compiler lockfile for these in the build cache of the toolchain, saved in `directory`, or None.
+
+    @param config: the Seanerstack configuration, whose [toolchain] names the build cache
+    @param env: the environment with the credentials of the cache, or without for an anonymous read
+    @param compiler: the compiler spec, such as gcc@15
+    @param target: the target of the toolchain, or None, which has no lockfile
+    @param operating_system: the operating system as Spack names it
+    @param directory: where to save it
+    @return: the saved lockfile, or None when there is none
+    """
+    if config.toolchain is None or target is None:
+        return None
+    tag = compiler_lockfile_tag(compiler, target, operating_system)
+    return fetch_compiler_lockfile(config.resource(config.toolchain.cache), tag, env, directory)
 
 
 def publish_compiler_lockfile(
