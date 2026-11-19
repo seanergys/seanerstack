@@ -169,7 +169,7 @@ def test_the_toolchain_job_can_be_started_by_hand_on_any_branch():
     (by_hand,) = [rule for rule in rules if rule.get("when") == "manual"]
     assert by_hand["if"] == '$CI_COMMIT_BRANCH && $CI_PIPELINE_SOURCE == "web"'
     assert by_hand["allow_failure"] is True
-    # Only the schedule of the default branch starts it by itself.
+    # The schedule of the default branch starts it by itself, and so does every pipeline while the toolchain is published.
     (scheduled,) = [rule for rule in rules if "when" not in rule]
     assert "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH" in scheduled["if"] and '"schedule"' in scheduled["if"]
 
@@ -192,4 +192,14 @@ def test_the_rocky10_build_job_publishes_the_toolchain_after_its_push_while_swit
     assert '[ "$PUBLISH_TOOLCHAIN" = "true" ]' in steps[publish]
     # On by default; a CI/CD variable switches it off without a commit.
     ci = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))
-    assert job["variables"].get("PUBLISH_TOOLCHAIN", ci.get("variables", {}).get("PUBLISH_TOOLCHAIN")) == "true"
+    assert ci["variables"]["PUBLISH_TOOLCHAIN"] == "true" and "PUBLISH_TOOLCHAIN" not in job["variables"]
+
+
+def test_the_toolchain_job_publishes_every_platform_from_every_pipeline_while_switched_on():
+    rules = _toolchain_job()["rules"]
+    (published,) = [rule for rule in rules if rule.get("when") == "on_success"]
+    assert published["if"] == '$PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE =~ /^(push|merge_request_event|web)$/'
+    # A platform that fails, such as one whose system compiler Spack cannot use yet, does not fail the pipeline.
+    assert published["allow_failure"] is True
+    # Before the rule for a pipeline run by hand, which would otherwise make it wait for a click.
+    assert rules.index(published) < rules.index(next(rule for rule in rules if rule.get("when") == "manual"))
