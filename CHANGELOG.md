@@ -21,12 +21,13 @@ and release process.
 - `toolchain bootstrap` takes the compiler of a shipped lockfile from the build
   caches only (`spack install --cache-only`), and stops when they lack it
   instead of building for hours; `--concretize` builds it on the machine.
-- Seanerstack ships the lockfile of the compiler environment for Rocky Linux
-  10, and `toolchain bootstrap` and `buildcache prepare` install the compiler
-  from it without concretizing. A machine with another system compiler, or
-  without `gfortran`, then installs the compiler that the build cache holds
-  and no longer builds its own. `--concretize` concretizes on the machine, for
-  a new lockfile. The other platforms concretize as before.
+- Seanerstack can ship the lockfile of the compiler environment of a
+  platform, and `toolchain bootstrap` and `buildcache prepare` install the
+  compiler from it without concretizing. A machine with another system
+  compiler, or without `gfortran`, then installs the compiler that the build
+  cache holds and no longer builds its own. `--concretize` concretizes on the
+  machine, for a new lockfile. No lockfile is shipped yet: the first comes
+  from the pipeline that builds the compiler in two stages.
 - `seanerstack buildcache prepare --probe-timeout SECONDS` sets how long the
   compiler probe may take, as `init` and `toolchain bootstrap` already do; 0
   waits indefinitely. In a container, the build inside gets the same limit.
