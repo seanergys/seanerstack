@@ -471,8 +471,6 @@ toolchain:
       - PLATFORM: arch
         IMAGE: docker.io/library/archlinux:latest
   variables:
-    SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME: "gitlab-ci-token"
-    SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD: "$CI_JOB_TOKEN"
     <<: *cache-build
   before_script:
     # Just enough Python for Seanerstack, which then installs the system
@@ -500,11 +498,16 @@ toolchain:
     # system links it to /usr/lib/os-release, but the archlinux image writes
     # its own with the date of the image as version, which no machine has.
     - if [ -e /usr/lib/os-release ]; then ln -sf ../usr/lib/os-release /etc/os-release; fi
+    # The job token for every build cache, as build:rocky10 and users pass it.
+    # keyloom came with Seanerstack.
+    - export PATH="/opt/seanerstack/bin:$PATH"
+    - *job-token-secrets
   script:
     # Explain what was built even when a package failed.
     - >-
       status=0;
       /opt/seanerstack/bin/seanerstack --state-dir "$STATE"
+      --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password
       buildcache prepare --no-container --platform "$PLATFORM" --padded-length "$PADDED_LENGTH" || status=$?
     # Why a night built instead of reusing: each spec of the toolchain against
     # the cached specs of its name and version for this platform, which
@@ -518,6 +521,8 @@ toolchain:
     - |
       for spec in $SPECS; do
         echo "== seanerstack buildcache explain $spec"
-        /opt/seanerstack/bin/seanerstack --state-dir "$STATE" buildcache explain "$spec" || true
+        /opt/seanerstack/bin/seanerstack --state-dir "$STATE" \
+          --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password \
+          buildcache explain "$spec" || true
       done
     - exit "$status"
