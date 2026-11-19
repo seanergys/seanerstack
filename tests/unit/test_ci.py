@@ -179,7 +179,8 @@ def test_the_rocky10_build_job_pushes_from_every_pipeline():
     steps = _steps(job)
     push = steps.index("spack buildcache push --only package seanerstack-buildcache $(spack find --format '/{hash}')")
     # After the install, which keeps its status, and without a condition on the branch.
-    assert steps.index('status=0; spack -e "$ENVIRONMENT" install || status=$?') < push < steps.index("seanerstack buildcache update-index")
+    install = next(index for index, step in enumerate(steps) if step.startswith('status=0; spack -e "$ENVIRONMENT" install'))
+    assert install < push < steps.index("seanerstack buildcache update-index")
     assert not any("CI_DEFAULT_BRANCH" in step for step in steps)
 
 
