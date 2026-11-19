@@ -12,6 +12,7 @@ from seanerstack.isolation import (
     activation_script,
     deactivation_script,
     layout,
+    prepare_bootstrap_instance,
     prepare_isolation,
     spack_env,
 )
@@ -394,3 +395,40 @@ def test_the_record_remembers_what_init_was_given(tmp_path: Path):
     x = prepare_isolation(state, tmp_path / "spack")
     seanerstack.isolation.write_record(x, config_file=tmp_path / "config.toml", spack_executable=None)
     assert seanerstack.isolation.read_record(state) == {"config_file": tmp_path / "config.toml", "spack_executable": None}
+
+
+def _bootstrap_instance(tmp_path: Path):
+    real_spack = tmp_path / "real-spack"
+    real_spack.write_text("#!/bin/sh\n", encoding="utf-8")
+    x = prepare_isolation(tmp_path / "state", real_spack)
+    env = {"PATH": "/usr/bin", **spack_env(x)}
+    return x, real_spack, env, prepare_bootstrap_instance(x, real_spack, env)
+
+
+def test_the_bootstrap_instance_has_its_own_configuration_and_installations(tmp_path: Path):
+    x, real_spack, env, (command, bootstrap_env, b) = _bootstrap_instance(tmp_path)
+
+    assert b.config == x.state / "bootstrap" / "config" and b.store == x.state / "bootstrap" / "store"
+    assert command == [str(real_spack), "-C", str(b.config)]
+    assert bootstrap_env["SPACK_USER_CONFIG_PATH"] == str(b.config)
+    # Spack's own bootstrap, such as clingo, is shared.
+    assert bootstrap_env["SPACK_USER_CACHE_PATH"] == env["SPACK_USER_CACHE_PATH"]
+    config = yaml.safe_load((b.config / "config.yaml").read_text(encoding="utf-8"))["config:"]
+    assert config["install_tree"]["root"] == str(b.store)
+    assert config["source_cache"] == str(x.source_cache)
+    # Nothing of the actual instance: no compilers, caches or reuse.
+    for name, empty in (("packages", {}), ("mirrors", {}), ("upstreams", {})):
+        assert yaml.safe_load((b.config / f"{name}.yaml").read_text(encoding="utf-8")) == {f"{name}:": empty}
+    assert yaml.safe_load((b.config / "concretizer.yaml").read_text(encoding="utf-8")) == {"concretizer": {"reuse": False}}
+
+
+def test_the_bootstrap_instance_installs_gcc_at_a_path_without_a_hash(tmp_path: Path):
+    # The actual instance hashes the first stage, an external, by its path.
+    _, _, _, (_, _, b) = _bootstrap_instance(tmp_path)
+    projections = yaml.safe_load((b.config / "config.yaml").read_text(encoding="utf-8"))["config:"]["install_tree"]["projections"]
+    assert projections == {"gcc": "{name}-{version}", "all": "{name}-{version}-{hash}"}
+
+
+def test_the_bootstrap_instance_loads_the_recipes_of_the_actual_one(tmp_path: Path):
+    x, _, _, (_, _, b) = _bootstrap_instance(tmp_path)
+    assert (b.config / "repos.yaml").read_text(encoding="utf-8") == (x.config / "repos.yaml").read_text(encoding="utf-8")
