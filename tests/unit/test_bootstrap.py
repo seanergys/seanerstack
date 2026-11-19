@@ -643,3 +643,33 @@ def test_the_first_stage_is_built_for_the_target_of_the_toolchain(monkeypatch, t
 
     # Built for the host's CPU, the first stage would have another hash on every kind of machine.
     assert seen == [{"all": {"require": ["target=x86_64_v3"]}}]
+
+
+def test_every_install_of_the_compiler_has_the_jobs_it_was_given(monkeypatch, tmp_path):
+    calls, state = _toolchain_spack(monkeypatch, tmp_path)
+
+    bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", jobs=48, **state)
+
+    installs = [step for step in _where(calls) if " install" in step and "--fake" not in step]
+    assert installs == ["bootstrap: install --jobs 48", "actual: install --jobs 48"]
+
+
+def test_the_compiler_of_a_lockfile_is_installed_with_the_jobs_it_was_given(monkeypatch, tmp_path):
+    calls, state = _toolchain_spack(monkeypatch, tmp_path)
+    lockfile = _two_stage_lockfile(tmp_path / "rocky10.lock", "/ci/state/bootstrap/store/gcc-15.3.0")
+
+    bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", lockfile=lockfile, cache_only=True, jobs=8, **state)
+
+    assert "actual: install --cache-only --jobs 8" in _where(calls)
+
+
+def test_without_jobs_spack_chooses(monkeypatch, tmp_path):
+    calls, state = _toolchain_spack(monkeypatch, tmp_path)
+    bootstrap_module.bootstrap("gcc@15", languages=("c",), probe="zlib", **state)
+    assert not any("--jobs" in step for step in _where(calls))
+
+
+def test_the_toolchain_packages_are_installed_with_the_jobs_they_were_given(monkeypatch):
+    calls = _fake_spack(monkeypatch)
+    bootstrap_module.install_packages(COMMAND, ["rust", "capnproto"], ENV, jobs=48)
+    assert calls == [[*COMMAND, "install", "rust", "capnproto", "--jobs", "48"]]
