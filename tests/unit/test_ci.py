@@ -172,3 +172,12 @@ def test_the_toolchain_job_can_be_started_by_hand_on_any_branch():
     # Only the schedule of the default branch starts it by itself.
     (scheduled,) = [rule for rule in rules if "when" not in rule]
     assert "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH" in scheduled["if"] and '"schedule"' in scheduled["if"]
+
+
+def test_the_rocky10_build_job_pushes_from_every_pipeline():
+    job = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))["build:rocky10"]
+    steps = _steps(job)
+    push = steps.index("spack buildcache push --only package seanerstack-buildcache $(spack find --format '/{hash}')")
+    # After the install, which keeps its status, and without a condition on the branch.
+    assert steps.index('status=0; spack -e "$ENVIRONMENT" install || status=$?') < push < steps.index("seanerstack buildcache update-index")
+    assert not any("CI_DEFAULT_BRANCH" in step for step in steps)
