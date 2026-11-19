@@ -89,9 +89,10 @@ def find_compiler_lockfile(
     @param target: the target of the toolchain, or None, which has no lockfile
     @param operating_system: the operating system as Spack names it
     @param directory: where to save it
-    @return: the saved lockfile, or None when there is none
+    @return: the saved lockfile, or None when there is none, also when the
+        configuration does not define the build cache that [toolchain] names
     """
-    if config.toolchain is None or target is None:
+    if config.toolchain is None or target is None or config.toolchain.cache not in config.resources:
         return None
     tag = compiler_lockfile_tag(compiler, target, operating_system)
     return fetch_compiler_lockfile(config.resource(config.toolchain.cache), tag, env, directory)

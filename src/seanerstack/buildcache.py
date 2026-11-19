@@ -42,11 +42,17 @@ def buildcaches(config: Config) -> tuple[Resource, ...]:
 def bootstrap_buildcache(config: Config) -> Resource | None:
     """The build cache of the bootstrap instance, which holds the first stage of the compiler.
 
+    A config.toml takes the [toolchain] of the shipped one for what it does
+    not set, and with it the name of the shipped bootstrap cache. A
+    config.toml that does not define that resource has no bootstrap cache:
+    the first stage is then built wherever it is needed.
+
     @param config: the Seanerstack configuration
-    @return: the cache that `[toolchain] bootstrap_cache` names, or None when it names none
+    @return: the cache that `[toolchain] bootstrap_cache` names, or None when
+        it names none or the configuration does not define it
     """
     name = config.toolchain.bootstrap_cache if config.toolchain else None
-    if name is None:
+    if name is None or name not in config.resources:
         return None
     resource = config.resource(name)
     if resource.kind != "spack-buildcache":
