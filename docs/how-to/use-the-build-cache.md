@@ -107,9 +107,11 @@ package_manager = "dnf"
 seanerstack --secrets-file credentials.toml buildcache prepare --platform rocky10 --concretize
 ```
 
-It prints the lockfile of the compiler environment it built, below the state directory in `buildcache-prepare/rocky10/spack/environments/compiler/spack.lock`. Copy that file over the shipped one and commit it. The operating system in the path is the name that `spack arch --operating-system` prints in the image, the `operating_system` of the platform.
+It builds the compiler in two stages and prints the lockfile of the compiler environment, below the state directory in `buildcache-prepare/rocky10/spack/environments/compiler/spack.lock`. Copy that file over the shipped one and commit it. The operating system in the path is the name that `spack arch --operating-system` prints in the image, the `operating_system` of the platform.
 
-A platform without a lockfile concretizes the compiler on each machine. Its cache then matches only machines with the same system compiler, with `gfortran` installed.
+The lockfile names the first stage of the compiler by its path, `<state>/bootstrap/store/gcc-VERSION`. Make it in the state directory where the cache is filled, which is that of the `toolchain` job of the pipeline: there `buildcache prepare` can build the compiler of the lockfile again, and anywhere else it refuses to. Every other machine only installs it from the cache.
+
+A platform without a lockfile concretizes the compiler on each machine, in two stages. Its cache then matches only machines with a state in the same directory.
 
 ### Build binaries that install into any directory
 

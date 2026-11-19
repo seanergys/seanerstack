@@ -36,6 +36,12 @@ All mutable Spack state controlled by Seanerstack is redirected below the select
 ├── seanerstack.json        what init recorded: config.toml, Spack
 ├── credentials.json        stored credentials, mode 0600
 ├── spack-7188f9d6e0f3/     the pinned Spack, named by its commit
+├── bootstrap/              the Spack instance that builds the first stage of the compiler
+│   ├── config/
+│   ├── store/              gcc-15.3.0, the first stage, at a path without a hash
+│   ├── stage/
+│   ├── cache/
+│   └── environments/
 └── spack/
     ├── bin/
     │   └── spack           the wrapper
@@ -50,6 +56,8 @@ All mutable Spack state controlled by Seanerstack is redirected below the select
 ```
 
 The install tree, build stages, source cache, miscellaneous cache, test stage, and managed-environment root therefore do not reuse corresponding state from another Spack setup.
+
+The bootstrap instance has a configuration and install tree of its own, and shares the pinned Spack, the recipes and the source cache. Only the first stage of the compiler is built there, by the system compiler, so that nothing the system compiler built enters the Spack of the stack: see [Why the compiler is built in two stages](compiler-bootstrap.md#why-the-compiler-is-built-in-two-stages).
 
 ## Pinned builtin recipes
 

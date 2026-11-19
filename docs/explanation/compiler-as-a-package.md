@@ -175,6 +175,8 @@ The same holds for a system compiler of another version. A machine that installs
 
 Seanerstack therefore ships the lockfile of the compiler environment for Rocky Linux 10 and installs from it: see [Why the compiler is installed from a lockfile](compiler-bootstrap.md#why-the-compiler-is-installed-from-a-lockfile). The test used installations without content, so the last step of a real installation from the cache, in which the recipe of gcc looks at the installed compiler, was not exercised.
 
+The compiler is now built in two stages, and the first stage, not the system compiler, is the external that builds it. Its hash then depends on the path of the first stage, which is in the state directory, and no longer on the version or the languages of the system compiler: see [Why the compiler is built in two stages](compiler-bootstrap.md#why-the-compiler-is-built-in-two-stages). No lockfile is shipped any more until the pipeline has built the two stages.
+
 ## Known problems of Spack that were not met here
 
 Two problems of Spack 1.2.2 concern a compiler built by a newer one, such as gcc 15.3 built by a system gcc 16:
@@ -184,7 +186,9 @@ Two problems of Spack 1.2.2 concern a compiler built by a newer one, such as gcc
 
 Both were fixed on the develop branch on 2026-11-11, by [#53338](https://github.com/spack/spack/pull/53338) and [#53339](https://github.com/spack/spack/pull/53339), after Spack 1.2.2 of 2026-07-20. No release contains the fixes yet.
 
-Rocky Linux 10 is not affected, because its system compiler is older than gcc 15. Arch Linux, Fedora 44 and 45 and Debian forky have a system gcc 16, and the reuse of the compiler has not been run there.
+Rocky Linux 10 is not affected, because its system compiler is older than gcc 15. Arch Linux, Fedora 44 and 45 and Debian forky have a system gcc 16.
+
+On Fedora 44 and 45 the reuse of a compiler that the system gcc 16 built did not finish concretizing, with Spack 1.2.2 and with the develop commit `7188f9d6e0`: `zlib` and `rust` ran out of 300 seconds. The likely cause is a rule in Spack's `gcc` recipe, `runtime_constraints`: whatever a `gcc@X.Y` compiles may depend only on what `gcc@:X.Y` built, and the compiler, a dependency of everything it compiles, records gcc 16. The rule was not switched off to prove it. Seanerstack now builds the compiler in two stages, so that it records only a first gcc 15: see [Why the compiler is built in two stages](compiler-bootstrap.md#why-the-compiler-is-built-in-two-stages). On 2026-11-18 the two stages were not yet run on Fedora.
 
 ## What changed in Seanerstack
 
@@ -193,6 +197,7 @@ Rocky Linux 10 is not affected, because its system compiler is older than gcc 15
 - `seanerstack buildcache prepare` takes `--probe-timeout`, as `init` and `toolchain bootstrap` do.
 - `seanerstack buildcache prepare` pushes the compiler and updates the index of the cache as soon as the compiler is built, before the probe. A failure afterwards no longer costs the build of the compiler again.
 - `toolchain bootstrap` and `buildcache prepare` install the compiler from the lockfile that Seanerstack ships for the platform, where there is one.
+- The compiler is built in two stages, the first in a Spack instance of its own, and `toolchain bootstrap` takes the compiler of a lockfile from the build caches only.
 
 ## How to look into a concretization that does not finish
 
