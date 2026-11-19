@@ -191,4 +191,5 @@ def test_the_rocky10_build_job_publishes_the_toolchain_after_its_push_while_swit
     assert steps.index("seanerstack buildcache update-index") < publish < steps.index('exit "$status"')
     assert '[ "$PUBLISH_TOOLCHAIN" = "true" ]' in steps[publish]
     # On by default; a CI/CD variable switches it off without a commit.
-    assert job["variables"]["PUBLISH_TOOLCHAIN"] == "true"
+    ci = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+    assert job["variables"].get("PUBLISH_TOOLCHAIN", ci.get("variables", {}).get("PUBLISH_TOOLCHAIN")) == "true"
