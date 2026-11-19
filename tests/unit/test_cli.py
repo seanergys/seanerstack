@@ -262,7 +262,7 @@ def _bootstrap_world(monkeypatch, tmp_path: Path, *, compilers=(), detected=None
         return BootstrapResult(compiler=compiler, installed=True, registered=True, languages=("c",), probe="zlib", probe_ok=True)
 
     monkeypatch.setattr(cli, "bootstrap", fake_bootstrap)
-    monkeypatch.setattr(cli, "install_packages", lambda command, packages, env: calls.append(("install", list(packages))))
+    monkeypatch.setattr(cli, "install_packages", lambda command, packages, env, **kwargs: calls.append(("install", list(packages))))
     monkeypatch.setattr(cli, "use_external_package", lambda command, name, prefix, env: calls.append(("external", name, prefix)))
     return calls
 
@@ -358,7 +358,7 @@ def test_bootstrap_gives_spack_the_stored_credentials_of_the_build_cache(monkeyp
         return BootstrapResult(compiler=compiler, installed=True, registered=True, languages=("c",), probe="zlib", probe_ok=True)
 
     monkeypatch.setattr(cli, "bootstrap", fake_bootstrap)
-    monkeypatch.setattr(cli, "install_packages", lambda command, packages, env: environments.append(env))
+    monkeypatch.setattr(cli, "install_packages", lambda command, packages, env, **kwargs: environments.append(env))
 
     cli._run_bootstrap(_bootstrap_args(tmp_path))
 
