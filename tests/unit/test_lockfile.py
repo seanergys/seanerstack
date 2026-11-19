@@ -81,3 +81,10 @@ def test_the_lockfile_of_the_toolchain_is_looked_for_in_its_build_cache(cache, t
     assert found == tmp_path / "found" / f"{tag}.lock"
     without = Config(path=config.path, resources=config.resources)
     assert lockfile.find_compiler_lockfile(without, {}, **WHERE, directory=tmp_path) is None
+
+
+def test_a_config_without_the_cache_of_its_toolchain_has_no_lockfile(tmp_path):
+    from seanerstack.config import Config, Toolchain
+    toolchain = Toolchain(compiler="gcc@15", packages=(), cache="seanerstack-buildcache", target="x86_64_v3", platforms={})
+    config = Config(path=tmp_path / "config.toml", resources={}, toolchain=toolchain)
+    assert lockfile.find_compiler_lockfile(config, {}, **WHERE, directory=tmp_path) is None

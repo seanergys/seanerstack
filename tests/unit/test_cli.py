@@ -570,3 +570,20 @@ def test_bootstrap_asks_for_no_lockfile_where_it_would_not_use_one(monkeypatch, 
     for overrides in ({"concretize": True}, {"dry_run": True}):
         assert cli._run_bootstrap(_bootstrap_args(tmp_path, **overrides)) == 0
     assert asked == []
+
+
+def test_bootstrap_with_a_config_of_no_resources_has_no_bootstrap_cache(monkeypatch, tmp_path: Path):
+    # The end-to-end tests set up a state with a config.toml of no resources, which takes the shipped [toolchain].
+    import seanerstack.isolation
+    from seanerstack.config import load_config
+    path = tmp_path / "config.toml"
+    path.write_text("", encoding="utf-8")
+    config = load_config(path)
+    x = seanerstack.isolation.prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    configured = []
+    monkeypatch.setattr(cli, "configure_buildcache", lambda resource, **kwargs: configured.append(resource.name))
+
+    instance = cli._bootstrap_instance(x, tmp_path / "spack", {}, config, config.toolchain.target)
+
+    assert config.toolchain.bootstrap_cache == "seanerstack-buildcache-bootstrap" and configured == []
+    assert instance.target == "x86_64_v3"

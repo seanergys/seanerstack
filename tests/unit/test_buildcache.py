@@ -324,3 +324,12 @@ def test_one_build_cache_is_configured_in_the_instance_given(monkeypatch, tmp_pa
 
     assert calls[0] == ["spack", "-C", "/state/bootstrap/config", "mirror", "remove", "--scope", "user", "bootstrap"]
     assert calls[1][-2:] == ["bootstrap", "oci://registry.example.org/group/project/buildcache-bootstrap"]
+
+
+def test_a_config_without_the_bootstrap_cache_it_names_has_none(tmp_path: Path):
+    # The [toolchain] of the shipped config.toml names it, and a config.toml of other resources does not define it.
+    from dataclasses import replace
+    config = _with_bootstrap_cache(tmp_path)
+    without = replace(config, resources={name: value for name, value in config.resources.items() if name != "bootstrap"})
+    assert buildcache.bootstrap_buildcache(without) is None
+    assert [resource.name for resource in buildcache.buildcaches(without)] == ["registry"]
