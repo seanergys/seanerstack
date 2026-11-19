@@ -28,7 +28,7 @@ import yaml
 
 from .auth import spack_resource_environment
 from .bootstrap import DEFAULT_PROBE_TIMEOUT, BootstrapInstance, bootstrap, require_target
-from .buildcache import bootstrap_buildcache, buildcaches, configure_buildcaches, update_index
+from .buildcache import bootstrap_buildcache, buildcaches, configure_buildcaches, push_installed, update_index
 from .config import Config, Platform, Resource, Toolchain
 from .isolation import DEFAULT_STATE_DIR, clone_pinned_spack_commands
 from .pins import SPACK_COMMIT
@@ -326,9 +326,7 @@ def _first_stage_cache(
     instance = replace(instance, env=environment)
 
     def push() -> None:
-        specs = _output([*instance.command, "find", "--format", "/{hash}"], environment).split()
-        _stream([*instance.command, "buildcache", "push", "--only", "package", cache.name, *specs], environment)
-        update_index(cache, command=instance.command, env=environment)
+        push_installed(cache, command=instance.command, env=environment)
 
     return instance, push
 
