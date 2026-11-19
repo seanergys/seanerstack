@@ -8,6 +8,15 @@ stages:
   - publish
   - toolchain
 
+variables:
+  # "true": every pipeline publishes the toolchain of every platform, the
+  # first stage of the compiler and the compiler lockfile included: the
+  # toolchain job runs for each platform, and build:rocky10 publishes what it
+  # built. Any other value leaves it to the toolchain job of the nightly
+  # schedule or of a pipeline run by hand. A CI/CD variable of the project, or
+  # of a pipeline run by hand, overrides this without a commit.
+  PUBLISH_TOOLCHAIN: "true"
+
 # A merge request runs merge request pipelines, which become merged results
 # and merge train pipelines once the project enables them. A branch with an
 # open merge request runs no second pipeline for the same push. Other branches,
@@ -195,11 +204,6 @@ build:rocky10:
     <<: *cache-build
     PLATFORM: rocky10
     ENVIRONMENT: /opt/seanergys-meta
-    # "true": also publish the first stage of the compiler and the compiler
-    # lockfile, as the toolchain job does, so that the pipelines after this one
-    # find both. Any other value leaves them to the toolchain job. A CI/CD
-    # variable of the project, or of a pipeline run by hand, overrides this.
-    PUBLISH_TOOLCHAIN: "true"
   before_script: &rocky10-setup
     - dnf install -y --setopt=install_weak_deps=False python3 python3-pip
     - python3 -m venv /opt/seanerstack
@@ -399,9 +403,11 @@ publish:dev:
 # only checks that the cache holds everything.
 #
 # It runs in a pipeline schedule of the default branch (Build > Pipeline
-# schedules), or by hand from Build > Pipelines > Run pipeline, on the default
-# branch or another one. The job token
-# may push to the container registry of this project, which holds the cache.
+# schedules), in every other pipeline while PUBLISH_TOOLCHAIN is "true", and
+# otherwise by hand from Build > Pipelines > Run pipeline, on the default
+# branch or another one. A platform that fails does not fail the pipeline.
+# The job token may push to the container registry of this project, which
+# holds the cache.
 #
 # Each job runs in the image of its platform, the same image as in config.toml
 # (a unit test keeps them equal), and builds there with --no-container, so no
@@ -416,6 +422,12 @@ toolchain:
   timeout: 12h
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "schedule"'
+    # In every pipeline while the toolchain is published from each: what a
+    # pipeline built is in the caches, with a lockfile per platform, for the
+    # pipelines and machines after it.
+    - if: '$PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE =~ /^(push|merge_request_event|web)$/'
+      when: on_success
+      allow_failure: true
     # By hand, also on another branch: a change to how the toolchain is built
     # gives new hashes, and its own pipeline finds them in the cache only
     # after this job has built them from that branch.
