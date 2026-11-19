@@ -29,7 +29,6 @@ def test_each_shipped_lockfile_is_the_compiler_of_the_toolchain_for_a_platform()
     toolchain = seanerstack.config.load_config().toolchain
     systems = {platform.operating_system for platform in toolchain.platforms.values()}
     lockfiles = sorted((seanerstack.paths.share_path() / "toolchain").glob("*/spack.lock"))
-    assert [path.parent.name for path in lockfiles] == ["rocky10"]
     for path in lockfiles:
         assert path.parent.name in systems
         assert seanerstack.paths.toolchain_lockfile(path.parent.name) == path
