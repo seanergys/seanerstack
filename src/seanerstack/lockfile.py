@@ -15,10 +15,13 @@ finds none rather than a wrong one.
 
 from __future__ import annotations
 
+import gzip
 import hashlib
+import io
 import json
 from pathlib import Path
 import re
+import tarfile
 
 from .bootstrap import stage_roots
 from .config import Config, Resource
@@ -26,8 +29,40 @@ from .pins import BUILTIN_REPO_COMMIT, SPACK_COMMIT
 from .registry import MANIFEST_MEDIA_TYPE, Registry, RegistryError
 
 
-CONFIG_MEDIA_TYPE = "application/vnd.seanerstack.compiler-lockfile.config.v1+json"
-LOCKFILE_MEDIA_TYPE = "application/vnd.seanerstack.spack-lock.v1+json"
+# An ordinary image of one layer, as Spack stores its binaries: a registry
+# that checks media types, such as GitLab's, refuses types of our own.
+CONFIG_MEDIA_TYPE = "application/vnd.oci.image.config.v1+json"
+LAYER_MEDIA_TYPE = "application/vnd.oci.image.layer.v1.tar+gzip"
+LOCKFILE_NAME = "spack.lock"
+
+
+def _layer(data: bytes) -> tuple[bytes, bytes]:
+    """A layer that holds `data` as spack.lock, the same bytes for the same lockfile.
+
+    @param data: the lockfile
+    @return: the uncompressed tar, whose digest is the layer's diff_id, and the gzip of it
+    """
+    tar = io.BytesIO()
+    with tarfile.open(fileobj=tar, mode="w", format=tarfile.USTAR_FORMAT) as archive:
+        member = tarfile.TarInfo(LOCKFILE_NAME)
+        member.size, member.mode = len(data), 0o644
+        archive.addfile(member, io.BytesIO(data))
+    compressed = io.BytesIO()
+    with gzip.GzipFile(fileobj=compressed, mode="wb", mtime=0) as stream:
+        stream.write(tar.getvalue())
+    return tar.getvalue(), compressed.getvalue()
+
+
+def _lockfile_of(layer: bytes) -> bytes | None:
+    """The spack.lock in a layer, or None when it holds none.
+
+    @param layer: the gzip of a tar
+    @return: the lockfile
+    """
+    with tarfile.open(fileobj=io.BytesIO(layer), mode="r:gz") as archive:
+        member = next((member for member in archive.getmembers() if member.name == LOCKFILE_NAME and member.isfile()), None)
+        stream = archive.extractfile(member) if member is not None else None
+        return stream.read() if stream is not None else None
 
 
 def _key(compiler: str, target: str, operating_system: str) -> dict:
@@ -68,10 +103,10 @@ def fetch_compiler_lockfile(resource: Resource, tag: str, env, directory: Path) 
     manifest = registry.manifest(tag)
     if manifest is None:
         return None
-    layers = [layer for layer in manifest.get("layers", []) if layer.get("mediaType") == LOCKFILE_MEDIA_TYPE]
-    if len(layers) != 1:
+    layers = [layer for layer in manifest.get("layers", []) if layer.get("mediaType") == LAYER_MEDIA_TYPE]
+    data = _lockfile_of(registry.blob(layers[0]["digest"])) if len(layers) == 1 else None
+    if data is None:
         raise RegistryError(f"the tag {tag} of {resource.url} holds no compiler lockfile")
-    data = registry.blob(layers[0]["digest"])
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{tag}.lock"
     path.write_bytes(data)
@@ -118,16 +153,21 @@ def publish_compiler_lockfile(
     registry = Registry.of(resource, env)
     if registry.manifest(tag) is not None:
         return tag, False
-    data = lockfile.read_bytes()
-    # What the tag was derived from, for whoever inspects the registry.
-    config = json.dumps(_key(compiler, target, operating_system), sort_keys=True).encode()
+    tar, layer = _layer(lockfile.read_bytes())
+    # An image config, with what the tag was derived from beside its fields,
+    # for whoever inspects the registry, as Spack keeps the spec in its own.
+    config = json.dumps({
+        "architecture": "arm64" if target.startswith("aarch64") else "amd64", "os": "linux",
+        "rootfs": {"type": "layers", "diff_ids": [f"sha256:{hashlib.sha256(tar).hexdigest()}"]},
+        **_key(compiler, target, operating_system),
+    }, sort_keys=True).encode()
     manifest = {
         "schemaVersion": 2,
         "mediaType": MANIFEST_MEDIA_TYPE,
         "config": {"mediaType": CONFIG_MEDIA_TYPE, "digest": registry.put_blob(config), "size": len(config)},
         "layers": [{
-            "mediaType": LOCKFILE_MEDIA_TYPE, "digest": registry.put_blob(data), "size": len(data),
-            "annotations": {"org.opencontainers.image.title": "spack.lock"},
+            "mediaType": LAYER_MEDIA_TYPE, "digest": registry.put_blob(layer), "size": len(layer),
+            "annotations": {"org.opencontainers.image.title": LOCKFILE_NAME},
         }],
     }
     registry.put_manifest(tag, manifest)
