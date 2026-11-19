@@ -84,15 +84,20 @@ def detect_packages(command: list[str], env, packages: list[str], prefixes: list
     @param env: its environment
     @param packages: the Spack packages to look for, such as rust
     @param prefixes: installations off PATH to search as well
-    @return: each package that was found, with every installation of it
+    @return: each package that was found, with every installation of it;
+        a failed detection raises RuntimeError with what Spack said
     """
     if not packages:
         return {}
     paths = [f"--path={directory}" for directory in search_directories(prefixes)]
     result = subprocess.run(
         [*command, "python", str(DETECT_SCRIPT), *packages, *paths],
-        check=True, capture_output=True, text=True, env=env,
+        check=False, capture_output=True, text=True, env=env,
     )
+    if result.returncode != 0:
+        # What Spack said is the cause; the command alone names none.
+        message = result.stderr.strip() or result.stdout.strip() or f"exit status {result.returncode}"
+        raise RuntimeError(f"Spack could not detect {', '.join(packages)}: {message}")
     lines = [line for line in result.stdout.splitlines() if line.startswith("{")]
     raw = json.loads(lines[-1]) if lines else {}
     return {name: [Found(spec=entry["spec"].split()[0], prefix=entry["prefix"]) for entry in entries] for name, entries in raw.items()}
