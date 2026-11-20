@@ -137,6 +137,8 @@ class Psmpi(AutotoolsPackage):
             pscom_src = os.path.join(proj_root, "pscom")
             args.extend(["--with-pscom-allin={0}".format(pscom_src)])
             args.extend(["--with-pscom-builtin={0}".format(",".join(["ucp"]))])
+        else:
+            args.append("--with-pscom={0}".format(spec["pscom"].prefix))
         
         if self.spec.satisfies("%intel"):
             args.extend(["--with-confset=intel"])
