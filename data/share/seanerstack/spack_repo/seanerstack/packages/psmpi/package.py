@@ -31,6 +31,9 @@ class Psmpi(AutotoolsPackage):
     depends_on("automake", type="build")
     depends_on("libtool", type="build")
     depends_on("m4", type="build")
+    depends_on("c", type="build")
+    depends_on("cxx", type="build")
+    depends_on("fortran", type="build")
 
     depends_on("pscom +ucp")
 
@@ -126,9 +129,9 @@ class Psmpi(AutotoolsPackage):
         if "+cuda" in spec:
             args.extend(self.with_or_without("cuda"))
         if "+pmix" in spec:
-            args.extend(self.with_or_without("pmix"))
+            args.append("--with-pmix={0}".format(spec["pmix"].prefix))
         if "+ucc" in spec:
-            args.extend(self.with_or_without("ucc"))
+            args.append("--with-ucc={0}".format(spec["ucc"].prefix))
         if "+msa" in spec:
             args.extend(self.enable_or_disable("msa-awareness"))
         if "+allin" in spec:
