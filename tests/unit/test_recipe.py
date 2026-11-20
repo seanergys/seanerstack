@@ -25,7 +25,8 @@ def test_every_compiled_recipe_declares_the_languages_it_is_compiled_from():
     import ast
 
     packages = Path(__file__).parents[2] / "data/share/seanerstack/spack_repo/seanerstack/packages"
-    compiled = {"AutotoolsPackage", "CMakePackage", "MakefilePackage", "MesonPackage"}
+    # rustc links with cc, so a Cargo package needs a compiler as well.
+    compiled = {"AutotoolsPackage", "CargoPackage", "CMakePackage", "MakefilePackage", "MesonPackage"}
     missing = []
     for path in sorted(packages.glob("*/package.py")):
         tree = ast.parse(path.read_text(encoding="utf-8"))
