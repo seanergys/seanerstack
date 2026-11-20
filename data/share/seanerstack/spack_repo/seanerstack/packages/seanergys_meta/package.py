@@ -19,6 +19,7 @@ class SeanergysMeta(BundlePackage):
     depends_on("priorisea", type="run")
     depends_on("properdocs", type="run")
     depends_on("pscom", type="run")
+    depends_on("psmpi", type="run")
     depends_on("py-pycapnp", type="run")
     depends_on("seanerbus", type="run")
     depends_on("seanerbus-cli", type="run")
