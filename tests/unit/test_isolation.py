@@ -9,8 +9,10 @@ from seanerstack.config import Config, Resource
 from seanerstack.isolation import (
     BUILTIN_REPO_COMMIT,
     BUILTIN_REPO_GIT,
+    GUARDED_COMPILERS,
     activation_script,
     deactivation_script,
+    guarded_path,
     layout,
     prepare_bootstrap_instance,
     prepare_isolation,
@@ -432,3 +434,39 @@ def test_the_bootstrap_instance_installs_gcc_at_a_path_without_a_hash(tmp_path: 
 def test_the_bootstrap_instance_loads_the_recipes_of_the_actual_one(tmp_path: Path):
     x, _, _, (_, _, b) = _bootstrap_instance(tmp_path)
     assert (b.config / "repos.yaml").read_text(encoding="utf-8") == (x.config / "repos.yaml").read_text(encoding="utf-8")
+
+
+def test_the_compiler_guard_stops_every_compiler_a_build_finds_on_path(tmp_path: Path):
+    import subprocess
+    x = prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    for name in GUARDED_COMPILERS:
+        result = subprocess.run([str(x.guard / name), "--version"], capture_output=True, text=True)
+        assert result.returncode == 1, name
+        assert f"called {name} from PATH" in result.stderr and 'depends_on("c")' in result.stderr
+
+
+def test_the_spack_wrapper_puts_the_compiler_guard_in_front_of_path_once(tmp_path: Path):
+    import os
+    import subprocess
+    real_spack = tmp_path / "spack"
+    real_spack.write_text('#!/bin/sh\necho "$PATH"\n', encoding="utf-8")
+    real_spack.chmod(0o755)
+    x = prepare_isolation(tmp_path / "state", real_spack)
+    for path in ("/usr/bin:/bin", f"{x.guard}:/usr/bin:/bin"):
+        result = subprocess.run([str(x.bin / "spack")], capture_output=True, text=True, env={**os.environ, "PATH": path})
+        assert result.stdout.strip() == f"{x.guard}:/usr/bin:/bin"
+
+
+def test_guarded_path_puts_the_compiler_guard_first_once(tmp_path: Path):
+    x = layout(tmp_path / "state")
+    assert guarded_path(x, "/usr/bin") == f"{x.guard}:/usr/bin"
+    assert guarded_path(x, f"/usr/bin:{x.guard}") == f"{x.guard}:/usr/bin"
+    assert guarded_path(x, "") == str(x.guard)
+
+
+def test_an_activated_shell_keeps_its_compilers(tmp_path: Path):
+    # Only Spack runs behind the guard; the user's shell still compiles with what it has.
+    real_spack = tmp_path / "spack"
+    real_spack.write_text("#!/bin/sh\n", encoding="utf-8")
+    script = activation_script(state_dir=tmp_path / "state", real_spack=real_spack, config=Config(path=tmp_path / "config.toml", resources={}), environ={"PATH": "/usr/bin"})
+    assert "compiler-guard" not in script

@@ -669,3 +669,12 @@ def test_bootstrap_builds_with_the_jobs_the_machine_allows_unless_told(monkeypat
 
 def test_toolchain_bootstrap_takes_jobs():
     assert build_parser().parse_args(["toolchain", "bootstrap", "--jobs", "12"]).jobs == 12
+
+
+def test_the_spack_that_seanerstack_runs_has_the_compiler_guard_in_front_of_path(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli, "resolve_real_spack", lambda explicit, state_dir: tmp_path / "spack")
+    monkeypatch.setenv("PATH", "/usr/bin")
+    import argparse
+    args = argparse.Namespace(state_dir=tmp_path / "state", spack_executable=tmp_path / "spack")
+    x, _, _, env = cli._spack_runtime(args)
+    assert env["PATH"] == f"{x.guard}:/usr/bin"

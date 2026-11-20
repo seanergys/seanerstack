@@ -45,6 +45,7 @@ All mutable Spack state controlled by Seanerstack is redirected below the select
 └── spack/
     ├── bin/
     │   └── spack           the wrapper
+    ├── compiler-guard/     cc, gcc, g++, gfortran, ... that stop a build calling them
     ├── credentials.sh      the same credentials as Spack's variables, mode 0600
     ├── config/
     ├── store/
@@ -94,6 +95,12 @@ spack find
 ```
 
 They do not need to be written as `seanerstack spack ...`, and nothing has to be activated first.
+
+## The compiler guard
+
+Spack gives a package a compiler only when the package depends on a language: `depends_on("c")`, `depends_on("cxx")` or `depends_on("fortran")`. Then its compiler wrapper comes first on the `PATH` of the build, under every compiler name, and calls the compiler of the stack; a call to a language the package did not declare already fails there. A package that declares no language gets no compiler wrapper. If its build compiles anyway, it finds the system compiler on `PATH`, outside the compiler rule of the stack and without the include directories of its dependencies. `psmpi` did that: its `configure` ran the system GCC, which did not find the headers of `pmix`.
+
+The state therefore has a directory `spack/compiler-guard` with a script under each compiler name, `cc`, `gcc`, `g++`, `gfortran` and the others, that fails and says which dependency is missing. The wrapper puts it in front of `PATH` for every Spack it runs, and so does Seanerstack for the Spack it runs itself; the shell keeps its compilers. A package with a language finds Spack's compiler wrapper before the guard. Compilers are registered and called by their absolute paths, and Spack's compiler detection skips the scripts of the guard, which report no version.
 
 ## Credentials
 

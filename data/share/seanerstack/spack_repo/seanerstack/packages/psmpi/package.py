@@ -25,12 +25,15 @@ class Psmpi(AutotoolsPackage):
     version("master", branch="master")
     version("5.14.0-1", tag="5.14.0-1")
     version("5.13.1-1", tag="5.13.1-1")
-    
+
 
     depends_on("autoconf", type="build")
     depends_on("automake", type="build")
     depends_on("libtool", type="build")
     depends_on("m4", type="build")
+    depends_on("c", type="build")
+    depends_on("cxx", type="build")
+    depends_on("fortran", type="build")
 
     depends_on("pscom +ucp")
 
@@ -126,9 +129,9 @@ class Psmpi(AutotoolsPackage):
         if "+cuda" in spec:
             args.extend(self.with_or_without("cuda"))
         if "+pmix" in spec:
-            args.extend(self.with_or_without("pmix"))
+            args.append("--with-pmix={0}".format(spec["pmix"].prefix))
         if "+ucc" in spec:
-            args.extend(self.with_or_without("ucc"))
+            args.append("--with-ucc={0}".format(spec["ucc"].prefix))
         if "+msa" in spec:
             args.extend(self.enable_or_disable("msa-awareness"))
         if "+allin" in spec:
@@ -137,7 +140,9 @@ class Psmpi(AutotoolsPackage):
             pscom_src = os.path.join(proj_root, "pscom")
             args.extend(["--with-pscom-allin={0}".format(pscom_src)])
             args.extend(["--with-pscom-builtin={0}".format(",".join(["ucp"]))])
-        
+        else:
+            args.append("--with-pscom={0}".format(spec["pscom"].prefix))
+
         if self.spec.satisfies("%intel"):
             args.extend(["--with-confset=intel"])
         else:

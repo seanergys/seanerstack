@@ -33,6 +33,15 @@ DEFAULT_STATE_DIR = Path("/opt/seanergys/state")
 # and that scope is where the private configuration lives.
 UNSET_ON_ACTIVATION = ("SPACK_DISABLE_LOCAL_CONFIG",)
 
+# The names under which a build finds a compiler on PATH. Spack puts its
+# compiler wrapper, under these names, in front of PATH only for a package
+# that depends on c, cxx or fortran; a package without a language gets none,
+# and its build would take the system compiler from PATH, outside the
+# compiler rule of the stack and without the include directories of its
+# dependencies. The guard directory holds a script under each name that
+# stops such a build. cpp is left out: tools call it as a plain preprocessor.
+GUARDED_COMPILERS = ("cc", "c89", "c99", "gcc", "c++", "g++", "fc", "gfortran", "f77", "f90", "f95", "clang", "clang++")
+
 
 @dataclass(frozen=True)
 class SpackLayout:
@@ -54,6 +63,8 @@ class SpackLayout:
     record: Path
     # The packages init detected on the machine, for `toolchain bootstrap --external`.
     detected: Path
+    # Stops a build that calls a compiler from PATH, in front of PATH for every Spack run.
+    guard: Path
 
 
 def layout(state_dir: Path) -> SpackLayout:
@@ -73,6 +84,7 @@ def layout(state_dir: Path) -> SpackLayout:
         credentials=state / "credentials.json",
         record=state / "seanerstack.json",
         detected=state / "detected.json",
+        guard=root / "compiler-guard",
     )
 
 
@@ -271,6 +283,8 @@ def prepare_isolation(state_dir: Path, real_spack: Path) -> SpackLayout:
     # clone at that commit, where reusing the old one would need `spack repo update`.
     _write(x.config / "repos.yaml", _repos_yaml(x))
 
+    _write_compiler_guard(x)
+
     # Runs Spack in this state from any shell, so that putting x.bin on PATH
     # once is all a user does: no activation, no variables to set.
     shim = x.bin / "spack"
@@ -281,10 +295,44 @@ def prepare_isolation(state_dir: Path, real_spack: Path) -> SpackLayout:
         + "".join(f"unset {name}\n" for name in UNSET_ON_ACTIVATION)
         + "".join(f"export {name}={shlex.quote(value)}\n" for name, value in spack_env(x).items())
         + f"if [ -r {shlex.quote(str(x.credentials_env))} ]; then . {shlex.quote(str(x.credentials_env))}; fi\n"
+        # Only for Spack: the shell that runs it keeps its compilers.
+        + f'case ":$PATH:" in *:{shlex.quote(str(x.guard))}:*) ;; *) PATH={shlex.quote(str(x.guard))}:"$PATH"; export PATH ;; esac\n'
         + f'exec {shlex.quote(str(real_spack))} -C {shlex.quote(str(x.config))} "$@"\n',
     )
     shim.chmod(shim.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return x
+
+
+def _write_compiler_guard(x: SpackLayout) -> None:
+    """Write the scripts that stop a build calling a compiler from PATH.
+
+    @param x: the layout of the state
+    @return: nothing
+    """
+    x.guard.mkdir(parents=True, exist_ok=True)
+    for name in GUARDED_COMPILERS:
+        script = x.guard / name
+        _write(
+            script,
+            "#!/bin/sh\n"
+            f"# Written by Seanerstack: see GUARDED_COMPILERS in seanerstack/isolation.py.\n"
+            f"echo 'seanerstack: a Spack build called {name} from PATH. The package declares no "
+            'depends_on("c"), depends_on("cxx") or depends_on("fortran"), so Spack gives it no compiler; '
+            "declare the languages it is compiled from.' >&2\n"
+            "exit 1\n",
+        )
+        script.chmod(script.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
+def guarded_path(x: SpackLayout, path: str) -> str:
+    """PATH with the compiler guard of the state in front, once.
+
+    @param x: the layout of the state
+    @param path: the PATH to extend
+    @return: the guarded PATH
+    """
+    entries = [entry for entry in path.split(os.pathsep) if entry and entry != str(x.guard)]
+    return os.pathsep.join([str(x.guard), *entries])
 
 
 def _repos_yaml(x: SpackLayout) -> str:

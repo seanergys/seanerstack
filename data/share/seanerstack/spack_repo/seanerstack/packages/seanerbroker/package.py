@@ -20,6 +20,9 @@ class Seanerbroker(CargoPackage):
 
     license("MIT")
 
+    # rustc links every binary by calling cc, and Spack gives the build a
+    # compiler only for a language the package itself depends on.
+    depends_on("c", type="build")
     # The build script of internal_schemas runs the capnp compiler.
     depends_on("capnproto", type="build")
     # Cargo.toml has path dependencies on deps/internal/internal_schemas and
