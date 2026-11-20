@@ -130,6 +130,13 @@ and release process.
 
 ### Fixed
 
+- A Spack build of the state that calls a compiler from `PATH` fails, with a
+  message that names the missing `depends_on("c")`, `("cxx")` or
+  `("fortran")`. A package that declares no language gets no compiler from
+  Spack, and its build took the system compiler instead: `psmpi` failed in
+  `configure` that way, and `pscom` was built by the system compiler. Both
+  now declare their languages, and `psmpi` passes the prefixes of `pmix` and
+  `ucc` to `configure`.
 - No registered compiler that the compiler spec matches builds the stack in
   place of the installed compiler. On Ubuntu 26.04, whose only compiler is the
   system gcc 15.2.0, `buildcache prepare` refused the compiler it had just
