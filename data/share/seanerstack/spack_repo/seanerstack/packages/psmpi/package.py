@@ -25,7 +25,7 @@ class Psmpi(AutotoolsPackage):
     version("master", branch="master")
     version("5.14.0-1", tag="5.14.0-1")
     version("5.13.1-1", tag="5.13.1-1")
-    
+
 
     depends_on("autoconf", type="build")
     depends_on("automake", type="build")
@@ -139,7 +139,7 @@ class Psmpi(AutotoolsPackage):
             args.extend(["--with-pscom-builtin={0}".format(",".join(["ucp"]))])
         else:
             args.append("--with-pscom={0}".format(spec["pscom"].prefix))
-        
+
         if self.spec.satisfies("%intel"):
             args.extend(["--with-confset=intel"])
         else:
