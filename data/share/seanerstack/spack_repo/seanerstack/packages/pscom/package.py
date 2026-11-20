@@ -36,6 +36,7 @@ class Pscom(CMakePackage):
     variant("utest", default=False, description="Enable unit tests")
     variant("rrcomm", default=False, description="Compile with RRComm Precon support")
 
+    depends_on("c", type="build")
     depends_on("cmake@3.10.0:", type="build")
     depends_on("rrcomm", when="+rrcomm")
     depends_on("cmocka", when="+utest")
