@@ -399,16 +399,25 @@ wheels = [
 
 [[package]]
 name = "keyloom"
-version = "0.1.0"
+version = "0.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
-    { name = "ruamel-yaml" },
+    { name = "korml" },
     { name = "tomlkit" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bb/1e/743b71aac867ce5ceeaae4aa4a67acbb61d3fcca254f1e409ec01302f15e/keyloom-0.1.0.tar.gz", hash = "sha256:feedd3a7e0679fc4e38c351dcd45fb0bf740d212077fd96011aee8963700ad33", size = 422286, upload-time = "2026-10-21T18:37:38.929Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b7/63/e995f0f1b7c9e7c78e4c6312b60c60e7973e7493336e53cff9e70a8dc393/keyloom-0.4.1.tar.gz", hash = "sha256:bd180829dec44e7b3252a74bad5f0f2923e9676afcb709b1809b019d3a6d856f", size = 449998, upload-time = "2026-11-21T12:50:07.887Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2f/c4/e3af282f9739f95d0d7217c7324d81379eb7ab4793671ff95ef2f73c272a/keyloom-0.1.0-py3-none-any.whl", hash = "sha256:9d7c703698d2717ab237a905034ad676f73dbb083674c0f852b38436ef59b40f", size = 284308, upload-time = "2026-10-21T18:37:40.579Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/a4/8fafa952c4e0402f4369c5d062cc95a2a179e37dede64828ef8d21715753/keyloom-0.4.1-py3-none-any.whl", hash = "sha256:39364fd12b14b0e3f0063844f794d940216c45e1b681bbb86511658cf72dd45d", size = 300325, upload-time = "2026-11-21T12:50:09.059Z" },
+]
+
+[[package]]
+name = "korml"
+version = "0.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/be/ca/85b7e32f104e561ade162cad96a0f685e4e0e6fe32bc62e6b14c158dcade/korml-0.4.0.tar.gz", hash = "sha256:e58e5da91128f53e3d9f5d3a7c8e49751523ce7f7a1fe66f1b9889f6bbe05d6d", size = 550158, upload-time = "2026-11-21T08:50:41.654Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/52/0c/6770c83e25028a19f01dbae974d649941edee99ed4900efc7c58b1dd021a/korml-0.4.0-py3-none-any.whl", hash = "sha256:abf1e8c1fd4f073fbe1f91b02ef5c2e534429be7a9fe956cf073272af5b22eb4", size = 128984, upload-time = "2026-11-21T08:50:42.685Z" },
 ]
 
 [[package]]
@@ -933,17 +942,8 @@ wheels = [
 ]
 
 [[package]]
-name = "ruamel-yaml"
-version = "0.19.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c7/3b/ebda527b56beb90cb7652cb1c7e4f91f48649fbcd8d2eb2fb6e77cd3329b/ruamel_yaml-0.19.1.tar.gz", hash = "sha256:53eb66cd27849eff968ebf8f0bf61f46cdac2da1d1f3576dd4ccee9b25c31993", size = 142709, upload-time = "2026-01-02T16:50:31.84Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b8/0c/51f6841f1d84f404f92463fc2b1ba0da357ca1e3db6b7fbda26956c3b82a/ruamel_yaml-0.19.1-py3-none-any.whl", hash = "sha256:27592957fedf6e0b62f281e96effd28043345e0e66001f97683aa9a40c667c93", size = 118102, upload-time = "2026-01-02T16:50:29.201Z" },
-]
-
-[[package]]
 name = "seanerstack"
-version = "0.1.5"
+version = "0.1.6"
 source = { editable = "." }
 dependencies = [
     { name = "keyloom" },
@@ -965,7 +965,7 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "keyloom", specifier = ">=0.1.0" },
+    { name = "keyloom", specifier = ">=0.4.1" },
     { name = "packaging", specifier = ">=24" },
     { name = "pyyaml", specifier = ">=6" },
 ]
