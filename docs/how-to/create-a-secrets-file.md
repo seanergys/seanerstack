@@ -55,7 +55,7 @@ chmod 600 secrets.toml
 keyloom encrypt secrets.toml
 ```
 
-keyloom prompts for the vault password, and then for the value of each placeholder; for a new file, both are entered twice. The file is rewritten in place, with comments and formatting kept, and every wrapper value becomes an envelope such as `$KEYLOOM;1;argon2-v2;...`.
+keyloom prompts for the vault password, and then for the value of each placeholder; for a new file, both are entered twice. The file is rewritten in place, with comments and formatting kept, and every wrapper value becomes an envelope such as `$KEYLOOM;1;argon2-v2;...`. keyloom also adds a `[__keyloom__]` table at the end of the file, with which it checks the vault password; leave it as it is.
 
 Placeholders require a terminal. In a script, write the value itself into the wrapper, `{ __keyloom__ = "secret", value = "glpat-..." }`, and pass the vault password with `--password-file FILE` or `--password-stdin`. The value is then plaintext on disk until `keyloom encrypt` has run.
 
