@@ -10,3 +10,4 @@ nav:
   - Maintain the stack:
       - Synchronize a package recipe: sync-a-package.md
       - Validate Seanerstack changes: validate-the-stack.md
+      - Look into a concretization that does not finish: look-into-a-concretization.md

@@ -23,3 +23,4 @@ Each guide gives one procedure for one task. Options beyond that procedure are i
 | --- | --- |
 | [Synchronize a package recipe](sync-a-package.md) | Bring the versions of a recipe up to its upstream repository. |
 | [Validate Seanerstack changes](validate-the-stack.md) | Check recipes, environments and the compiler configuration before a merge request. |
+| [Look into a concretization that does not finish](look-into-a-concretization.md) | Find out why Spack searches for minutes, or without end, for a solution. |

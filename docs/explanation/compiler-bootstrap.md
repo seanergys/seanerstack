@@ -116,7 +116,7 @@ The first stage of the compiler is an external after all, and is hashed by its p
 
 ### How the compiler is required
 
-The rule reads: a package that takes C from a gcc takes it from gcc@15, and the same for C++ and Fortran. Each part of its form answers something that Spack 1.2.2 does with a compiler that is reused as a package. The develop branch of Spack of 2026-11-18 fails the first point in the same way.
+The rule reads: a package that takes C from a gcc takes it from gcc@15, and the same for C++ and Fortran. Each part of its form answers something that Spack 1.2.2 does with a compiler that is reused as a package; [What Spack 1.2.2 does with a compiler that is a package](../blog/posts/2026-11-18-compiler-as-a-package.md) records the forms that failed.
 
 - **A requirement on every package, not on the language.** `packages:c:require:gcc@15` also holds for the compiler's own dependencies, such as its `gcc-runtime`, which the system compiler built. Nothing satisfies it, and Spack searches for minutes before it says so, or without end. A requirement under `all` that names a compiler is not applied to compilers and their runtime libraries, so the compiler's own tree is left alone.
 - **The condition `%cxx=gcc`, not `%cxx`.** `%cxx` also holds for a package that has no C++ itself but depends directly on one that has. A C library built with CMake is such a package, because CMake is written in C++, and Spack then refuses it with "Only external, or concrete, compilers are allowed". `%cxx=gcc`, "takes C++ from a gcc", holds only for the package itself.
