@@ -12,6 +12,7 @@ class CountdownSeanergys(CMakePackage):
     license("BSD-3-Clause")
 
     version("main", branch="main")
+    version("2.0.0", tag="v2.0.0", commit="b6a5257418278e20feb60fc776f4455ae0dcd6cb")
 
     variant("cuda", default=False, description="Enable CUDA monitoring on NVIDIA GPUs")
 
