@@ -12,7 +12,7 @@ These pages describe the design of Seanerstack and the reasons behind it. For a 
 | [Packages and environments](packages-and-environments.md) | Which recipes and environments Seanerstack ships, and where their information lives. |
 | [Synchronization](synchronization.md) | How recipe versions follow the upstream repositories. |
 
-The evidence behind these pages is in the [blog](../blog/index.md), by date: for example [What Spack 1.2.2 does with a compiler that is a package](../blog/posts/2026-11-18-compiler-as-a-package.md), the record behind the compiler bootstrap.
+The evidence behind these pages is in the [blog](../blog/index.md), by date: for example [What Spack 1.2.2 does with a compiler that is a package](../blog/posts/2026-11-18-compiler-as-a-package.md), the record behind the compiler bootstrap. The [glossary](../reference/glossary.md) defines the terms these pages use.
 
 ## Project
 

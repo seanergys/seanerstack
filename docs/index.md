@@ -33,6 +33,8 @@ The documentation follows four kinds of pages, each with one purpose.
 | [Blog](blog/index.md) | What was found on a date: a build that stopped, what was tried, and what followed. | You want the evidence behind a design decision. |
 | [Reference](reference/index.md) | Every command, environment and package recipe, generated from the installed Seanerstack. | You need the exact name or meaning of an option. |
 
+The [glossary](reference/glossary.md) defines the terms these pages use, such as the state directory, the first stage and a platform.
+
 ## What Seanerstack provides
 
 | Part | Responsibility |
