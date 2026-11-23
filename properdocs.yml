@@ -58,6 +58,9 @@ plugins:
       scripts:
         - docs/gen_reference.py
   - awesome-nav
+  # Posts record the project at a date; see docs/blog/index.md.
+  - blog:
+      blog_dir: blog
   - search
 
 extra:

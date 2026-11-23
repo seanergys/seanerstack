@@ -30,6 +30,7 @@ The documentation follows four kinds of pages, each with one purpose.
 | [Tutorials](tutorials/index.md) | Learning by doing, from a new machine to the installed SEANERGYS stack. | You have not used Seanerstack before. |
 | [How-to guides](how-to/index.md) | One procedure for each task, such as working on a package checkout. | You know what you want to do. |
 | [Explanation](explanation/index.md) | Why Seanerstack works the way it does, and what was decided. | You want to understand or change the design. |
+| [Blog](blog/index.md) | What was found on a date: a build that stopped, what was tried, and what followed. | You want the evidence behind a design decision. |
 | [Reference](reference/index.md) | Every command, environment and package recipe, generated from the installed Seanerstack. | You need the exact name or meaning of an option. |
 
 ## What Seanerstack provides
