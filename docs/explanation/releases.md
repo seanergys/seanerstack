@@ -21,7 +21,7 @@ See [work item #21](https://gitlab.seanergys.fz-juelich.de/software/seanerstack/
 
 ## Release process
 
-A maintainer owns cutting releases. The current version maintainer is Radek Lonka.
+A maintainer owns cutting releases; the [front page](../index.md#maintainers) names who. At present it is Radek Lonka.
 
 Cutting a release:
 

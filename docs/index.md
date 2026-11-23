@@ -12,6 +12,15 @@ spack install seanergys-meta
 
 `seanergys-meta` is the package that brings in the SEANERGYS software stack.
 
+## Maintainers
+
+| Maintainer | Affiliation | Contact |
+| --- | --- | --- |
+| Jayesh Badwaik | Forschungszentrum Jülich | <j.badwaik@fz-juelich.de> |
+| Radek Lonka, who cuts the [releases](explanation/releases.md) | VSB – Technical University of Ostrava | <radek.lonka@vsb.cz> |
+
+For a problem or a question, open an issue in the [repository](https://gitlab.seanergys.fz-juelich.de/software/seanerstack/-/issues), or write to either of them.
+
 ## How these docs are organized
 
 The documentation follows four kinds of pages, each with one purpose.
