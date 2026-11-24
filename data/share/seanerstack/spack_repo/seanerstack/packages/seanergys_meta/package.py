@@ -16,8 +16,8 @@ class SeanergysMeta(BundlePackage):
     # pscom it depends on, and the net-snmp that telemetry-collector needs
     # does not link its Perl modules.
     depends_on("flux-core", type="run")
-    depends_on("flux-sched", type="run")
     depends_on("flux-dataplane-connector", type="run")
+    depends_on("flux-sched", type="run")
     depends_on("priorisea", type="run")
     depends_on("properdocs", type="run")
     depends_on("pscom", type="run")
