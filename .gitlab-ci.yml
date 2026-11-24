@@ -509,6 +509,25 @@ toolchain:
       /opt/seanerstack/bin/seanerstack --state-dir "$STATE"
       --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password
       buildcache prepare --no-container --platform "$PLATFORM" --padded-length "$PADDED_LENGTH" || status=$?
+    # seanergys-meta for this platform too, as build:rocky10 builds it, in the
+    # state that prepare built the toolchain in.
+    - export SEANERSTACK_STATE_DIR="$STATE"
+    - seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password init --padded-length "$PADDED_LENGTH"
+    - eval "$(seanerstack activate)"
+    - seanerstack toolchain bootstrap
+    - >-
+      git config --global
+      url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.seanergys.fz-juelich.de/".insteadOf
+      "https://gitlab.seanergys.fz-juelich.de/"
+    - spack env create --without-view -d /opt/seanergys-meta
+    - spack -e /opt/seanergys-meta add seanergys-meta
+    - spack -e /opt/seanergys-meta concretize
+    - >-
+      spack -e /opt/seanergys-meta install
+      --jobs "$(python -c 'import seanerstack.jobs; print(seanerstack.jobs.default_jobs())')"
+      || status=$?
+    - spack buildcache push --only package seanerstack-buildcache $(spack find --format '/{hash}')
+    - seanerstack buildcache update-index
     # Why a night built instead of reusing: each spec of the toolchain against
     # the cached specs of its name and version for this platform, which
     # include those of earlier nights. It runs after prepare, which sets the

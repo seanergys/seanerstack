@@ -17,6 +17,7 @@ class SeanergysMeta(BundlePackage):
     # does not link its Perl modules.
     depends_on("flux-core", type="run")
     depends_on("flux-dataplane-connector", type="run")
+    depends_on("flux-sched", type="run")
     depends_on("priorisea", type="run")
     depends_on("properdocs", type="run")
     depends_on("pscom", type="run")
