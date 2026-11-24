@@ -134,6 +134,31 @@ e2e:external-compiler:
   script:
     - tests/e2e/run.sh tests/e2e/test_external_compiler.py
 
+# Seanerstack installed as on a login node of an older cluster, with uv and a
+# Python that uv downloads, and Spack on the system Python 3.6 of Rocky
+# Linux 8: init detects the rust of the distribution. It needs no token.
+e2e:old-python:
+  stage: test
+  image: docker.io/rockylinux/rockylinux:8
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE =~ /^(schedule|web)$/'
+  variables:
+    SEANERSTACK_E2E_REQUIRED: "1"
+    SEANERSTACK_E2E_OLD_PYTHON: "/usr/bin/python3.6"
+    SEANERSTACK_E2E_DETECTED_PACKAGE: "rust"
+    # Seanerstack runs on a Python of uv's own, never on one of the system.
+    UV_PYTHON_PREFERENCE: "only-managed"
+  before_script:
+    - >-
+      dnf install -y --setopt=install_weak_deps=False
+      bzip2 file gcc gcc-c++ git make patch unzip xz python36 rust cargo
+    # uv, which run.sh uses, as the documentation installs it on a login node.
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - export PATH="$HOME/.local/bin:$PATH"
+  script:
+    - tests/e2e/run.sh tests/e2e/test_old_python.py
+
 # The job token, for Git and the registry, in /tmp/secrets.toml as users write
 # a secrets file, encrypted with /tmp/vault-password, which only has to
 # outlive the job. Needs keyloom on PATH. GitLab flattens the nested list where
