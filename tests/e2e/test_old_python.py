@@ -17,6 +17,7 @@ conftest.py:
 
 from __future__ import annotations
 
+import itertools
 import os
 from pathlib import Path
 import subprocess
@@ -46,17 +47,27 @@ def test_init_detects_packages_with_spack_on_an_old_python(spack: Path | None, t
     if not seanerstack.is_file():
         pytest.fail(f"seanerstack is not installed in {seanerstack.parent}; run the tests through tests/e2e/run.sh")
 
+    state = tmp_path / "state"
     config = tmp_path / "config.toml"
     config.write_text("", encoding="utf-8")
     env = {key: value for key, value in os.environ.items() if not key.startswith("SEANERSTACK_")}
     env["SPACK_PYTHON"] = python
     result = subprocess.run(
-        [str(seanerstack), "--state-dir", str(tmp_path / "state"), *map(str, spack_options(spack)),
+        [str(seanerstack), "--state-dir", str(state), *map(str, spack_options(spack)),
          "--config-file", str(config), "init"],
         env=env, text=True, capture_output=True, check=False, timeout=1800,
     )
 
     output = result.stdout + result.stderr
     assert result.returncode == 0, output
-    found = output.partition("packages found:")[2]
-    assert f"{package}@" in found, output
+    # The lines below the heading, each "  NAME@VERSION  PREFIX".
+    lines = result.stdout.partition("packages found:\n")[2].splitlines()
+    found = [line.split()[0] for line in itertools.takewhile(lambda line: line.startswith("  "), lines)]
+    assert any(spec.startswith(f"{package}@") for spec in found), output
+
+    # The Spack of the state ran on that Python, not on one of its own choosing.
+    spack_version = subprocess.run(
+        [str(state / "spack" / "bin" / "spack"), "python", "-c", "import sys; print(*sys.version_info[:2])"],
+        env=env, text=True, capture_output=True, check=True,
+    ).stdout.split()
+    assert spack_version == version, f"Spack ran on Python {'.'.join(spack_version)}, not on {python}"
