@@ -3,6 +3,7 @@ nav:
   - Tutorials: tutorials
   - How-to guides: how-to
   - Explanation: explanation
+  - Blog: blog
   - Reference: reference
 
 flatten_single_child_sections: true

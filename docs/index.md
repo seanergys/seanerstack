@@ -12,6 +12,15 @@ spack install seanergys-meta
 
 `seanergys-meta` is the package that brings in the SEANERGYS software stack.
 
+## Maintainers
+
+| Maintainer | Affiliation | Contact |
+| --- | --- | --- |
+| Jayesh Badwaik | Forschungszentrum Jülich | <j.badwaik@fz-juelich.de> |
+| Radek Lonka, who cuts the [releases](explanation/releases.md) | VSB – Technical University of Ostrava | <radek.lonka@vsb.cz> |
+
+For a problem or a question, open an issue in the [repository](https://gitlab.seanergys.fz-juelich.de/software/seanerstack/-/issues), or write to either of them.
+
 ## How these docs are organized
 
 The documentation follows four kinds of pages, each with one purpose.
@@ -21,7 +30,10 @@ The documentation follows four kinds of pages, each with one purpose.
 | [Tutorials](tutorials/index.md) | Learning by doing, from a new machine to the installed SEANERGYS stack. | You have not used Seanerstack before. |
 | [How-to guides](how-to/index.md) | One procedure for each task, such as working on a package checkout. | You know what you want to do. |
 | [Explanation](explanation/index.md) | Why Seanerstack works the way it does, and what was decided. | You want to understand or change the design. |
+| [Blog](blog/index.md) | What was found on a date: a build that stopped, what was tried, and what followed. | You want the evidence behind a design decision. |
 | [Reference](reference/index.md) | Every command, environment and package recipe, generated from the installed Seanerstack. | You need the exact name or meaning of an option. |
+
+The [glossary](reference/glossary.md) defines the terms these pages use, such as the state directory, the first stage and a platform.
 
 ## What Seanerstack provides
 

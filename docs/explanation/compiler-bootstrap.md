@@ -98,7 +98,9 @@ concretizer:
       exclude: ["gcc@15"]
 ```
 
-`include` matters. The environment also holds what the compiler was built with, such as `ncurses`, `readline` and `gmake`, which the system compiler compiled. Spack prefers an installed package to a new one, so without `include` every package of the stack that needs one of them would take the compiler's. With it, the stack builds its own with the project compiler. Only what the compiler itself links against, `zlib-ng` and `zstd`, is shared.
+`include` limits the reuse to the compiler. The compiler environment holds more than `gcc@15`: everything that gcc was built with, such as `ncurses`, `readline` and `gmake`, which the first stage compiled. Without `include`, Spack would reuse those installations too, because it prefers an installed package to building a new one, and every package of the stack that depends on `ncurses` would link against the `ncurses` of the compiler environment, compiled by the first stage. With `include`, only `gcc@15` is reused, and the stack builds its own `ncurses`, `readline` and `gmake` with gcc@15.
+
+Two libraries are shared even so: `zlib-ng` and `zstd`, which `gcc@15` links against. They are dependencies of the compiler, and a concretized spec holds each package once: a package of the stack that depends on `zlib-ng` and, through its compiler, on `gcc@15`, gets the one `zlib-ng` already in its tree, the compiler's. Everything else in the stack is compiled by `gcc@15`.
 
 The second source keeps every external of the configuration but those that the compiler spec matches. Spack takes an external only by reusing it, so a registered compiler that also satisfies `gcc@15`, such as the system gcc 15.2.0 of Ubuntu 26.04, cannot build the stack in place of the installed compiler.
 
@@ -116,7 +118,7 @@ The first stage of the compiler is an external after all, and is hashed by its p
 
 ### How the compiler is required
 
-The rule reads: a package that takes C from a gcc takes it from gcc@15, and the same for C++ and Fortran. Each part of its form answers something that Spack 1.2.2 does with a compiler that is reused as a package. The develop branch of Spack of 2026-11-18 fails the first point in the same way.
+The rule reads: a package that takes C from a gcc takes it from gcc@15, and the same for C++ and Fortran. Each part of its form answers something that Spack 1.2.2 does with a compiler that is reused as a package; [What Spack 1.2.2 does with a compiler that is a package](../blog/posts/2026-11-18-compiler-as-a-package.md) records the forms that failed.
 
 - **A requirement on every package, not on the language.** `packages:c:require:gcc@15` also holds for the compiler's own dependencies, such as its `gcc-runtime`, which the system compiler built. Nothing satisfies it, and Spack searches for minutes before it says so, or without end. A requirement under `all` that names a compiler is not applied to compilers and their runtime libraries, so the compiler's own tree is left alone.
 - **The condition `%cxx=gcc`, not `%cxx`.** `%cxx` also holds for a package that has no C++ itself but depends directly on one that has. A C library built with CMake is such a package, because CMake is written in C++, and Spack then refuses it with "Only external, or concrete, compilers are allowed". `%cxx=gcc`, "takes C++ from a gcc", holds only for the package itself.
@@ -124,7 +126,7 @@ The rule reads: a package that takes C from a gcc takes it from gcc@15, and the 
 
 The rule is hard: a spec that asks for another gcc, such as `zlib %gcc@14`, has no solution. Spack 1.2.2 takes minutes to say so.
 
-A new package that needs `zlib-ng` or `zstd` links against the installation that the compiler itself uses, which the system compiler built. Every other package of the stack is compiled by the project compiler.
+A new package that needs `zlib-ng` or `zstd` links against the installation that the compiler itself uses, which the first stage built. Every other package of the stack is compiled by the project compiler.
 
 ## Why the compiler is built in two stages
 

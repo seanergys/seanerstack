@@ -1,8 +1,16 @@
-# The compiler as a package: what Spack does with it
+---
+date: 2026-11-18
+categories:
+  - Spack
+---
 
-On 2026-11-18 the project compiler changed from an external to a package that the concretizer reuses. The first real build of that design stopped at a compiler probe that never finished. This page records what was found while making it work: what Spack 1.2.2 does with a compiler that is a package, which ways of requiring it fail and why, and what is still open. [Compiler bootstrap](compiler-bootstrap.md) describes the design that resulted; this page is the evidence behind it.
+# What Spack 1.2.2 does with a compiler that is a package
 
-Everything here was observed with Spack 1.2.2 on Rocky Linux 10, whose system compiler is GCC 14.4.1, with `gcc@15.3.0` as the project compiler. Where the develop branch of Spack was tried, it was commit `7188f9d6e0` of 2026-11-18.
+On 2026-11-18 the project compiler changed from an external to a package that the concretizer reuses. The first real build of that design stopped at a compiler probe that never finished. This post records what was found while making it work: what Spack 1.2.2 does with a compiler that is a package, which ways of requiring it fail and why, and what was still open at the end of the day. [Compiler bootstrap](../../explanation/compiler-bootstrap.md) describes the design that resulted; this post is the evidence behind it.
+
+<!-- more -->
+
+Everything here was observed with Spack 1.2.2 on Rocky Linux 10, whose system compiler is GCC 14.4.1, with `gcc@15.3.0` as the project compiler. Where the develop branch of Spack was tried, it was commit `7188f9d6e0` of 2026-11-18. The steps that found the causes are now the how-to guide [Look into a concretization that does not finish](../../how-to/look-into-a-concretization.md).
 
 ## Why the compiler became a package
 
@@ -119,7 +127,7 @@ packages:
       when: "%cxx=gcc"
 ```
 
-and the same for `c` and `fortran`. It reads: a package that takes C++ from a gcc takes it from gcc@15. [How the compiler is required](compiler-bootstrap.md#how-the-compiler-is-required) explains each part of its form.
+and the same for `c` and `fortran`. It reads: a package that takes C++ from a gcc takes it from gcc@15. [How the compiler is required](../../explanation/compiler-bootstrap.md#how-the-compiler-is-required) explains each part of its form.
 
 With a compiler environment that holds `gcc@15.3.0` built by gcc 14.4.1, these concretize in seconds, with every new package compiled by gcc 15.3.0: `zlib`, `capnproto`, `libgit2`, `json-c`, `rust`, `python`, `openblas` and `hdf5+fortran~mpi`. The compiler environment concretizes again to the same compiler with the rule in place. A complete `seanerstack toolchain bootstrap` then built `rust` and `capnproto` in a padded state directory in 28 minutes.
 
@@ -173,9 +181,9 @@ gcc -> binutils -> diffutils -> gcc  local /i7yr4sl  cached /7jn7qej
 
 The same holds for a system compiler of another version. A machine that installs the compiler from a lockfile of its platform does not concretize it at all, and does not depend on its system compiler. In a test with Spack 1.2.2, a state whose system GCC lacked Fortran concretized the compiler to `/cmawlu4` by itself, and installed the compiler of the cache, `/awyc5sy`, from the lockfile, with a probe that passed.
 
-Seanerstack therefore installs the compiler from a lockfile of the compiler environment, which it keeps in the build cache: see [Why the compiler is installed from a lockfile](compiler-bootstrap.md#why-the-compiler-is-installed-from-a-lockfile). The test used installations without content, so the last step of a real installation from the cache, in which the recipe of gcc looks at the installed compiler, was not exercised.
+Seanerstack therefore installs the compiler from a lockfile of the compiler environment, which it keeps in the build cache: see [Why the compiler is installed from a lockfile](../../explanation/compiler-bootstrap.md#why-the-compiler-is-installed-from-a-lockfile). The test used installations without content, so the last step of a real installation from the cache, in which the recipe of gcc looks at the installed compiler, was not exercised.
 
-The compiler is now built in two stages, and the first stage, not the system compiler, is the external that builds it. Its hash then depends on the path of the first stage, which is in the state directory, and no longer on the version or the languages of the system compiler: see [Why the compiler is built in two stages](compiler-bootstrap.md#why-the-compiler-is-built-in-two-stages).
+The compiler is now built in two stages, and the first stage, not the system compiler, is the external that builds it. Its hash then depends on the path of the first stage, which is in the state directory, and no longer on the version or the languages of the system compiler: see [Why the compiler is built in two stages](../../explanation/compiler-bootstrap.md#why-the-compiler-is-built-in-two-stages).
 
 ## Known problems of Spack that were not met here
 
@@ -188,7 +196,7 @@ Both were fixed on the develop branch on 2026-11-11, by [#53338](https://github.
 
 Rocky Linux 10 is not affected, because its system compiler is older than gcc 15. Arch Linux, Fedora 44 and 45 and Debian forky have a system gcc 16.
 
-On Fedora 44 and 45 the reuse of a compiler that the system gcc 16 built did not finish concretizing, with Spack 1.2.2 and with the develop commit `7188f9d6e0`: `zlib` and `rust` ran out of 300 seconds. The likely cause is a rule in Spack's `gcc` recipe, `runtime_constraints`: whatever a `gcc@X.Y` compiles may depend only on what `gcc@:X.Y` built, and the compiler, a dependency of everything it compiles, records gcc 16. The rule was not switched off to prove it. Seanerstack now builds the compiler in two stages, so that it records only a first gcc 15: see [Why the compiler is built in two stages](compiler-bootstrap.md#why-the-compiler-is-built-in-two-stages). On 2026-11-18 the two stages were not yet run on Fedora.
+On Fedora 44 and 45 the reuse of a compiler that the system gcc 16 built did not finish concretizing, with Spack 1.2.2 and with the develop commit `7188f9d6e0`: `zlib` and `rust` ran out of 300 seconds. The likely cause is a rule in Spack's `gcc` recipe, `runtime_constraints`: whatever a `gcc@X.Y` compiles may depend only on what `gcc@:X.Y` built, and the compiler, a dependency of everything it compiles, records gcc 16. The rule was not switched off to prove it. Seanerstack now builds the compiler in two stages, so that it records only a first gcc 15: see [Why the compiler is built in two stages](../../explanation/compiler-bootstrap.md#why-the-compiler-is-built-in-two-stages). On 2026-11-18 the two stages were not yet run on Fedora.
 
 ## What changed in Seanerstack
 
@@ -199,20 +207,10 @@ On Fedora 44 and 45 the reuse of a compiler that the system gcc 16 built did not
 - `toolchain bootstrap` and `buildcache prepare` install the compiler from the lockfile of the platform, which `buildcache prepare` publishes in the build cache, where there is one.
 - The compiler is built in two stages, the first in a Spack instance of its own, and `toolchain bootstrap` takes the compiler of a lockfile from the build caches only.
 
-## How to look into a concretization that does not finish
-
-These steps found the causes above, and apply to the next one.
-
-1. **Run the solve without a limit, and look at the process.** A `spack spec` that uses a whole core is searching; one that uses none is waiting, for a lock or the network. Minutes of searching for a small package mean that the solver is proving that there is no solution.
-2. **Ask for the compiler explicitly.** `spack spec zlib %gcc@15` fails within seconds with reasons where plain `zlib` searches without end.
-3. **Change the configuration in a copy, and call the real Spack.** The `spack` of an activated state is a wrapper that always sets the state's own configuration. Copy the configuration directory, change the copy, and run `"$SEANERSTACK_REAL_SPACK" -C COPY` with `SPACK_USER_CONFIG_PATH=COPY`. Check with `spack config get packages` that the change is in force before reading a result.
-4. **Take the failing spec apart.** Concretize each new package of it alone; the ones that fail by themselves are few.
-5. **Reproduce without building.** `spack install --fake` installs a concretized environment in seconds, the compiler included. A state made that way concretizes like the real one, and gave the same hashes as the real build.
-6. **Test a rule against the real solver before writing it down.** Three rules that read as correct failed here: the requirement on the language, the toolchain, and the condition `%cxx`.
-
-## Open
+## Open on 2026-11-18
 
 - The reuse of the compiler on the platforms with a system gcc 16.
 - Lockfiles of the compiler environment for the platforms other than Rocky Linux 10.
 - A report to Spack about the condition `%cxx`.
+- The two stages on the platforms other than Rocky Linux 10.
 - A complete build of the toolchain and of `seanergys-meta` with the compiler reused alone; so far it was concretized, not built.

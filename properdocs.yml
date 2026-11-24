@@ -1,6 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 site_name: Seanerstack
 site_description: "Curated Spack stack and maintenance tooling for SEANERGYS"
+
+# The repository, linked from the header of every page, and the editor of
+# the page behind its pencil, so that a reader can open an issue or fix
+# a page where they read it.
+repo_url: https://gitlab.seanergys.fz-juelich.de/software/seanerstack
+repo_name: software/seanerstack
+edit_uri: -/edit/main/docs/
 copyright: "SEANERGYS"
 docs_dir: docs
 
@@ -11,6 +18,7 @@ theme:
     logo: custom/seanergys
   favicon: custom/seanergys-colour
   features:
+    - content.action.edit
     - content.code.copy
     - content.tabs.link
     - navigation.indexes
@@ -50,6 +58,9 @@ plugins:
       scripts:
         - docs/gen_reference.py
   - awesome-nav
+  # Posts record the project at a date; see docs/blog/index.md.
+  - blog:
+      blog_dir: blog
   - search
 
 extra:

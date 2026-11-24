@@ -4,7 +4,6 @@ nav:
       - architecture.md
       - isolation.md
       - compiler-bootstrap.md
-      - compiler-as-a-package.md
       - packages-and-environments.md
       - synchronization.md
   - Project:
