@@ -26,6 +26,7 @@ class SeanergysMeta(BundlePackage):
     depends_on("py-pycapnp", type="run")
     depends_on("seanerbus", type="run")
     depends_on("seanerbus-cli", type="run")
+    depends_on("seanerbus-hta", type="run")
     depends_on("seanerbus-msg", type="run")
     depends_on("seanerbus-rs", type="run")
     # The collector defaults to disabling its optional SNMP plugin.
