@@ -356,6 +356,11 @@ def prepare_isolation(state_dir: Path, real_spack: Path) -> SpackLayout:
         + "".join(f"unset {name}\n" for name in UNSET_ON_ACTIVATION)
         + "".join(f"export {name}={shlex.quote(value)}\n" for name, value in spack_env(x).items())
         + f"if [ -r {shlex.quote(str(x.credentials_env))} ]; then . {shlex.quote(str(x.credentials_env))}; fi\n"
+        # The Git that Spack clones with reads the Git credentials of the
+        # state, after the configuration the caller already passes to Git.
+        + 'i="${GIT_CONFIG_COUNT:-0}"\n'
+        + f'export "GIT_CONFIG_KEY_$i=include.path" "GIT_CONFIG_VALUE_$i="{shlex.quote(str(x.git_config))}\n'
+        + 'GIT_CONFIG_COUNT=$((i + 1)); export GIT_CONFIG_COUNT\n'
         # Only for Spack: the shell that runs it keeps its compilers.
         + f'case ":$PATH:" in *:{shlex.quote(str(x.guard))}:*) ;; *) PATH={shlex.quote(str(x.guard))}:"$PATH"; export PATH ;; esac\n'
         + f'exec {shlex.quote(str(real_spack))} -C {shlex.quote(str(x.config))} "$@"\n',

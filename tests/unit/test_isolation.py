@@ -363,6 +363,35 @@ def test_the_spack_wrapper_loads_the_stored_credentials(tmp_path: Path):
     assert "token=s3cret" in result.stdout.splitlines()
 
 
+@pytest.mark.parametrize(
+    ("given", "expected"),
+    [
+        ({}, {}),
+        # A caller's own entries stay, and the state's comes after them.
+        ({"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.askPass", "GIT_CONFIG_VALUE_0": "true"},
+         {"GIT_CONFIG_KEY_0": "core.askPass", "GIT_CONFIG_VALUE_0": "true"}),
+    ],
+)
+def test_the_spack_wrapper_points_git_at_the_git_credentials_of_the_state(tmp_path: Path, given, expected):
+    import subprocess
+    real_spack = tmp_path / "spack"
+    real_spack.write_text("#!/bin/sh\nenv | grep '^GIT_CONFIG_' | sort\n", encoding="utf-8")
+    real_spack.chmod(0o755)
+    x = prepare_isolation(tmp_path / "state", real_spack)
+
+    result = subprocess.run(
+        [str(x.bin / "spack")], check=True, capture_output=True, text=True, env={"PATH": "/usr/bin:/bin", **given},
+    )
+
+    index = len(expected) // 2
+    assert dict(line.split("=", 1) for line in result.stdout.splitlines()) == {
+        **expected,
+        "GIT_CONFIG_COUNT": str(index + 1),
+        f"GIT_CONFIG_KEY_{index}": "include.path",
+        f"GIT_CONFIG_VALUE_{index}": str(x.git_config),
+    }
+
+
 def _caches(*names: str) -> dict[str, Resource]:
     return {
         name: Resource(name=name, kind="spack-buildcache", url=f"oci://registry.example.org/{name}", credentials=name, signed=False)
