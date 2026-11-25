@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+spack:
+  specs:
+    - hpcmonitor4b@main
+
+  # A source checkout is deliberately not committed here. After activating this
+  # environment, bind one with:
+  #   spack develop --path /path/to/hpcmonitor4b-private hpcmonitor4b@<dev_version>
+
+  concretizer:
+    unify: true
