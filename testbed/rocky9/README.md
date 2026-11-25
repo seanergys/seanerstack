@@ -31,8 +31,8 @@ environment variables (`SEANERSTACK_JOBS`, `SEANERSTACK_CPUS`, and others).
 ## Build cache
 
 `install` and `full` take `--push` or `--from-cache` to exercise the project
-build cache, `seanerstack-buildcache` in the seanerstack GitLab container registry.
-The GitLab token from [Credentials](#credentials) is also the registry password.
+build cache, `seanerstack-buildcache` in the seanerstack GitLab container registry,
+with the credentials of [Credentials](#credentials).
 
 ```console
 ./run.sh full --push
@@ -64,22 +64,13 @@ build-cache container registry and need a GitLab token. Export it before
 running; `run.sh` passes it into the container and warns when it is missing.
 
 ```console
-$ export UV_INDEX_SEANERGYS_USERNAME=<your GitLab username>
-$ read -rs UV_INDEX_SEANERGYS_PASSWORD && export UV_INDEX_SEANERGYS_PASSWORD
+$ export SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME=<your GitLab username>
+$ read -rs SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD && export SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD
 ```
 
-The password is a GitLab personal access token with the `api` scope. `read -rs`
-keeps it out of the shell history. A fine-grained token is not enough: the
-index is a group-level endpoint, which those tokens do not reach.
-
-Check it before starting a run that takes hours:
-
-```console
-$ curl -sS -o /dev/null -w '%{http_code}\n' \
-    -u "$UV_INDEX_SEANERGYS_USERNAME:$UV_INDEX_SEANERGYS_PASSWORD" \
-    https://gitlab.seanergys.fz-juelich.de/api/v4/groups/158/-/packages/pypi/simple
-200
-```
+Spack reads the registry credentials from these two variables. The password is
+a GitLab access token with `read_registry`, and `write_registry` for `--push`.
+`read -rs` keeps it out of the shell history.
 
 ## Compiler
 

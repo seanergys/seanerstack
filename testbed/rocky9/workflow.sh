@@ -123,9 +123,9 @@ fi
 
 if [[ "$CACHE" != none ]]; then
     step "build cache: configure $CACHE_NAME"
-    # The mirror stores only variable names; the GitLab token is the registry password.
-    export SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME="${UV_INDEX_SEANERGYS_USERNAME:?the build cache needs UV_INDEX_SEANERGYS_USERNAME}"
-    export SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD="${UV_INDEX_SEANERGYS_PASSWORD:?the build cache needs UV_INDEX_SEANERGYS_PASSWORD}"
+    # The mirror stores only the names of the variables Spack reads them from.
+    : "${SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME:?the build cache needs SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME}"
+    : "${SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD:?the build cache needs SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD}"
     seanerstack buildcache configure
     spack mirror list
 fi

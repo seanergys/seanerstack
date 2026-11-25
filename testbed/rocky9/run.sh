@@ -47,10 +47,12 @@ Environment:
   SEANERSTACK_BUILTIN_COMMIT
                    pin Spack's builtin package repository to this commit. A
                    --push run prints the value its --from-cache runs need.
-  UV_INDEX_SEANERGYS_USERNAME, UV_INDEX_SEANERGYS_PASSWORD
+  SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME
+  SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD
                    credentials for the build-cache container registry, needed
-                   only with --push or --from-cache. Your GitLab username, and
-                   a personal access token with the `api` scope as the password.
+                   only with --push or --from-cache: your GitLab username, and
+                   an access token with `read_registry`, and `write_registry`
+                   for --push, as the password. Spack reads them from these.
 USAGE
     exit "${1:-0}"
 }
@@ -89,20 +91,16 @@ fi
 # The build cache authenticates to the container registry with these credentials.
 # workflow.sh stops at the cache step without them, which may be hours into a run,
 # so warn before starting.
-if [[ "$CACHE" != none && ( -z "${UV_INDEX_SEANERGYS_USERNAME:-}" || -z "${UV_INDEX_SEANERGYS_PASSWORD:-}" ) ]]; then
+if [[ "$CACHE" != none && ( -z "${SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME:-}" || -z "${SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD:-}" ) ]]; then
     cat >&2 <<'WARNING'
-==> warning: UV_INDEX_SEANERGYS_USERNAME / UV_INDEX_SEANERGYS_PASSWORD are unset
+==> warning: the credentials of the build-cache registry are unset
 
-    --push and --from-cache need credentials for the build-cache registry:
+    --push and --from-cache need them:
 
-      export UV_INDEX_SEANERGYS_USERNAME=<your GitLab username>
-      read -rs UV_INDEX_SEANERGYS_PASSWORD && export UV_INDEX_SEANERGYS_PASSWORD
+      export SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME=<your GitLab username>
+      read -rs SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD && export SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD
 
-    The token needs the `api` scope. Verify it before a long run with:
-
-      curl -sS -o /dev/null -w '%{http_code}\n' \
-        -u "$UV_INDEX_SEANERGYS_USERNAME:$UV_INDEX_SEANERGYS_PASSWORD" \
-        https://gitlab.seanergys.fz-juelich.de/api/v4/groups/158/-/packages/pypi/simple
+    The token needs `read_registry`, and `write_registry` for --push.
 
 WARNING
 fi
@@ -129,7 +127,7 @@ args=(
 [[ -n "${SEANERSTACK_SOLVE_TIMEOUT:-}" ]] && args+=(-e "SEANERSTACK_SOLVE_TIMEOUT=$SEANERSTACK_SOLVE_TIMEOUT")
 [[ -n "${SEANERSTACK_BUILTIN_COMMIT:-}" ]] && args+=(-e "SEANERSTACK_BUILTIN_COMMIT=$SEANERSTACK_BUILTIN_COMMIT")
 # The build-cache step in workflow.sh reads the registry credentials from these.
-for name in UV_INDEX_SEANERGYS_USERNAME UV_INDEX_SEANERGYS_PASSWORD; do
+for name in SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_USERNAME SEANERSTACK_RESOURCE_SEANERSTACK_BUILDCACHE_PASSWORD; do
     [[ -n "${!name:-}" ]] && args+=(-e "$name=${!name}")
 done
 [[ -n "${SEANERSTACK_CPUS:-}" ]] && args+=(--cpus "$SEANERSTACK_CPUS")
