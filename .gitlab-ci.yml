@@ -73,7 +73,8 @@ e2e:install:
     - tests/e2e/run.sh tests/e2e/test_install.py
 
 # Git access with the credentials of a secrets file: valid, invalid, and
-# behind a wrong vault password.
+# behind a wrong vault password, and the clone of a private recipe by the
+# state's spack, with nothing but what init stored.
 e2e:credentials:
   extends: .e2e
   script:
