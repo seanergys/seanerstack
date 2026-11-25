@@ -58,7 +58,7 @@ This installs the project compiler, GCC 15, and makes it the compiler of every l
 --8<-- "tests/tutorials/install-the-stack.sh:stack"
 ```
 
-`seanergys-meta` depends on every package of the SEANERGYS stack that builds with the project toolchain. On Rocky Linux 10, where the CI pipeline builds it, Spack takes the packages from the build cache. On another system Spack builds them, and clones the SEANERGYS repositories with your own Git access.
+`seanergys-meta` depends on every package of the SEANERGYS stack that builds with the project toolchain. On Rocky Linux 10, where the CI pipeline builds it, Spack takes the packages from the build cache. On another system Spack builds them, and clones the SEANERGYS repositories with the credentials of your secrets file, which `init` stored.
 
 List what is installed:
 
