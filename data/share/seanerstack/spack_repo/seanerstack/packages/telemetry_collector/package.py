@@ -38,7 +38,8 @@ class TelemetryCollector(CMakePackage):
     depends_on("uuid")
     depends_on("fmt@12:")
     depends_on("spdlog@1.16:")
-    depends_on("yaml-cpp@0.8")
+    depends_on("yaml-cpp@0.6.3")
+    patch("yaml-cpp-0.6-target.patch")
     depends_on("net-snmp@5.9.4:", when="+snmp")
 
     @property

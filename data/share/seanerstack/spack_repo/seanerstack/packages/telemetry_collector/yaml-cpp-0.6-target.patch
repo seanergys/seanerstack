@@ -1,0 +1,10 @@
+--- a/cmake/DependencyResolver.cmake
++++ b/cmake/DependencyResolver.cmake
+@@ -99,4 +99,7 @@
+   if(${package_name}_FOUND)
++    if(dep STREQUAL "yaml-cpp" AND TARGET yaml-cpp AND NOT TARGET yaml-cpp::yaml-cpp)
++      add_library(yaml-cpp::yaml-cpp ALIAS yaml-cpp)
++    endif()
+     message(STATUS "    using existing installation (${package_name})")
+     set(${output_variable} TRUE PARENT_SCOPE)
+     return()
