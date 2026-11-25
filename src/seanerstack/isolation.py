@@ -499,6 +499,24 @@ def spack_env(x: SpackLayout) -> dict[str, str]:
     }
 
 
+def git_config_environment(x: SpackLayout, env: Mapping[str, str]) -> dict[str, str]:
+    """The variables that make the Git of a Spack run read the Git credentials of the state.
+
+    As the spack wrapper does: the state's Git configuration comes after the
+    entries that `env` already passes to Git.
+
+    @param x: the layout of the state
+    @param env: the environment the Spack run starts from
+    @return: the variables to set in it
+    """
+    index = int(env.get("GIT_CONFIG_COUNT") or 0)
+    return {
+        f"GIT_CONFIG_KEY_{index}": "include.path",
+        f"GIT_CONFIG_VALUE_{index}": str(x.git_config),
+        "GIT_CONFIG_COUNT": str(index + 1),
+    }
+
+
 def spack_command(x: SpackLayout, real_spack: Path, *args: str) -> list[str]:
     return [str(real_spack), "-C", str(x.config), *args]
 
