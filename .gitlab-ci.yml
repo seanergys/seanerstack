@@ -251,11 +251,6 @@ build:rocky10:
       fi
     - eval "$(seanerstack activate)"
     - seanerstack toolchain bootstrap
-    # Spack clones the private recipes with Git itself.
-    - >-
-      git config --global
-      url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.seanergys.fz-juelich.de/".insteadOf
-      "https://gitlab.seanergys.fz-juelich.de/"
     # Why this pipeline builds instead of reusing: the toolchain and
     # seanergys-meta against the cached specs of their name and version. It
     # runs after bootstrap, which sets the target and the compiler that the
@@ -315,12 +310,6 @@ tutorial:install-the-stack:
     PLATFORM: rocky10
   before_script: *rocky10-setup
   script:
-    # Spack clones the private recipes with Git itself, a reader with their
-    # own Git access and this job with its token.
-    - >-
-      git config --global
-      url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.seanergys.fz-juelich.de/".insteadOf
-      "https://gitlab.seanergys.fz-juelich.de/"
     - *random-state
     # The script reads secrets.toml where it runs, and init asks for the
     # vault password, which it reads from standard input without a terminal.
@@ -351,8 +340,9 @@ how-to:work-on-a-package:
     - seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password init
     - eval "$(seanerstack activate)"
     - seanerstack toolchain bootstrap
-    # The guide clones a SEANERGYS repository, which a reader does with their
-    # own Git access and this job with its token.
+    # The guide clones a SEANERGYS repository with the reader's own Git, not
+    # Spack's, which a reader does with their own Git access and this job with
+    # its token. Spack's clones take the credentials that init stored.
     - >-
       git config --global
       url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.seanergys.fz-juelich.de/".insteadOf
@@ -541,10 +531,6 @@ toolchain:
     - seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password init --padded-length "$PADDED_LENGTH"
     - eval "$(seanerstack activate)"
     - seanerstack toolchain bootstrap
-    - >-
-      git config --global
-      url."https://gitlab-ci-token:${CI_JOB_TOKEN}@gitlab.seanergys.fz-juelich.de/".insteadOf
-      "https://gitlab.seanergys.fz-juelich.de/"
     - spack env create --without-view -d /opt/seanergys-meta
     - spack -e /opt/seanergys-meta add seanergys-meta
     - spack -e /opt/seanergys-meta concretize
