@@ -161,6 +161,37 @@ def test_init_needs_no_option_to_activate_the_state_that_the_variable_names(monk
     assert 'eval "$(seanerstack activate)"' in capsys.readouterr().out
 
 
+def test_init_sets_up_the_state_with_the_config_file_that_the_variable_names(monkeypatch, tmp_path: Path):
+    import seanerstack.isolation
+    x, _ = _init_world(monkeypatch, tmp_path)
+    monkeypatch.setenv("SEANERSTACK_CONFIG_FILE", str(tmp_path / "named.toml"))
+
+    assert cli._run_init(_init_args(tmp_path, config_file=None)) == 0
+
+    assert seanerstack.isolation.read_record(x.state)["config_file"] == tmp_path / "named.toml"
+
+
+def test_the_config_file_option_takes_precedence_over_the_variable(monkeypatch, tmp_path: Path):
+    import seanerstack.isolation
+    x, _ = _init_world(monkeypatch, tmp_path)
+    monkeypatch.setenv("SEANERSTACK_CONFIG_FILE", str(tmp_path / "named.toml"))
+
+    assert cli._run_init(_init_args(tmp_path)) == 0
+
+    assert seanerstack.isolation.read_record(x.state)["config_file"] == tmp_path / "config.toml"
+
+
+def test_the_variable_takes_precedence_over_the_config_file_that_init_recorded(monkeypatch, tmp_path: Path):
+    x, _ = _init_world(monkeypatch, tmp_path)
+    monkeypatch.delenv("SEANERSTACK_STATE_DIR", raising=False)
+    cli._run_init(_init_args(tmp_path))
+    monkeypatch.setenv("SEANERSTACK_CONFIG_FILE", str(tmp_path / "named.toml"))
+
+    config, _ = cli._runtime(_init_args(tmp_path, config_file=None))
+
+    assert config.path == tmp_path / "named.toml"
+
+
 def test_init_stores_the_credentials_of_the_secrets_file(monkeypatch, tmp_path: Path):
     from seanerstack.secrets import SecretStore
     x, _ = _init_world(monkeypatch, tmp_path)

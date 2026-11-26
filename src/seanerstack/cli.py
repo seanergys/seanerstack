@@ -41,7 +41,7 @@ def _add_secret_options(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--config-file",
         type=Path,
-        help="Seanerstack config.toml (default: installed share/seanerstack/config.toml)",
+        help="Seanerstack config.toml (or SEANERSTACK_CONFIG_FILE; default: the one init recorded, else the installed share/seanerstack/config.toml)",
     )
     parser.add_argument(
         "--secrets-file",
@@ -274,11 +274,26 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _config_file(args: argparse.Namespace, record: dict) -> Path | None:
+    """The config.toml of --config-file, else of SEANERSTACK_CONFIG_FILE, else the one init recorded.
+
+    @param args: the parsed command line
+    @param record: what init recorded in the state
+    @return: the path of the config.toml, or None for the shipped one
+    """
+    if args.config_file is not None:
+        return args.config_file
+    named = os.environ.get("SEANERSTACK_CONFIG_FILE")
+    if named:
+        return Path(named).expanduser()
+    return record["config_file"]
+
+
 def _runtime(args: argparse.Namespace) -> tuple[Config, SecretStore]:
     """The configuration and credentials: those given, or else what init recorded."""
     state_dir = resolve_state_dir(args.state_dir)
     record = read_record(state_dir)
-    config = load_config(args.config_file or record["config_file"])
+    config = load_config(_config_file(args, record))
     if args.secrets_file is not None:
         secrets = SecretStore(
             args.secrets_file,
@@ -536,7 +551,7 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
 def _run_init(args: argparse.Namespace) -> int:
     state_dir = resolve_state_dir(args.state_dir)
     record = read_record(state_dir)
-    config_file = args.config_file or record["config_file"]
+    config_file = _config_file(args, record)
     config = load_config(config_file)
     x, real_spack, command, env = _spack_runtime(args)
     find = args.find if args.find is not None else recorded_find(state_dir)
