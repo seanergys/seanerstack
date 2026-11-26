@@ -271,12 +271,14 @@ def test_the_public_toolchain_jobs_are_the_toolchain_jobs_with_the_public_caches
     assert job["needs"] == ["toolchain:public:access"]
 
 
-def test_the_public_jobs_run_only_where_the_toolchain_jobs_publish_on_the_default_branch():
+def test_the_public_jobs_run_only_where_the_toolchain_jobs_publish_on_the_default_branch_and_the_trial_branch():
     ci = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))
     public, access = ci["toolchain:public"]["rules"], ci["toolchain:public:access"]["rules"]
+    # feat/public-github-ci is protected, so its pipelines have the keys.
     assert [rule["if"] for rule in public] == [rule["if"] for rule in access] == [
         '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "schedule"',
-        '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE =~ /^(push|web)$/',
+        '($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH == "feat/public-github-ci")'
+        ' && $PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE =~ /^(push|web)$/',
     ]
     # As in the toolchain jobs, a platform that fails a push pipeline does not fail it; keys that fail the check do.
     assert [rule.get("allow_failure", False) for rule in public] == [False, True]

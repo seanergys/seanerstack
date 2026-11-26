@@ -591,7 +591,9 @@ toolchain:public:access:
   image: docker.io/rockylinux/rockylinux:10
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "schedule"'
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE =~ /^(push|web)$/'
+    # Also from the protected branch feat/public-github-ci, whose pipelines
+    # have the keys, to try the jobs before the default branch runs them.
+    - if: '($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH == "feat/public-github-ci") && $PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE =~ /^(push|web)$/'
   variables:
     PLATFORM: rocky10
   before_script:
@@ -614,7 +616,9 @@ toolchain:public:
     - toolchain:public:access
   rules:
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "schedule"'
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE =~ /^(push|web)$/'
+    # Also from the protected branch feat/public-github-ci, whose pipelines
+    # have the keys, to try the jobs before the default branch runs them.
+    - if: '($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_COMMIT_BRANCH == "feat/public-github-ci") && $PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE =~ /^(push|web)$/'
       allow_failure: true
   before_script:
     - *toolchain-setup
