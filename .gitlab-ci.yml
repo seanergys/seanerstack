@@ -177,6 +177,16 @@ e2e:old-python:
     username = "gitlab-ci-token"
     token = { __keyloom__ = "secret", value = "$CI_JOB_TOKEN" }
     EOF
+  # The keys of the public build caches on the Juphoria object storage. They
+  # are protected CI/CD variables, so only pipelines of protected branches
+  # have them.
+  - |
+    [ -z "${JUPHORIA_S3_ACCESS_KEY:-}" ] || cat >> /tmp/secrets.toml <<EOF
+
+    [credentials.juphoria-s3]
+    access_key_id = { __keyloom__ = "secret", value = "$JUPHORIA_S3_ACCESS_KEY" }
+    secret_access_key = { __keyloom__ = "secret", value = "$JUPHORIA_S3_SECRET_KEY" }
+    EOF
   - keyloom encrypt /tmp/secrets.toml --password-file /tmp/vault-password
 
 # Whether this pipeline can clone every private recipe, as build:rocky10 has

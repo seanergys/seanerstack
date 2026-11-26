@@ -233,6 +233,18 @@ def test_no_job_passes_credentials_of_a_resource_in_variables():
         assert not [key for key in variables if key.startswith("SEANERSTACK_RESOURCE_")], name
 
 
+def test_the_secrets_file_holds_the_keys_of_the_public_caches_where_the_pipeline_has_them():
+    ci = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+    steps = ci[".job-token-secrets"]
+    (keys,) = [step for step in steps if "juphoria-s3" in step]
+    # Protected variables, which other pipelines lack: the file then holds only the job token.
+    assert keys.startswith('[ -z "${JUPHORIA_S3_ACCESS_KEY:-}" ] || cat >> /tmp/secrets.toml <<EOF')
+    assert "[credentials.juphoria-s3]" in keys
+    assert 'access_key_id = { __keyloom__ = "secret", value = "$JUPHORIA_S3_ACCESS_KEY" }' in keys
+    assert 'secret_access_key = { __keyloom__ = "secret", value = "$JUPHORIA_S3_SECRET_KEY" }' in keys
+    assert steps.index(keys) < steps.index("keyloom encrypt /tmp/secrets.toml --password-file /tmp/vault-password")
+
+
 def test_the_toolchain_job_passes_the_job_token_in_a_secrets_file():
     job = _toolchain_job()
     before = []
