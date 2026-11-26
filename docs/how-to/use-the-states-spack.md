@@ -34,6 +34,8 @@ eval "$(seanerstack activate)"
 
 `SEANERSTACK_STATE_DIR` names the state directory for every `seanerstack` command; put the line into your shell profile so that later shells name the same state. `--state-dir DIR` before the command does the same for one command.
 
+`SEANERSTACK_CONFIG_FILE` names the `config.toml` in the same way, for every command that is not given `--config-file`, ahead of the one that `init` recorded.
+
 !!! note "How long the path may be"
     The hash of a package does not depend on where it is installed, so a state in another directory takes the same binaries from the project build cache. Spack rewrites the install prefix inside a binary only into a path that is no longer than the one it was built in. The project cache is built below a prefix padded to 256 characters, so keep the path of the state directory well below that.
 
