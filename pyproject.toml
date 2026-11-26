@@ -17,6 +17,14 @@ dependencies = [
   "keyloom>=0.4.1",
 ]
 
+# Spack reads and writes S3 build caches with boto3, which it imports from
+# the Python it runs on: `pip install "seanerstack[s3]"` puts it next to
+# Seanerstack, for a Spack that runs on that Python.
+[project.optional-dependencies]
+s3 = [
+  "boto3>=1.26",
+]
+
 [project.scripts]
 seanerstack = "seanerstack.cli:main"
 
