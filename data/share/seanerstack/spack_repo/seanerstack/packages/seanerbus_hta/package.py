@@ -9,8 +9,8 @@ from spack.package import *
 class SeanerbusHta(CMakePackage):
     """The SeanerBUS HTA time series database, a SeanerBUS client that stores metrics with hta"""
 
-    homepage = "https://gitlab.seanergys.fz-juelich.de/software/seanerbus-hta"
-    git = "https://gitlab.seanergys.fz-juelich.de/software/seanerbus-hta.git"
+    homepage = "https://gitlab.seanergys.fz-juelich.de/software/hta-database-daemon"
+    git = "https://gitlab.seanergys.fz-juelich.de/software/hta-database-daemon.git"
     seanerstack_resource = "seanergys-gitlab"
 
     license("MIT")
@@ -38,4 +38,4 @@ class SeanerbusHta(CMakePackage):
 
     def test_binary_exists(self):
         """the database binary is installed"""
-        assert os.path.exists(self.prefix.bin.join("seanerbus-hta-db"))
+        assert os.path.exists(self.prefix.bin.join("hta-database-daemon"))
