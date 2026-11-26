@@ -722,3 +722,55 @@ def test_the_spack_that_seanerstack_runs_reads_the_git_credentials_of_the_state(
     assert (env["GIT_CONFIG_KEY_0"], env["GIT_CONFIG_VALUE_0"]) == ("core.askPass", "true")
     assert (env["GIT_CONFIG_KEY_1"], env["GIT_CONFIG_VALUE_1"]) == ("include.path", str(x.git_config))
     assert env["GIT_CONFIG_COUNT"] == "2"
+
+
+def _push_check_world(monkeypatch, tmp_path: Path):
+    """A state whose toolchain has a build cache and a bootstrap cache, both in S3."""
+    import types
+    import seanerstack.isolation
+    from seanerstack.config import Resource, Toolchain
+    x = seanerstack.isolation.prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    caches = {
+        name: Resource(name=name, kind="spack-buildcache", url=f"s3://{name}", credentials="keys", signed=False)
+        for name in ("stack", "boot")
+    }
+    toolchain = Toolchain(compiler="gcc@15", packages=(), cache="stack", bootstrap_cache="boot", target="x86_64_v3", platforms={})
+    config = Config(path=tmp_path / "config.toml", resources=caches, toolchain=toolchain)
+    monkeypatch.setattr(cli, "_runtime", lambda args: (config, None))
+    monkeypatch.setattr(cli, "_spack_runtime", lambda args: (x, tmp_path / "spack", ["spack"], {"PATH": "/bin"}))
+    monkeypatch.setattr(cli, "check_buildcaches", lambda config, secrets, **kwargs: [("stack", True, "")])
+    monkeypatch.setattr(cli, "buildcache_environment", lambda config, secrets, env: {**env, "SEANERSTACK_RESOURCE_BOOT_ACCESS_KEY_ID": "id"})
+    monkeypatch.setattr(
+        cli, "_bootstrap_instance",
+        lambda x, real_spack, env, config, target: types.SimpleNamespace(command=["bspack"], env={"BOOTSTRAP": "1"}),
+    )
+    tried = []
+
+    def check_push(resource, *, command, env):
+        tried.append((resource.name, command, env))
+        return resource.name == "stack", f"{resource.name} answered"
+
+    monkeypatch.setattr(cli, "check_push", check_push)
+    return tried
+
+
+def test_buildcache_check_with_push_pushes_to_every_cache_and_to_the_bootstrap_cache(monkeypatch, tmp_path: Path, capsys):
+    tried = _push_check_world(monkeypatch, tmp_path)
+
+    assert cli._run_buildcache(build_parser().parse_args(["buildcache", "check", "--push"])) == 1
+
+    # The bootstrap cache is a mirror of the bootstrap instance, with the credentials of the actual one.
+    assert tried == [
+        ("stack", ["spack"], {"PATH": "/bin", "SEANERSTACK_RESOURCE_BOOT_ACCESS_KEY_ID": "id"}),
+        ("boot", ["bspack"], {"BOOTSTRAP": "1", "SEANERSTACK_RESOURCE_BOOT_ACCESS_KEY_ID": "id"}),
+    ]
+    out = capsys.readouterr().out
+    assert "[OK] push:stack: stack answered" in out
+    assert "[ERROR] push:boot: boot answered" in out
+
+
+def test_buildcache_check_pushes_nothing_without_the_option(monkeypatch, tmp_path: Path):
+    tried = _push_check_world(monkeypatch, tmp_path)
+
+    assert cli._run_buildcache(build_parser().parse_args(["buildcache", "check"])) == 0
+    assert tried == []

@@ -15,8 +15,8 @@ from .bootstrap import (
     require_target, use_external_package,
 )
 from .buildcache import (
-    bootstrap_buildcache, buildcache_environment, buildcaches, check_buildcaches, configure_buildcache, configure_buildcaches,
-    push_installed, require_cache_access, update_index,
+    bootstrap_buildcache, buildcache_environment, buildcaches, check_buildcaches, check_push, configure_buildcache,
+    configure_buildcaches, push_installed, require_cache_access, update_index,
 )
 from .config import Config, load_config
 from .discovery import (
@@ -200,7 +200,11 @@ def build_parser() -> argparse.ArgumentParser:
     explain_parser.set_defaults(match="os")
     explain_parser.add_argument("spec", nargs="+", help="the spec, such as gcc@15.3.0 or rust")
     cache_sub.add_parser("configure", help="Install configured build-cache mirrors into the isolated Spack configuration.")
-    cache_sub.add_parser("check", help="Check access to configured build caches using session or vault credentials.")
+    check_parser = cache_sub.add_parser("check", help="Check access to configured build caches using session or vault credentials.")
+    check_parser.add_argument(
+        "--push", action="store_true",
+        help="also push a small file to each build cache, the bootstrap cache included, and remove it again",
+    )
     update_index_parser = cache_sub.add_parser(
         "update-index",
         help="Rebuild the index of a build cache from the binaries it holds.",
@@ -369,6 +373,28 @@ def _bootstrap_instance(x, real_spack: Path, env, config: Config | None = None, 
         command=command, env=bootstrap_env, environment=b.environments / "compiler", store=b.store, find=find,
         config=b.config, target=target,
     )
+
+
+def _check_pushes(config: Config, secrets: SecretStore, x, real_spack: Path, command: list[str], env) -> list[tuple[str, bool, str]]:
+    """Whether each build cache of `config`, the bootstrap cache included, takes a push.
+
+    @param config: the Seanerstack configuration
+    @param secrets: the credentials of its caches
+    @param x: the layout of the state
+    @param real_spack: the pinned Spack executable
+    @param command: the isolated Spack command of the actual instance
+    @param env: its environment
+    @return: one (name, pushed, message) for each cache
+    """
+    env = buildcache_environment(config, secrets, env)
+    results = [(cache.name, *check_push(cache, command=command, env=env)) for cache in buildcaches(config)]
+    bootstrap = bootstrap_buildcache(config)
+    if bootstrap is not None:
+        instance = _bootstrap_instance(x, real_spack, env, config, config.toolchain.target if config.toolchain else None)
+        # The bootstrap instance takes the credentials of its cache from the actual one.
+        credentials = {name: value for name, value in env.items() if name.startswith("SEANERSTACK_RESOURCE_")}
+        results.append((bootstrap.name, *check_push(bootstrap, command=instance.command, env={**instance.env, **credentials})))
+    return results
 
 
 def _probe_warning(result) -> str:
@@ -694,11 +720,15 @@ def _run_buildcache(args: argparse.Namespace) -> int:
         configure_buildcaches(config, command=command, env=env)
         return 0
     if args.buildcache_command == "check":
-        _, _, command, env = _spack_runtime(args)
+        x, real_spack, command, env = _spack_runtime(args)
         failed = False
         for name, ok, message in check_buildcaches(config, secrets, command=command, base_env=env):
             print(f"[{'OK' if ok else 'ERROR'}] buildcache:{name}: {message or 'accessible'}")
             failed |= not ok
+        if getattr(args, "push", False):
+            for name, ok, message in _check_pushes(config, secrets, x, real_spack, command, env):
+                print(f"[{'OK' if ok else 'ERROR'}] push:{name}: {message}")
+                failed |= not ok
         return 1 if failed else 0
     if args.buildcache_command == "update-index":
         name = args.cache or (config.toolchain.cache if config.toolchain else None)
