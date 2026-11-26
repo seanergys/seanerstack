@@ -37,14 +37,6 @@ class JobsDatabaseDaemon(CMakePackage):
     def cmake_args(self):
         return [self.define("SEANERBUS_CPP_DIR", join_path(self.stage.source_path, "lib", "seanerbus-cpp"))]
 
-    # Upstream has no install rules.
-    @run_after("install")
-    def install_daemon(self):
-        mkdirp(self.prefix.bin, join_path(self.prefix.share, "jobs-database-daemon"))
-        install(join_path(self.build_directory, "flux_lifecycle_daemon_v2"), self.prefix.bin)
-        install(join_path(self.stage.source_path, "sql", "001_schema.sql"),
-                join_path(self.prefix.share, "jobs-database-daemon"))
-
     def test_binary_exists(self):
         """the daemon is installed"""
-        which(self.prefix.bin.flux_lifecycle_daemon_v2, required=True)
+        which(self.prefix.bin.join("jobs-database-daemon"), required=True)
