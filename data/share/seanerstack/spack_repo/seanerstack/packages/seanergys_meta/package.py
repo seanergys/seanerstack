@@ -18,6 +18,7 @@ class SeanergysMeta(BundlePackage):
     depends_on("flux-core", type="run")
     depends_on("flux-dataplane-connector", type="run")
     depends_on("flux-sched", type="run")
+    depends_on("hpcmonitor4b", type="run")
     depends_on("priorisea", type="run")
     depends_on("properdocs", type="run")
     depends_on("pscom", type="run")
@@ -27,6 +28,5 @@ class SeanergysMeta(BundlePackage):
     depends_on("seanerbus-cli", type="run")
     depends_on("seanerbus-msg", type="run")
     depends_on("seanerbus-rs", type="run")
-    depends_on("hpcmonitor4b", type="run")
     # The collector defaults to disabling its optional SNMP plugin.
     depends_on("telemetry-collector", type="run")
