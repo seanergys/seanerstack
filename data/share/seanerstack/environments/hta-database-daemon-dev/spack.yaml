@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+spack:
+  specs:
+    - hta-database-daemon@main
+
+  # A source checkout is deliberately not committed here. After activating this
+  # environment, bind one with:
+  #   spack develop --path /path/to/hta-database-daemon hta-database-daemon@main
+  concretizer:
+    unify: true
