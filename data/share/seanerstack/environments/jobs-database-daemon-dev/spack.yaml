@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+spack:
+  specs:
+    - jobs-database-daemon@main
+
+  # A source checkout is deliberately not committed here. After activating this
+  # environment, bind one with:
+  #   spack develop --path /path/to/jobs-database-daemon jobs-database-daemon@main
+  concretizer:
+    unify: true
