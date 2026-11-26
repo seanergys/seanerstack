@@ -6,7 +6,7 @@ from spack_repo.builtin.build_systems.cmake import CMakePackage
 from spack.package import *
 
 
-class SeanerbusHta(CMakePackage):
+class HtaDatabaseDaemon(CMakePackage):
     """The SeanerBUS HTA time series database, a SeanerBUS client that stores metrics with hta"""
 
     homepage = "https://gitlab.seanergys.fz-juelich.de/software/hta-database-daemon"

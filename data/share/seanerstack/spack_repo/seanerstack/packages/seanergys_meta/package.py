@@ -18,6 +18,7 @@ class SeanergysMeta(BundlePackage):
     depends_on("flux-core", type="run")
     depends_on("flux-dataplane-connector", type="run")
     depends_on("flux-sched", type="run")
+    depends_on("hta-database-daemon", type="run")
     depends_on("meric", type="run")
     depends_on("priorisea", type="run")
     depends_on("properdocs", type="run")
@@ -26,7 +27,6 @@ class SeanergysMeta(BundlePackage):
     depends_on("py-pycapnp", type="run")
     depends_on("seanerbus", type="run")
     depends_on("seanerbus-cli", type="run")
-    depends_on("seanerbus-hta", type="run")
     depends_on("seanerbus-msg", type="run")
     depends_on("seanerbus-rs", type="run")
     # The collector defaults to disabling its optional SNMP plugin.
