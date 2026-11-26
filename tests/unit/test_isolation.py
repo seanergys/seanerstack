@@ -363,6 +363,35 @@ def test_the_spack_wrapper_loads_the_stored_credentials(tmp_path: Path):
     assert "token=s3cret" in result.stdout.splitlines()
 
 
+@pytest.mark.parametrize(
+    ("given", "expected"),
+    [
+        ({}, {}),
+        # A caller's own entries stay, and the state's comes after them.
+        ({"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "core.askPass", "GIT_CONFIG_VALUE_0": "true"},
+         {"GIT_CONFIG_KEY_0": "core.askPass", "GIT_CONFIG_VALUE_0": "true"}),
+    ],
+)
+def test_the_spack_wrapper_points_git_at_the_git_credentials_of_the_state(tmp_path: Path, given, expected):
+    import subprocess
+    real_spack = tmp_path / "spack"
+    real_spack.write_text("#!/bin/sh\nenv | grep '^GIT_CONFIG_' | sort\n", encoding="utf-8")
+    real_spack.chmod(0o755)
+    x = prepare_isolation(tmp_path / "state", real_spack)
+
+    result = subprocess.run(
+        [str(x.bin / "spack")], check=True, capture_output=True, text=True, env={"PATH": "/usr/bin:/bin", **given},
+    )
+
+    index = len(expected) // 2
+    assert dict(line.split("=", 1) for line in result.stdout.splitlines()) == {
+        **expected,
+        "GIT_CONFIG_COUNT": str(index + 1),
+        f"GIT_CONFIG_KEY_{index}": "include.path",
+        f"GIT_CONFIG_VALUE_{index}": str(x.git_config),
+    }
+
+
 def _caches(*names: str) -> dict[str, Resource]:
     return {
         name: Resource(name=name, kind="spack-buildcache", url=f"oci://registry.example.org/{name}", credentials=name, signed=False)
@@ -384,6 +413,65 @@ def test_stored_credentials_are_readable_only_by_their_owner(tmp_path: Path):
     exports = x.credentials_env.read_text(encoding="utf-8")
     assert "export SEANERSTACK_RESOURCE_PRESENT_PASSWORD=glpat\n" in exports
     assert "ABSENT" not in exports
+
+
+def _git_resources() -> dict[str, Resource]:
+    return {
+        "forge": Resource(name="forge", kind="git", url="https://git.example.org/group/", credentials="forge"),
+        "other": Resource(name="other", kind="git", url="https://other.example.org/", credentials="other"),
+        "public": Resource(name="public", kind="git", url="https://public.example.org/"),
+        **_caches("cache"),
+    }
+
+
+def test_init_keeps_the_git_credentials_for_the_git_of_spack(tmp_path: Path):
+    import seanerstack.isolation
+    x = prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    secrets = SecretStore(tmp_path / "vault", _data={"credentials": {
+        "forge": {"username": "reader", "token": "glpat"}, "cache": {"token": "registry"},
+    }})
+
+    seanerstack.isolation.store_credentials(x, Config(path=tmp_path / "config.toml", resources=_git_resources()), secrets)
+
+    # Only the resource with stored credentials, in the format of a credential helper.
+    assert sorted(path.name for path in x.git_credentials.iterdir()) == ["forge"]
+    assert x.git_credentials.stat().st_mode & 0o777 == 0o700
+    stored = x.git_credentials / "forge"
+    assert stored.stat().st_mode & 0o777 == 0o600
+    assert stored.read_text(encoding="utf-8") == "username=reader\npassword=glpat\n"
+    # The configuration names the file, for the URLs of that resource only, and holds no secret.
+    config = x.git_config.read_text(encoding="utf-8")
+    assert config == (
+        '[credential "https://git.example.org/group/"]\n'
+        "\thelper =\n"
+        f'\thelper = "!f() {{ cat >/dev/null; test \\"$1\\" = get && cat {stored}; }}; f"\n'
+    )
+    assert "glpat" not in config
+
+
+def test_init_removes_git_credentials_that_are_no_longer_stored(tmp_path: Path):
+    import seanerstack.isolation
+    x = prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    config = Config(path=tmp_path / "config.toml", resources=_git_resources())
+    seanerstack.isolation.store_credentials(
+        x, config, SecretStore(tmp_path / "vault", _data={"credentials": {"forge": {"token": "glpat"}}}),
+    )
+
+    seanerstack.isolation.store_credentials(
+        x, config, SecretStore(tmp_path / "vault", _data={"credentials": {"other": {"token": "other"}}}),
+    )
+
+    assert sorted(path.name for path in x.git_credentials.iterdir()) == ["other"]
+    assert "git.example.org" not in x.git_config.read_text(encoding="utf-8")
+
+
+def test_a_git_credential_of_more_than_one_line_is_refused(tmp_path: Path):
+    import seanerstack.isolation
+    x = prepare_isolation(tmp_path / "state", tmp_path / "spack")
+    secrets = SecretStore(tmp_path / "vault", _data={"credentials": {"forge": {"token": "glpat\nhost=evil.example.org"}}})
+
+    with pytest.raises(ValueError, match="single line"):
+        seanerstack.isolation.store_credentials(x, Config(path=tmp_path / "config.toml", resources=_git_resources()), secrets)
 
 
 def test_no_stored_credentials_reads_as_no_secrets_file(tmp_path: Path):

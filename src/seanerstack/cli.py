@@ -28,7 +28,8 @@ from .paths import environments_path, repository_path, share_path
 from .prepare import pad_install_tree, prepare_here, prepare_in_container
 from .secrets import SecretStore
 from .isolation import (
-    activation_script, deactivation_script, describe_pinned_spack, guarded_path, layout, prepare_bootstrap_instance,
+    activation_script, deactivation_script, describe_pinned_spack, git_config_environment, guarded_path, layout,
+    prepare_bootstrap_instance,
     prepare_isolation, read_record, recorded_find, resolve_real_spack, resolve_state_dir, spack_command, spack_env, store_credentials,
     write_record,
 )
@@ -327,6 +328,7 @@ def _spack_runtime(args: argparse.Namespace):
     env = dict(__import__("os").environ)
     env.update(spack_env(x))
     env["PATH"] = guarded_path(x, env.get("PATH", ""))
+    env.update(git_config_environment(x, env))
     return x, real_spack, spack_command(x, real_spack), env
 
 def _bootstrap_instance(x, real_spack: Path, env, config: Config | None = None, target: str | None = None) -> BootstrapInstance:

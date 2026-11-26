@@ -10,7 +10,7 @@ The names of the entries are fixed: each resource in `config.toml` names the ent
 
 | Entry | Used for | Token scope |
 | --- | --- | --- |
-| `credentials.seanergys-gitlab` | The SEANERGYS GitLab: reading the repositories of the private recipes. | `read_repository`, `read_api` |
+| `credentials.seanergys-gitlab` | The SEANERGYS GitLab: reading the repositories of the private recipes, for Seanerstack and for the Git that Spack clones them with. | `read_repository`, `read_api` |
 | `credentials.seanergys-registry` | The project build cache in the GitLab container registry. | `read_registry`; `write_registry` to push |
 
 One GitLab access token with these scopes serves both entries.

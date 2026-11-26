@@ -35,11 +35,14 @@ def test_init_stores_the_registry_credentials_for_spack(commands: Commands, secr
     assert username == commands.username
     assert token == commands.token
 
-    # The token is in the two credentials files, readable only by their owner,
-    # and nowhere else in the state.
+    # The token is in the credentials files, readable only by their owner,
+    # and nowhere else in the state. The token of the Git resource may also
+    # be in a file of its own, for the Git that Spack clones with.
     stored = {state / "credentials.json", exports}
-    assert set(files_containing(state, commands.token)) == stored
-    assert all(path.stat().st_mode & 0o777 == 0o600 for path in stored)
+    holding = stored | {state / "spack" / "git-credentials" / "seanergys-gitlab"}
+    found = set(files_containing(state, commands.token))
+    assert stored <= found <= holding, found
+    assert all(path.stat().st_mode & 0o777 == 0o600 for path in found)
 
 
 def _e2e_config(path: Path, url: str) -> Path:

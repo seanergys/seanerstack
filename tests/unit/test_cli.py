@@ -678,3 +678,16 @@ def test_the_spack_that_seanerstack_runs_has_the_compiler_guard_in_front_of_path
     args = argparse.Namespace(state_dir=tmp_path / "state", spack_executable=tmp_path / "spack")
     x, _, _, env = cli._spack_runtime(args)
     assert env["PATH"] == f"{x.guard}:/usr/bin"
+
+
+def test_the_spack_that_seanerstack_runs_reads_the_git_credentials_of_the_state(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli, "resolve_real_spack", lambda explicit, state_dir: tmp_path / "spack")
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.askPass")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "true")
+    import argparse
+    args = argparse.Namespace(state_dir=tmp_path / "state", spack_executable=tmp_path / "spack")
+    x, _, _, env = cli._spack_runtime(args)
+    assert (env["GIT_CONFIG_KEY_0"], env["GIT_CONFIG_VALUE_0"]) == ("core.askPass", "true")
+    assert (env["GIT_CONFIG_KEY_1"], env["GIT_CONFIG_VALUE_1"]) == ("include.path", str(x.git_config))
+    assert env["GIT_CONFIG_COUNT"] == "2"

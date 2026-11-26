@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import stat
@@ -14,7 +15,7 @@ from typing import Mapping
 from .config import Config
 from .paths import repository_path
 from .pins import BUILTIN_REPO_COMMIT, BUILTIN_REPO_GIT, SPACK_COMMIT, SPACK_GIT, SPACK_VERSION
-from .auth import spack_resource_environment
+from .auth import git_auth, spack_resource_environment
 from .secrets import SecretStore
 
 
@@ -59,6 +60,12 @@ class SpackLayout:
     credentials_env: Path
     # The same credentials as a secrets mapping, for Seanerstack itself.
     credentials: Path
+    # The credentials of each Git resource, one file each in the format of a
+    # Git credential helper, mode 0600, for the Git that Spack clones with.
+    git_credentials: Path
+    # The Git configuration that hands them to that Git, for the URLs under
+    # each resource only. It holds no secret, only where they are.
+    git_config: Path
     # What `seanerstack init` chose, so that no later command asks again.
     record: Path
     # The packages init detected on the machine, for `toolchain bootstrap --external`.
@@ -82,6 +89,8 @@ def layout(state_dir: Path) -> SpackLayout:
         bin=root / "bin",
         credentials_env=root / "credentials.sh",
         credentials=state / "credentials.json",
+        git_credentials=root / "git-credentials",
+        git_config=root / "gitconfig",
         record=state / "seanerstack.json",
         detected=state / "detected.json",
         guard=root / "compiler-guard",
@@ -123,7 +132,59 @@ def store_credentials(x: SpackLayout, config: Config, secrets: SecretStore) -> l
         if resource.kind == "spack-buildcache" and resource.credentials in stored:
             exports.update(spack_resource_environment(resource, holder))
     _write_private(x.credentials_env, "".join(f"export {name}={shlex.quote(value)}\n" for name, value in exports.items()))
+    store_git_credentials(x, config, holder)
     return sorted(stored)
+
+
+def _git_config_string(value: str) -> str:
+    """A value or subsection name of a Git configuration file, quoted.
+
+    @param value: the text
+    @return: the text in double quotes, with backslashes and quotes escaped
+    """
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def store_git_credentials(x: SpackLayout, config: Config, stored: SecretStore) -> None:
+    """Keep the credentials of each Git resource where the Git of the state's Spack finds them.
+
+    Spack clones a private recipe with Git itself. For the URLs under a Git
+    resource, the Git configuration of the state replaces every credential
+    helper with one that hands Git the stored credentials of that resource,
+    and Git asks it only when the server wants credentials. The secret stays
+    in a file readable only by its owner and never enters an environment,
+    which every build inherits.
+    Credentials that are no longer stored are removed.
+
+    @param x: the layout of the state
+    @param config: the Seanerstack configuration, which names the Git resources
+    @param stored: the credentials that init stored in the state
+    @return: None
+    """
+    shutil.rmtree(x.git_credentials, ignore_errors=True)
+    x.git_credentials.mkdir(mode=0o700, parents=True)
+    sections = []
+    for resource in sorted(config.resources.values(), key=lambda item: item.name):
+        if resource.kind != "git" or not resource.credentials or not stored.has_credentials(resource.credentials):
+            continue
+        auth = git_auth(resource, stored)
+        assert auth is not None
+        if any(character in value for value in (auth.username, auth.password) for character in "\r\n"):
+            raise ValueError(f"credentials {resource.credentials!r} for {resource.name!r} must be a single line each")
+        # A quoted TOML key can hold any character, a file name cannot.
+        path = x.git_credentials / re.sub(r"[^A-Za-z0-9._-]", "_", resource.name)
+        _write_private(path, f"username={auth.username}\npassword={auth.password}\n")
+        # Git appends the action, get, store or erase; only get answers, so
+        # Git can neither change nor remove the stored credentials. The
+        # request on standard input is read in full before the answer.
+        helper = f'!f() {{ cat >/dev/null; test "$1" = get && cat {shlex.quote(str(path))}; }}; f'
+        sections.append(
+            f"[credential {_git_config_string(resource.url)}]\n"
+            # An empty helper drops the helpers of the user's own configuration for these URLs.
+            "\thelper =\n"
+            f"\thelper = {_git_config_string(helper)}\n"
+        )
+    _write(x.git_config, "".join(sections))
 
 
 def write_record(
@@ -295,6 +356,11 @@ def prepare_isolation(state_dir: Path, real_spack: Path) -> SpackLayout:
         + "".join(f"unset {name}\n" for name in UNSET_ON_ACTIVATION)
         + "".join(f"export {name}={shlex.quote(value)}\n" for name, value in spack_env(x).items())
         + f"if [ -r {shlex.quote(str(x.credentials_env))} ]; then . {shlex.quote(str(x.credentials_env))}; fi\n"
+        # The Git that Spack clones with reads the Git credentials of the
+        # state, after the configuration the caller already passes to Git.
+        + 'i="${GIT_CONFIG_COUNT:-0}"\n'
+        + f'export "GIT_CONFIG_KEY_$i=include.path" "GIT_CONFIG_VALUE_$i="{shlex.quote(str(x.git_config))}\n'
+        + 'GIT_CONFIG_COUNT=$((i + 1)); export GIT_CONFIG_COUNT\n'
         # Only for Spack: the shell that runs it keeps its compilers.
         + f'case ":$PATH:" in *:{shlex.quote(str(x.guard))}:*) ;; *) PATH={shlex.quote(str(x.guard))}:"$PATH"; export PATH ;; esac\n'
         + f'exec {shlex.quote(str(real_spack))} -C {shlex.quote(str(x.config))} "$@"\n',
@@ -430,6 +496,24 @@ def spack_env(x: SpackLayout) -> dict[str, str]:
         "SPACK_USER_CONFIG_PATH": str(x.config),
         "SPACK_SYSTEM_CONFIG_PATH": str(x.state / "spack" / "system-config-disabled"),
         "SPACK_USER_CACHE_PATH": str(x.cache),
+    }
+
+
+def git_config_environment(x: SpackLayout, env: Mapping[str, str]) -> dict[str, str]:
+    """The variables that make the Git of a Spack run read the Git credentials of the state.
+
+    As the spack wrapper does: the state's Git configuration comes after the
+    entries that `env` already passes to Git.
+
+    @param x: the layout of the state
+    @param env: the environment the Spack run starts from
+    @return: the variables to set in it
+    """
+    index = int(env.get("GIT_CONFIG_COUNT") or 0)
+    return {
+        f"GIT_CONFIG_KEY_{index}": "include.path",
+        f"GIT_CONFIG_VALUE_{index}": str(x.git_config),
+        "GIT_CONFIG_COUNT": str(index + 1),
     }
 
 

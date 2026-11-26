@@ -47,6 +47,8 @@ All mutable Spack state controlled by Seanerstack is redirected below the select
     │   └── spack           the wrapper
     ├── compiler-guard/     cc, gcc, g++, gfortran, ... that stop a build calling them
     ├── credentials.sh      the same credentials as Spack's variables, mode 0600
+    ├── git-credentials/    the credentials of each Git resource, mode 0600
+    ├── gitconfig           hands them to the Git that Spack runs
     ├── config/
     ├── store/
     ├── stage/
@@ -105,6 +107,8 @@ The state therefore has a directory `spack/compiler-guard` with a script under e
 ## Credentials
 
 Spack reads the credentials of a build cache only from environment variables, and its mirror configuration names those variables, never the values. `seanerstack init --secrets-file FILE` decrypts the secrets file once and stores the credentials that the configured resources name in the state directory, readable only by their owner: as a secrets mapping in `credentials.json` for Seanerstack's own commands, and as the variables in `spack/credentials.sh`, which the wrapper loads. Later commands need neither the secrets file nor its password. Variables that are already set, as in CI, take precedence.
+
+Spack clones the repository of a private recipe with Git itself, and Git takes credentials from a credential helper. For each Git resource whose credentials it stores, `init` writes them into a file of their own in `spack/git-credentials/`, and `spack/gitconfig` names that file as the only credential helper for the URLs under the resource. The wrapper adds this configuration to the Git of every Spack run through `GIT_CONFIG_COUNT`, after any entries already set there, and Seanerstack does the same for the Spack it runs itself. The shell that runs the wrapper keeps its own Git configuration, and Git keeps its own helpers for every other URL. The token stays out of the environment, which every build inherits. Git reads configuration from the environment from version 2.31 on.
 
 ## State-directory selection
 
