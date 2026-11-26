@@ -254,3 +254,64 @@ def test_the_toolchain_job_passes_the_job_token_in_a_secrets_file():
     for command in ("buildcache prepare", "buildcache explain"):
         (step,) = [step for step in job["script"] if command in step]
         assert "--secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password" in " ".join(step.split()), command
+
+
+PUBLIC_SETUP = ['/opt/seanerstack/bin/pip install --quiet ".[s3]"', "export SPACK_PYTHON=/opt/seanerstack/bin/python"]
+
+
+def test_the_public_toolchain_jobs_are_the_toolchain_jobs_with_the_public_caches():
+    ci = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+    job = ci["toolchain:public"]
+    assert job["extends"] == ["toolchain", ".public-buildcache"]
+    # The platforms, images, variables and steps of the toolchain jobs.
+    assert not {"stage", "image", "tags", "parallel", "variables", "script"} & set(job)
+    assert ci[".public-buildcache"]["variables"] == {"SEANERSTACK_CONFIG_FILE": "$CI_PROJECT_DIR/ci/public-buildcache.toml"}
+    # Spack writes to S3 with the boto3 of the s3 extra, on the Python of Seanerstack.
+    assert job["before_script"] == [ci["toolchain"]["before_script"], *PUBLIC_SETUP]
+    assert job["needs"] == ["toolchain:public:access"]
+
+
+def test_the_public_jobs_run_only_where_the_toolchain_jobs_publish_on_the_default_branch():
+    ci = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+    public, access = ci["toolchain:public"]["rules"], ci["toolchain:public:access"]["rules"]
+    assert [rule["if"] for rule in public] == [rule["if"] for rule in access] == [
+        '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "schedule"',
+        '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE =~ /^(push|web)$/',
+    ]
+    # As in the toolchain jobs, a platform that fails a push pipeline does not fail it; keys that fail the check do.
+    assert [rule.get("allow_failure", False) for rule in public] == [False, True]
+    assert not any("allow_failure" in rule or "when" in rule for rule in access)
+
+
+def test_the_public_access_job_pushes_to_every_public_cache_before_the_toolchain_jobs_build():
+    ci = yaml.safe_load((Path(__file__).parents[2] / ".gitlab-ci.yml").read_text(encoding="utf-8"))
+    job = ci["toolchain:public:access"]
+    assert job["extends"] == ".public-buildcache"
+    # In the stage of the toolchain jobs, the last, so that a failure holds back only them.
+    assert job["stage"] == ci["toolchain"]["stage"] == ci["stages"][-1]
+    assert job["script"] == [
+        "seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password init",
+        "seanerstack buildcache check --push",
+    ]
+    # GitLab flattens the lists that anchors nest, at any depth.
+    def flat(steps):
+        return [line for step in steps for line in (flat(step) if isinstance(step, list) else [step])]
+
+    setup = flat(job["before_script"])
+    assert "keyloom encrypt /tmp/secrets.toml --password-file /tmp/vault-password" in setup
+    assert setup[-2:] == PUBLIC_SETUP
+
+
+def test_the_public_caches_take_the_names_of_the_caches_of_the_toolchain():
+    public = load_config(Path(__file__).parents[2] / "ci" / "public-buildcache.toml")
+    shipped = load_config()
+    caches = {shipped.toolchain.cache, shipped.toolchain.bootstrap_cache}
+    assert set(public.resources) == {"seanergys-gitlab", *caches}
+    # The recipes come from where the shipped config.toml clones them.
+    assert public.resources["seanergys-gitlab"] == shipped.resources["seanergys-gitlab"]
+    assert public.toolchain == shipped.toolchain
+    for name in caches:
+        resource = public.resources[name]
+        assert resource.kind == "spack-buildcache" and resource.url.startswith("s3://seanergys-seanerstack-")
+        assert resource.endpoint_url == "https://juphoria-s3.fz-juelich.de"
+        assert resource.credentials == "juphoria-s3" and not resource.signed

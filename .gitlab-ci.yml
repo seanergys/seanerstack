@@ -498,7 +498,7 @@ toolchain:
         IMAGE: docker.io/library/archlinux:latest
   variables:
     <<: *cache-build
-  before_script:
+  before_script: &toolchain-setup
     # Just enough Python for Seanerstack, which then installs the system
     # packages of the platform from config.toml.
     - PYTHON="${PYTHON:-python3}"
@@ -567,3 +567,56 @@ toolchain:
           buildcache explain "$spec" || true
       done
     - exit "$status"
+
+# The public build caches on the Juphoria object storage of FZJ, which anyone
+# can read without keys. Every command of a job takes the caches of this
+# config.toml, which have the names of the registry caches, so the steps are
+# those for the registry. Spack writes to S3 with boto3, so it runs on the
+# Python of Seanerstack, which has it.
+.public-buildcache:
+  variables:
+    SEANERSTACK_CONFIG_FILE: "$CI_PROJECT_DIR/ci/public-buildcache.toml"
+
+# Whether the keys of the public build caches still push to both buckets: a
+# small file goes to test/ of each and is removed again. Keys that have
+# expired then fail this one job, and the toolchain:public jobs, which need
+# it, do not start. It runs where they run, and in the last stage, so that a
+# failure here holds back nothing else.
+toolchain:public:access:
+  extends: .public-buildcache
+  stage: toolchain
+  tags:
+    - docker
+    - seanerstack
+  image: docker.io/rockylinux/rockylinux:10
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE =~ /^(push|web)$/'
+  variables:
+    PLATFORM: rocky10
+  before_script:
+    - *rocky10-setup
+    - /opt/seanerstack/bin/pip install --quiet ".[s3]"
+    - export SPACK_PYTHON=/opt/seanerstack/bin/python
+  script:
+    - seanerstack --secrets-file /tmp/secrets.toml --secrets-password-file /tmp/vault-password init
+    - seanerstack buildcache check --push
+
+# The toolchain jobs once more, for the public build caches instead of the
+# registry caches, and only on the default branch: the same platforms, images
+# and steps, with the config.toml of .public-buildcache. These caches hold only
+# what these jobs pushed, so the first run builds every platform from nothing.
+toolchain:public:
+  extends:
+    - toolchain
+    - .public-buildcache
+  needs:
+    - toolchain:public:access
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $PUBLISH_TOOLCHAIN == "true" && $CI_PIPELINE_SOURCE =~ /^(push|web)$/'
+      allow_failure: true
+  before_script:
+    - *toolchain-setup
+    - /opt/seanerstack/bin/pip install --quiet ".[s3]"
+    - export SPACK_PYTHON=/opt/seanerstack/bin/python
