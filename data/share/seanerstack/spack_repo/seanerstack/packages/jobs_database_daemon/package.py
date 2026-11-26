@@ -11,7 +11,7 @@ class JobsDatabaseDaemon(CMakePackage):
     git = "https://gitlab.seanergys.fz-juelich.de/software/jobs-database-daemon.git"
     seanerstack_resource = "seanergys-gitlab"
 
-    license("LGPL-3.0-only")
+    license("Apache-2.0")
 
     # Upstream takes seanerbus-cpp as a submodule, which Git leaves out here; the
     # recipe uses the seanerbus-cpp of Spack instead.
