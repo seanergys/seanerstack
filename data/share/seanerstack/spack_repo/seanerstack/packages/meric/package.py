@@ -15,4 +15,6 @@ class Meric(WafPackage):
     version("seanergys", branch="seanergys")
 
     depends_on("cxx", type="build")
+    depends_on("pkgconfig", type="build")
+    depends_on("capnproto")
     depends_on("seanerbus-cpp")
