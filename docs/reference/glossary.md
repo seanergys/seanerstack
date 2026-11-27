@@ -18,7 +18,7 @@ Compiler guard
 :   The directory `spack/compiler-guard` of the state, with a script under each compiler name that fails and says which language dependency is missing. It is in front of `PATH` for every Spack the state runs, so a package that declares no language cannot compile with the system compiler unnoticed. See [The compiler guard](../explanation/isolation.md#the-compiler-guard).
 
 Compiler lockfile
-:   The concretized compiler environment of a platform, kept in the project build cache as a tag of its registry repository, such as `compiler-gcc-15-rocky10-x86_64_v3-2efee779f543`. `toolchain bootstrap` installs the compiler from it, so every machine of the platform gets the compiler with the same hash. See [Why the compiler is installed from a lockfile](../explanation/compiler-bootstrap.md#why-the-compiler-is-installed-from-a-lockfile).
+:   The concretized compiler environment of a platform, kept in the build cache of the toolchain: in a registry as a tag of its repository, such as `compiler-gcc-15-rocky10-x86_64_v3-2efee779f543`, in any other cache as the file `compiler-lockfiles/<tag>.lock` below it. `toolchain bootstrap` installs the compiler from it, so every machine of the platform gets the compiler with the same hash. See [Why the compiler is installed from a lockfile](../explanation/compiler-bootstrap.md#why-the-compiler-is-installed-from-a-lockfile).
 
 Compiler rule
 :   The requirement in `packages.yaml` of the state that a package which takes C, C++ or Fortran from a gcc takes it from the project compiler. See [How the compiler is required](../explanation/compiler-bootstrap.md#how-the-compiler-is-required).
