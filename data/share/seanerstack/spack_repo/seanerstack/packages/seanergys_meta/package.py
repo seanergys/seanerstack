@@ -29,6 +29,7 @@ class SeanergysMeta(BundlePackage):
     depends_on("seanerbus", type="run")
     depends_on("seanerbus-cli", type="run")
     depends_on("seanerbus-msg", type="run")
+    depends_on("seanerbus-naming-service", type="run")
     depends_on("seanerbus-rs", type="run")
     # The collector defaults to disabling its optional SNMP plugin.
     depends_on("telemetry-collector", type="run")

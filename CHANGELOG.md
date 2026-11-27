@@ -71,6 +71,8 @@ and release process.
   other seanerbus packages build from.
 - The seanerbus packages and `py-pycapnp` have a test for `spack test run`.
 - `seanerbus-cli`, the command-line client of the SeanerBUS.
+- `seanerbus-naming-service`, the naming server of the SeanerBUS, and the
+  `seanerbus-naming-service-dev` environment.
 - `telemetry-collector`, the SEANERGYS Telemetry Collector and its plugins, and the
   `telemetry-collector-dev` environment.
 - `seanerstack --version` prints the Seanerstack version and the Spack version
@@ -88,9 +90,9 @@ and release process.
 - `init` checks that every build cache and every Git resource can be read.
 - `seanergys-meta` depends on the packages that build with the project
   toolchain: `flux-core`, `priorisea`, `properdocs`, `pscom`, `py-pycapnp`,
-  `seanerbus`, `seanerbus-cli`, `seanerbus-msg` and `seanerbus-rs`. The
-  `build:rocky10` job builds it in every pipeline. `psmpi` and
-  `telemetry-collector` join it once they build.
+  `seanerbus`, `seanerbus-cli`, `seanerbus-msg`, `seanerbus-naming-service`
+  and `seanerbus-rs`. The `build:rocky10` job builds it in every pipeline.
+  `psmpi` and `telemetry-collector` join it once they build.
 
 ### Changed
 
@@ -111,6 +113,10 @@ and release process.
   `seanerbroker` package, the name that upstream gave it on 2026-11-03.
 - The seanerbus packages clone no submodules. They depend on `seanerbus-rs`,
   `seanerbus-msg` and the `fmt` of Spack instead.
+- `seanerbus-rs` takes its schemas from seanerbus-msg at the commit of its
+  submodule `msg/schemas`, not from the `seanerbus-msg` package: its `msg` crate
+  covers only the messages of that commit, and `seanerbus-msg@main` may have
+  more.
 - The state directory defaults to `/opt/seanergys/state` for every command, the
   directory in which the toolchain of the project build cache is built, because
   the install path of the compiler is part of every hash.
