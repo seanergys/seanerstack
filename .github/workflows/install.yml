@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Whether seanergys-meta installs from the build caches alone, building
-# nothing: once with the private resources of the SEANERGYS GitLab, once with
-# the public build caches on Juphoria and no credentials at all. The GitLab
-# pipeline fills the caches; these jobs only install.
+# Whether seanergys-meta installs from the public build caches on Juphoria
+# alone, building nothing, and which repositories of the recipes can be read
+# from their copies in the organization seanergys: once with a token for the
+# private repositories, once without any credentials. The GitLab pipeline
+# fills the caches; these jobs only install. The report job puts the results
+# of every job into one table in the summary of the run.
 #
 # Pushes and pull requests check Rocky Linux 10. "Run workflow" checks the
 # platforms given, names of [toolchain.platforms] in config.toml, or all.
@@ -69,9 +71,54 @@ jobs:
         env:
           PLATFORM: ${{ matrix.target.platform }}
           PYTHON: ${{ matrix.target.python }}
-          SEANERGYS_GITLAB_USERNAME: ${{ matrix.access == 'private' && secrets.SEANERGYS_GITLAB_USERNAME || '' }}
-          SEANERGYS_GITLAB_TOKEN: ${{ matrix.access == 'private' && secrets.SEANERGYS_GITLAB_TOKEN || '' }}
+          SEANERGYS_GITHUB_TOKEN: ${{ matrix.access == 'private' && secrets.SEANERGYS_GITHUB_TOKEN || '' }}
         run: >-
           docker run --rm -v "$PWD:/src" -w /src
-          -e PLATFORM -e PYTHON -e SEANERGYS_GITLAB_USERNAME -e SEANERGYS_GITLAB_TOKEN
+          -e PLATFORM -e PYTHON -e SEANERGYS_GITHUB_TOKEN
           "${{ matrix.target.image }}" ci/github/install-from-cache.sh "${{ matrix.access }}"
+      # What the job could read and whether it installed, for the report below.
+      - name: Keep the results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-${{ matrix.access }}-${{ matrix.target.platform }}
+          path: results/
+          if-no-files-found: warn
+
+  # One table at the end of the run: each repository and the stack, for each job.
+  report:
+    needs: install
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: results-*
+          path: results
+      - name: Write the report
+        run: |
+          python3 - >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          import pathlib, re
+          jobs = sorted(path for path in pathlib.Path("results").iterdir() if path.is_dir())
+          names = [job.name.removeprefix("results-") for job in jobs]
+          access, installed = {}, {}
+          for name, job in zip(names, jobs):
+              found = job / "access.txt"
+              for line in found.read_text().splitlines() if found.is_file() else []:
+                  match = re.match(r"\[(OK|ERROR)\] access:([^:]+): (.*)", line)
+                  if match:
+                      access.setdefault(match[2], {})[name] = (match[1], match[3])
+              result = job / "install.txt"
+              installed[name] = result.read_text().strip() if result.is_file() else "no result"
+          print("## Install from the build caches\n")
+          print("| | " + " | ".join(names) + " |")
+          print("|---" * (len(names) + 1) + "|")
+          print("| **seanergys-meta** | " + " | ".join(
+              "✅" if installed[name] == "installed" else f"❌ {installed[name]}" for name in names) + " |")
+          for package in sorted(access):
+              cells = []
+              for name in names:
+                  level, message = access[package].get(name, ("", "no result"))
+                  cells.append("✅" if level == "OK" else f"❌ {message.replace('|', '/')}")
+              print(f"| {package} | " + " | ".join(cells) + " |")
+          EOF

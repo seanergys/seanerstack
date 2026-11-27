@@ -5,3 +5,5 @@ __pycache__/
 site/
 *.pyc
 secrets.toml
+# What ci/github/install-from-cache.sh records.
+results/

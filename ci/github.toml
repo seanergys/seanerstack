@@ -1,13 +1,20 @@
 # SPDX-License-Identifier: Apache-2.0
-# The config.toml of the public job of .github/workflows/install.yml, which
-# installs the stack with nothing that needs an account: the public build
-# caches on the Juphoria object storage of FZJ, read without keys over Swift,
-# and no Git resource, so no private repository is asked for anything.
+# The config.toml of the jobs of .github/workflows/install.yml: the public
+# build caches on the Juphoria object storage of FZJ, read without keys over
+# Swift, and the Git resource of the recipes, which name the SEANERGYS GitLab.
+#
+# The jobs let Git rewrite those URLs to the copies of the repositories in the
+# GitHub organization seanergys. The resource names no credentials: Git uses
+# its own, a token that the private job gives it and the public job lacks.
 #
 # The caches have the names of the registry caches of the shipped config.toml,
 # whose [toolchain] it takes, so the toolchain points at them. The
 # toolchain:public jobs of the GitLab pipeline fill them, from
 # ci/public-buildcache.toml, which writes the same buckets over S3.
+
+[resources.seanergys-gitlab]
+kind = "git"
+url = "https://gitlab.seanergys.fz-juelich.de/"
 
 [resources.seanerstack-buildcache]
 kind = "spack-buildcache"
