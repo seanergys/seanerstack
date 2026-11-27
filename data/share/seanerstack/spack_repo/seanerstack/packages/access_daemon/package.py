@@ -48,14 +48,13 @@ class AccessDaemon(MakefilePackage):
             f"CC={spack_cc}",
             f"PWD={self.stage.source_path}",
             f"PREFIX={self.prefix}",
+            f"EAR_SRCDIR={self.spec['ear-sources'].prefix.src}",
             f"SEABUS_PREFIX={bus.prefix}",
             f"SEABUS_LDFLAGS={libs.ld_flags}{extra_libs} -luuid",
         ]
 
     def patch(self):
-        # Access Daemon expects EAR in its submodule, which stays empty.
         ear = self.spec["ear-sources"].prefix.src
-        filter_file(r"^EAR_SRCDIR\s*=.*$", f"EAR_SRCDIR       = {ear}", "Makefile")
         # Some stubs are symlinks into the submodule: point them at the same
         # files of the ear-sources package.
         submodule = os.path.abspath(join_path("external", "ear", "src"))
