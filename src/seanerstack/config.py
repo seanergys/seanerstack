@@ -9,6 +9,16 @@ import tomllib
 from .paths import share_path
 
 
+def url_scheme(url: str) -> str:
+    """The scheme of a URL, the part before `://`.
+
+    @param url: the URL
+    @return: the scheme as written, or an empty string for a URL without one
+    """
+    scheme, separator, _ = url.partition("://")
+    return scheme if separator else ""
+
+
 @dataclass(frozen=True)
 class Resource:
     name: str
@@ -25,12 +35,25 @@ class Resource:
         return f"SEANERSTACK_RESOURCE_{normalized}"
 
     @property
+    def scheme(self) -> str:
+        """The scheme of the URL, which says how the resource is reached.
+
+        @return: the scheme, such as oci, s3, file or https, or an empty
+            string for a URL without one
+        """
+        return url_scheme(self.url)
+
+    @property
     def oci(self) -> bool:
-        return self.url.startswith(("oci://", "oci+http://"))
+        return self.scheme in ("oci", "oci+http")
 
     @property
     def filesystem(self) -> bool:
-        return self.url.startswith("file://")
+        return self.scheme == "file"
+
+    @property
+    def s3(self) -> bool:
+        return self.scheme == "s3"
 
     @property
     def credential_variables(self) -> tuple[str, str]:
@@ -161,7 +184,7 @@ def load_config(path: Path | None = None) -> Config:
             endpoint_url=raw.get("endpoint_url") if isinstance(raw.get("endpoint_url"), str) else None,
             autopush=bool(raw.get("autopush", False)),
             # A filesystem cache is local or project-private, so it defaults to unsigned.
-            signed=bool(raw.get("signed", not url.startswith("file://"))),
+            signed=bool(raw.get("signed", url_scheme(url) != "file")),
         )
         # Spack cannot sign OCI build caches; it warns and pushes unsigned anyway.
         if resource.kind == "spack-buildcache" and resource.oci and resource.signed:

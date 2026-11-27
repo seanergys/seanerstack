@@ -99,3 +99,19 @@ def test_a_config_without_a_bootstrap_cache_keeps_the_shipped_one(tmp_path: Path
     path = tmp_path / "config.toml"
     path.write_text('[toolchain]\ncompiler = "gcc@14"\n', encoding="utf-8")
     assert load_config(path).toolchain.bootstrap_cache == "seanerstack-buildcache-bootstrap"
+
+
+def test_the_scheme_of_a_resource_is_that_of_its_url():
+    from seanerstack.config import Resource
+
+    def resource(url):
+        return Resource(name="cache", kind="spack-buildcache", url=url, signed=False)
+
+    assert [resource(url).scheme for url in ("oci://r/c", "oci+http://r/c", "s3://b", "file:///c", "https://h/", "c")] == [
+        "oci", "oci+http", "s3", "file", "https", "",
+    ]
+    assert resource("oci+http://r/c").oci and not resource("oci+http://r/c").s3
+    assert resource("s3://b").s3 and not resource("s3://b").oci and not resource("s3://b").filesystem
+    assert resource("file:///c").filesystem and not resource("https://h/").s3
+    # As before, a scheme is matched as written.
+    assert not resource("OCI://r/c").oci
