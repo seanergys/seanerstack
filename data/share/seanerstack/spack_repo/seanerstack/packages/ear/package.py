@@ -29,6 +29,9 @@ class Ear(AutotoolsPackage):
     depends_on("curl")
     depends_on("jansson")
     depends_on("libmicrohttpd")
+    # EAR compiles against the EasyBUS header of Access Daemon and opens
+    # libaccess_easybus.so below EASYBUS_PREFIX, which make_args sets.
+    depends_on("access-daemon")
 
     # EAR's recursive Makefiles expect a build in the source directory.
     parallel = False
@@ -141,9 +144,20 @@ class Ear(AutotoolsPackage):
             "MPICC={0}".format(self.spec["mpi"].mpicc),
         ]
 
+    @property
+    def make_args(self):
+        # The Makefile fixes EASYBUS_PREFIX to /tmp/access-daemon, and
+        # configure has no option for it. Only a make argument overrides it,
+        # and Makefile.exports hands it to the sub-makes.
+        return [f"EASYBUS_PREFIX={self.spec['access-daemon'].prefix}"]
+
+    @property
+    def build_targets(self):
+        return self.make_args
+
     def install(self, spec, prefix):
-        make("install")
-        make("etc.install")
+        make("install", *self.make_args)
+        make("etc.install", *self.make_args)
 
     def setup_run_environment(self, env):
         env.set("EAR_INSTALL_PATH", self.prefix)
