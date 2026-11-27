@@ -485,8 +485,26 @@ def _reuse_environment(spack_config: Path, environment: Path, compiler: str) -> 
     """
     source = {"type": "environment", "path": str(environment), "include": [compiler]}
     externals = {"type": "external", "exclude": [compiler]}
-    settings = {"concretizer": {"reuse": {"from": [source, externals]}}}
+    settings = {"concretizer": {"reuse": {"from": [source, externals]}, **_duplicates()}}
     (spack_config / "concretizer.yaml").write_text(yaml.safe_dump(settings), encoding="utf-8")
+
+
+def _duplicates() -> dict:
+    """Two nodes of each Seanerstack recipe tagged build-tools, which Spack allows only up to max_dupes.
+
+    Such a package is only ever a build dependency, so packages that need
+    different versions of it, such as seanerbus-rs and seanerbus-cpp of the
+    seanerbus-msg schemas, can be installed together.
+
+    @return: the duplicates section of the concretizer settings, or nothing when no recipe is tagged
+    """
+    from .recipe import parse_recipe
+    from .sync import package_paths
+    tagged = sorted(
+        name for name, path in package_paths().items()
+        if "build-tools" in (parse_recipe(path).attributes.get("tags") or ())
+    )
+    return {"duplicates": {"max_dupes": {name: 2 for name in tagged}}} if tagged else {}
 
 
 def _concretize_as_a_new_state_does(spack_config: Path) -> None:
