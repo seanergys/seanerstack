@@ -657,7 +657,8 @@ def test_publish_pushes_the_first_stage_and_publishes_the_compiler_lockfile(monk
     assert push[:2] == ("push", "boot") and push[2][-2:] == ["-C", str(x.state / "bootstrap" / "config")]
     assert lock[:3] == ("lockfile", "cache", x.environments / "compiler" / "spack.lock")
     # `spack arch --operating-system` of the stand-in answers rocky10.
-    assert lock[3] == {"compiler": "gcc@15", "target": "x86_64_v3", "operating_system": "rocky10"}
+    assert lock[3] == {"compiler": "gcc@15", "target": "x86_64_v3", "operating_system": "rocky10", "command": lock[3]["command"]}
+    assert lock[3]["command"][0].endswith("spack")
     out = capsys.readouterr().out
     assert "first stage: 3 specs of the bootstrap instance in oci://registry.example.org/cache-bootstrap" in out
     assert "compiler lockfile: compiler-tag in oci://registry.example.org/cache" in out
