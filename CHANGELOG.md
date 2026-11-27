@@ -18,9 +18,10 @@ and release process.
   no build cache holds a compiler lockfile, and installs the packages of
   `[toolchain]` with `spack install --cache-only`.
 - The GitHub workflow `install` checks that `seanergys-meta` installs from the
-  build caches alone, once with the private resources of the SEANERGYS GitLab
-  and once with only the public caches on Juphoria. It runs on Rocky Linux 10,
-  and by hand on any platform of `[toolchain.platforms]`.
+  public build caches on Juphoria alone, once with read access to the private
+  repositories of the GitHub organization seanergys and once without any
+  credentials, and reports which repositories each job could read. It runs
+  on Rocky Linux 10, and by hand on any platform of `[toolchain.platforms]`.
 - The compiler of the stack is built in two stages. The system compiler builds
   a first GCC, for C and C++ only, in a Spack instance of its own below
   `<state>/bootstrap`; the actual instance knows it only as an external at
