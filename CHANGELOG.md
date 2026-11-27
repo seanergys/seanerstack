@@ -113,6 +113,10 @@ and release process.
   `seanerbroker` package, the name that upstream gave it on 2026-11-03.
 - The seanerbus packages clone no submodules. They depend on `seanerbus-rs`,
   `seanerbus-msg` and the `fmt` of Spack instead.
+- `seanerbus-rs` takes its schemas from seanerbus-msg at the commit of its
+  submodule `msg/schemas`, not from the `seanerbus-msg` package: its `msg` crate
+  covers only the messages of that commit, and `seanerbus-msg@main` may have
+  more.
 - The state directory defaults to `/opt/seanergys/state` for every command, the
   directory in which the toolchain of the project build cache is built, because
   the install path of the compiler is part of every hash.
