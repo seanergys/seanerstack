@@ -320,3 +320,14 @@ def test_the_public_caches_take_the_names_of_the_caches_of_the_toolchain():
         assert resource.kind == "spack-buildcache" and resource.url.startswith("s3://seanergys-seanerstack-")
         assert resource.endpoint_url == "https://juphoria-s3.fz-juelich.de"
         assert resource.credentials == "juphoria-s3" and not resource.signed
+
+
+def test_the_public_jobs_install_what_the_project_cache_holds_and_push_it_to_the_public_caches():
+    from seanerstack.buildcache import buildcaches
+    public = load_config(Path(__file__).parents[2] / "ci" / "public-buildcache.toml")
+    shipped = load_config()
+    project = shipped.resources[shipped.toolchain.cache]
+    (read,) = [cache for cache in buildcaches(public) if cache.name != public.toolchain.cache]
+    assert (read.url, read.credentials, read.signed) == (project.url, project.credentials, project.signed)
+    # Only read: prepare pushes to the cache of the toolchain, the public one.
+    assert read.name not in {public.toolchain.cache, public.toolchain.bootstrap_cache} and not read.autopush
