@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Whether seanergys-meta installs from the build caches alone, building
+# nothing: once with the private resources of the SEANERGYS GitLab, once with
+# the public build caches on Juphoria and no credentials at all. The GitLab
+# pipeline fills the caches; these jobs only install.
+#
+# Pushes and pull requests check Rocky Linux 10. "Run workflow" checks the
+# platforms given, names of [toolchain.platforms] in config.toml, or all.
+name: install
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Platforms of [toolchain.platforms] in config.toml, separated by spaces, or all"
+        default: rocky10
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  platforms:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: matrix
+        env:
+          PLATFORMS: ${{ inputs.platforms || 'rocky10' }}
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'EOF'
+          import json, os, sys, tomllib
+          with open("data/share/seanerstack/config.toml", "rb") as stream:
+              platforms = tomllib.load(stream)["toolchain"]["platforms"]
+          wanted = os.environ["PLATFORMS"].split()
+          names = list(platforms) if wanted == ["all"] else wanted
+          unknown = [name for name in names if name not in platforms]
+          if unknown:
+              sys.exit(f"not in [toolchain.platforms]: {' '.join(unknown)}")
+          matrix = [
+              {"platform": name, "image": platforms[name]["image"], "python": platforms[name].get("python", "python3")}
+              for name in names
+          ]
+          print(f"matrix={json.dumps(matrix)}")
+          EOF
+
+  install:
+    needs: platforms
+    name: ${{ matrix.access }} ${{ matrix.target.platform }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        access: [private, public]
+        target: ${{ fromJSON(needs.platforms.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      # The stack takes more than the free disk of a runner.
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/local/share/boost
+      - name: Install seanergys-meta from the build caches
+        env:
+          PLATFORM: ${{ matrix.target.platform }}
+          PYTHON: ${{ matrix.target.python }}
+          SEANERGYS_GITLAB_USERNAME: ${{ matrix.access == 'private' && secrets.SEANERGYS_GITLAB_USERNAME || '' }}
+          SEANERGYS_GITLAB_TOKEN: ${{ matrix.access == 'private' && secrets.SEANERGYS_GITLAB_TOKEN || '' }}
+        run: >-
+          docker run --rm -v "$PWD:/src" -w /src
+          -e PLATFORM -e PYTHON -e SEANERGYS_GITLAB_USERNAME -e SEANERGYS_GITLAB_TOKEN
+          "${{ matrix.target.image }}" ci/github/install-from-cache.sh "${{ matrix.access }}"
