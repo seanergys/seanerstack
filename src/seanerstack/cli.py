@@ -124,6 +124,11 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap_parser.add_argument("--probe-timeout", type=float, default=DEFAULT_PROBE_TIMEOUT, help=f"seconds to allow the probe before giving up (default: {DEFAULT_PROBE_TIMEOUT:g}); 0 waits indefinitely")
     bootstrap_parser.add_argument("--force", action="store_true", help="ask Spack to install the compiler even when it is already installed")
     bootstrap_parser.add_argument(
+        "--cache-only", action="store_true",
+        help="build nothing: take the compiler of a lockfile and the packages from the build caches, "
+        "and fail when no build cache holds the lockfile or a binary",
+    )
+    bootstrap_parser.add_argument(
         "--jobs", type=int,
         help="build jobs across the packages built at once (default: the CPUs this machine, or its container, may use, "
         "and no more than its free memory takes at 2 GiB each)",
@@ -505,6 +510,11 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
             config, env, compiler=compiler, target=target, operating_system=system,
             directory=x.environments / "compiler-lockfiles", command=command,
         )
+    if args.cache_only and lockfile is None and external_compiler is None and not args.dry_run:
+        raise ValueError(
+            f"no build cache holds a lockfile of {compiler} for {system}, so its compiler would be built here; "
+            "--cache-only builds nothing"
+        )
     instance = _bootstrap_instance(x, real_spack, env, config, target)
     # Spack builds with 16 jobs unless told otherwise, whatever the machine has.
     jobs = args.jobs or default_jobs()
@@ -562,6 +572,7 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
         print(f"package: {found.spec} (external, {found.prefix})")
     install_packages(
         command, [package for package in packages if package not in {found.name for found in external_packages}], env, jobs=jobs,
+        cache_only=args.cache_only,
     )
 
     externals = ([external_compiler] if external_compiler else []) + external_packages
