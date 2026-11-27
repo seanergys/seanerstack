@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
-"""The lockfile of the compiler, kept as a tag in the project build cache.
+"""The lockfile of the compiler, kept in the build cache of the toolchain.
 
 The compiler environment is concretized where the cache is filled, and its
-`spack.lock` is stored under a tag of the build cache's repository. Every
-other machine installs exactly those specs from the cache, whatever its system
-compiler and its state directory. Spack takes only tags that end in `.spack`
-for binaries, so it never sees this one.
+`spack.lock` is stored in the build cache: in a registry under a tag of the
+cache's repository, elsewhere as a file below the cache, which the Spack of
+the state reads and writes. Every other machine installs exactly those specs
+from the cache, whatever its system compiler and its state directory. Spack
+takes only tags that end in `.spack` for binaries, and no file outside its own
+layout, so it never sees the lockfile.
 
 The tag is derived from everything that decides the hash of the compiler: the
 pinned Spack and builtin recipes, the compiler, both stages, the operating
@@ -21,6 +23,7 @@ import io
 import json
 from pathlib import Path
 import re
+import subprocess
 import tarfile
 
 from .bootstrap import stage_roots
@@ -34,6 +37,12 @@ from .registry import MANIFEST_MEDIA_TYPE, Registry, RegistryError
 CONFIG_MEDIA_TYPE = "application/vnd.oci.image.config.v1+json"
 LAYER_MEDIA_TYPE = "application/vnd.oci.image.layer.v1.tar+gzip"
 LOCKFILE_NAME = "spack.lock"
+# Run by `spack python`, so that it reads and writes with the Spack of the session.
+LOCKFILE_SCRIPT = Path(__file__).with_name("_spack_lockfile.py")
+# Where a cache outside a registry keeps the lockfile of a tag, below its URL.
+LOCKFILE_DIRECTORY = "compiler-lockfiles"
+# The exit status of LOCKFILE_SCRIPT when the cache has no file to read, or one already.
+_ABSENT = 2
 
 
 def _layer(data: bytes) -> tuple[bytes, bytes]:
@@ -87,18 +96,60 @@ def compiler_lockfile_tag(compiler: str, target: str, operating_system: str) -> 
     return f"compiler-{readable}-{digest}"
 
 
-def fetch_compiler_lockfile(resource: Resource, tag: str, env, directory: Path) -> Path | None:
+def lockfile_path(tag: str) -> str:
+    """The path of the lockfile of `tag` below a build cache outside a registry.
+
+    @param tag: the tag of the lockfile
+    @return: the path, relative to the URL of the cache
+    """
+    return f"{LOCKFILE_DIRECTORY}/{tag}.lock"
+
+
+def _lockfile_script(resource: Resource, action: str, tag: str, file: Path, command: list[str], env) -> bool:
+    """Read or store the lockfile of `tag` in a build cache outside a registry, with Spack.
+
+    @param resource: the build cache, a mirror of the instance that `command` runs
+    @param action: "get" to save the lockfile as `file`, "put" to store `file`
+    @param tag: the tag of the lockfile
+    @param file: where to save it, or what to store
+    @param command: the isolated Spack command of that instance
+    @param env: its environment, with the credentials of the cache
+    @return: whether the lockfile was read or stored; False when the cache has
+        none to read, or one already; a cache that cannot be read or written raises RuntimeError
+    """
+    process = subprocess.run(
+        [*command, "python", str(LOCKFILE_SCRIPT), action, resource.name, lockfile_path(tag), str(file)],
+        check=False, text=True, capture_output=True, env=env,
+    )
+    if process.returncode == _ABSENT:
+        return False
+    if process.returncode != 0:
+        said = (process.stdout + process.stderr).strip()
+        raise RuntimeError(said or f"Spack could not {'read' if action == 'get' else 'write'} {resource.url}")
+    return True
+
+
+def fetch_compiler_lockfile(
+    resource: Resource, tag: str, env, directory: Path, *, command: list[str] | None = None,
+) -> Path | None:
     """The compiler lockfile under `tag` in the build cache, saved in `directory`, or None.
 
-    @param resource: the build cache, in an OCI registry
+    @param resource: the build cache
     @param tag: the tag of the lockfile
     @param env: the environment with the credentials of the cache, or without for an anonymous read
     @param directory: where to save it
-    @return: the saved lockfile, or None when the cache has no such tag or is not in a registry;
-        a registry that refuses or holds something else raises RegistryError
+    @param command: the isolated Spack command of the state, which reads a cache
+        outside a registry; without it, such a cache gives no lockfile
+    @return: the saved lockfile, or None when the cache has none;
+        a registry that refuses or holds something else raises RegistryError,
+        another cache that cannot be read raises RuntimeError
     """
     if not resource.oci:
-        return None
+        if command is None:
+            return None
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{tag}.lock"
+        return path if _lockfile_script(resource, "get", tag, path, command, env) else None
     registry = Registry.of(resource, env)
     manifest = registry.manifest(tag)
     if manifest is None:
@@ -115,6 +166,7 @@ def fetch_compiler_lockfile(resource: Resource, tag: str, env, directory: Path) 
 
 def find_compiler_lockfile(
     config: Config, env, *, compiler: str, target: str | None, operating_system: str, directory: Path,
+    command: list[str] | None = None,
 ) -> Path | None:
     """The compiler lockfile for these in the build caches, saved in `directory`, or None.
 
@@ -130,6 +182,8 @@ def find_compiler_lockfile(
     @param target: the target of the toolchain, or None, which has no lockfile
     @param operating_system: the operating system as Spack names it
     @param directory: where to save it
+    @param command: the isolated Spack command of the state, which reads the
+        caches outside a registry; without it, they give no lockfile
     @return: the saved lockfile of the first cache that has one, or None when
         none has, also when the configuration defines no build cache
     """
@@ -142,7 +196,7 @@ def find_compiler_lockfile(
         names.remove(config.toolchain.cache)
         names.insert(0, config.toolchain.cache)
     for name in names:
-        found = fetch_compiler_lockfile(config.resource(name), tag, env, directory)
+        found = fetch_compiler_lockfile(config.resource(name), tag, env, directory, command=command)
         if found is not None:
             return found
     return None
@@ -150,21 +204,28 @@ def find_compiler_lockfile(
 
 def publish_compiler_lockfile(
     resource: Resource, lockfile: Path, env, *, compiler: str, target: str, operating_system: str,
+    command: list[str] | None = None,
 ) -> tuple[str, bool]:
     """Store the compiler lockfile in the build cache, unless the cache has one under its tag.
 
     A lockfile already there is left as it is: machines may have installed from
     it, and the binaries it names are in the cache.
 
-    @param resource: the build cache, in an OCI registry
+    @param resource: the build cache
     @param lockfile: the `spack.lock` of the compiler environment
     @param env: the environment with the push credentials of the cache
     @param compiler: the compiler spec, such as gcc@15
     @param target: the target of the toolchain
     @param operating_system: the operating system as Spack names it
+    @param command: the isolated Spack command of the state, which writes a
+        cache outside a registry; such a cache without it raises ValueError
     @return: the tag, and whether the lockfile was stored
     """
     tag = compiler_lockfile_tag(compiler, target, operating_system)
+    if not resource.oci:
+        if command is None:
+            raise ValueError(f"{resource.name} is not in a registry: Spack writes its lockfile, so give the Spack command")
+        return tag, _lockfile_script(resource, "put", tag, lockfile, command, env)
     registry = Registry.of(resource, env)
     if registry.manifest(tag) is not None:
         return tag, False
