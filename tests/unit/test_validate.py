@@ -148,3 +148,24 @@ def test_validate_access_reports_each_recipe(tmp_path, monkeypatch):
     )
 
     assert {f.subject for f in findings if f.subject.startswith("access:")} == {"access:one", "access:two"}
+
+
+def test_an_endpoint_url_outside_an_s3_resource_is_a_warning(tmp_path):
+    from seanerstack.config import Config, Resource
+    repo = tmp_path / "repo"
+    (repo / "packages").mkdir(parents=True)
+    resources = {
+        name: Resource(name=name, kind=kind, url=url, endpoint_url="https://s3.example.org", signed=False)
+        for name, kind, url in (
+            ("bucket", "spack-buildcache", "s3://bucket"),
+            ("registry", "spack-buildcache", "oci://registry.example.org/cache"),
+            ("gitlab", "git", "https://gitlab.example.org/"),
+        )
+    }
+    config = Config(path=tmp_path / "config.toml", resources=resources)
+
+    findings = validate(repository=repo, environments=tmp_path / "environments", config=config)
+
+    warned = [finding for finding in findings if finding.level == "warning"]
+    assert [finding.subject for finding in warned] == ["resource:registry", "resource:gitlab"]
+    assert warned[0].message.endswith("only with an s3:// URL, not oci://registry.example.org/cache")

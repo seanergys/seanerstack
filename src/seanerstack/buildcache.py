@@ -14,6 +14,7 @@ from .secrets import SecretStore
 # Run by `spack python`, so that it uses the Spack of the session.
 UPDATE_INDEX_SCRIPT = Path(__file__).with_name("_spack_update_index.py")
 CACHE_ACCESS_SCRIPT = Path(__file__).with_name("_spack_cache_access.py")
+PUSH_ACCESS_SCRIPT = Path(__file__).with_name("_spack_push_access.py")
 
 # How Spack reports a build cache without an index: the registry knows no
 # manifest of that name, which a refused request (401, 403) never says.
@@ -65,7 +66,8 @@ def _mirror_args(resource: Resource, command: list[str]) -> list[str]:
     if resource.autopush:
         args.append("--autopush")
     args.append("--signed" if resource.signed else "--unsigned")
-    if resource.endpoint_url:
+    # The endpoint is that of an S3 service; Spack has no use for it elsewhere.
+    if resource.endpoint_url and resource.s3:
         args.extend(["--s3-endpoint-url", resource.endpoint_url])
     if resource.credentials:
         user_variable, secret_variable = resource.credential_variables
@@ -205,6 +207,32 @@ def check_buildcaches(config: Config, secrets: SecretStore, *, command: list[str
             continue
         results.append((resource.name, process.returncode == 0 and not unreadable, message))
     return results
+
+
+def check_push(resource: Resource, *, command: list[str], env) -> tuple[bool, str]:
+    """Whether the credentials of `env` can push to a build cache.
+
+    An OCI cache is asked to start an upload, which stores nothing. Any other
+    cache gets a small file below test/ of its push URL, the way Spack pushes
+    a binary there, which is removed again.
+
+    @param resource: the build cache, configured as a mirror of the instance that `command` runs
+    @param command: the isolated Spack command of that instance
+    @param env: its environment, with the cache's push credentials
+    @return: whether the cache took the push, and a message that says what happened
+    """
+    if resource.oci:
+        from .prepare import check_push_access
+        try:
+            check_push_access(resource, env)
+        except RuntimeError as error:
+            return False, str(error)
+        return True, f"takes a push to {resource.url}"
+    process = subprocess.run(
+        [*command, "python", str(PUSH_ACCESS_SCRIPT), resource.name], check=False, text=True, capture_output=True, env=env,
+    )
+    message = process.stdout.strip() or process.stderr.strip()
+    return process.returncode == 0, message.removeprefix(f"{resource.name}: ")
 
 
 def push_installed(resource: Resource, *, command: list[str], env) -> int:

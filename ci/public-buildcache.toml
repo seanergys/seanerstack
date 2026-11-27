@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: Apache-2.0
+# The config.toml of the toolchain:public jobs, which build the toolchain into
+# the public build caches on the Juphoria object storage of FZJ instead of the
+# registry caches. The jobs name it in SEANERSTACK_CONFIG_FILE.
+#
+# Its caches have the names of the registry caches of the shipped config.toml,
+# whose [toolchain] it takes, so the toolchain points at them. With the keys of
+# the project, from the secrets file under juphoria-s3, the bucket names resolve
+# in the project's tenant. Anyone can read the buckets without keys over Swift,
+# at https://juphoria-s3.fz-juelich.de/swift/v1/AUTH_e6da86ecdd8c44b5848998a4393d217e/<bucket>.
+#
+# The recipes are still cloned from the SEANERGYS GitLab, as with the shipped
+# config.toml. The jobs also read the project build cache in the registry,
+# which the toolchain jobs fill, with the job token: what it holds, the
+# compiler of its lockfile included, is installed from there and pushed to the
+# public caches instead of built again. Its name is not that of a cache of the
+# toolchain, so nothing is pushed to it.
+
+[resources.seanergys-gitlab]
+kind = "git"
+url = "https://gitlab.seanergys.fz-juelich.de/"
+credentials = "seanergys-gitlab"
+
+[resources.seanerstack-project-buildcache]
+kind = "spack-buildcache"
+url = "oci://registry.seanergys.fz-juelich.de/software/seanerstack/buildcache"
+credentials = "seanergys-registry"
+signed = false
+
+[resources.seanerstack-buildcache]
+kind = "spack-buildcache"
+url = "s3://seanergys-seanerstack-buildcache"
+endpoint_url = "https://juphoria-s3.fz-juelich.de"
+credentials = "juphoria-s3"
+signed = false
+
+[resources.seanerstack-buildcache-bootstrap]
+kind = "spack-buildcache"
+url = "s3://seanergys-seanerstack-buildcache-bootstrap"
+endpoint_url = "https://juphoria-s3.fz-juelich.de"
+credentials = "juphoria-s3"
+signed = false

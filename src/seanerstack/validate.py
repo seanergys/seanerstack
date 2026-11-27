@@ -157,6 +157,25 @@ def _validate_resources(repository: Path, config: Config) -> list[Finding]:
     return findings
 
 
+def _validate_resource_options(config: Config) -> list[Finding]:
+    """Warnings about options of a resource that its URL has no use for.
+
+    They are warnings, not errors, so that every config.toml that loaded
+    before still passes.
+
+    @param config: the Seanerstack configuration
+    @return: one warning for each such option
+    """
+    findings: list[Finding] = []
+    for name, resource in config.resources.items():
+        if resource.endpoint_url and not resource.s3:
+            findings.append(Finding(
+                "warning", f"resource:{name}",
+                f"endpoint_url names an S3 service and takes effect only with an s3:// URL, not {resource.url}",
+            ))
+    return findings
+
+
 def check_git_access(
     config: Config, secrets: SecretStore, *, repository: Path | None = None, every_recipe: bool = False
 ) -> list[tuple[str, bool, str]]:
@@ -217,6 +236,7 @@ def validate(
     findings = _validate_packages(repository) + _validate_environments(environments)
     if config is not None:
         findings.extend(_validate_resources(repository, config))
+        findings.extend(_validate_resource_options(config))
 
     if access:
         if config is None or secrets is None:

@@ -357,3 +357,65 @@ def test_an_instance_with_nothing_installed_sends_nothing(monkeypatch, tmp_path:
     resource = buildcache.bootstrap_buildcache(_with_bootstrap_cache(tmp_path))
     assert buildcache.push_installed(resource, command=["bspack"], env={}) == 0
     assert calls == [["bspack", "find", "--format", "/{hash}"]]
+
+
+def _s3_cache() -> Resource:
+    return Resource(
+        name="public", kind="spack-buildcache", url="s3://bucket", endpoint_url="https://s3.example.org",
+        credentials="keys", signed=False,
+    )
+
+
+def test_a_push_check_sends_a_file_to_a_cache_outside_a_registry_with_spack(monkeypatch):
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append((args, kwargs["env"]))
+        return subprocess.CompletedProcess(args, 0, "public: takes a push to s3://bucket\n", "")
+
+    monkeypatch.setattr(buildcache.subprocess, "run", fake_run)
+
+    assert buildcache.check_push(_s3_cache(), command=["spack"], env={"KEY": "value"}) == (True, "takes a push to s3://bucket")
+    assert calls == [(["spack", "python", str(buildcache.PUSH_ACCESS_SCRIPT), "public"], {"KEY": "value"})]
+
+
+def test_a_cache_that_refuses_the_push_fails_the_check_with_what_spack_said(monkeypatch):
+    refused = "public: s3://bucket refuses a push: InvalidAccessKeyId\n"
+    monkeypatch.setattr(buildcache.subprocess, "run", lambda args, **kwargs: subprocess.CompletedProcess(args, 1, refused, ""))
+
+    assert buildcache.check_push(_s3_cache(), command=["spack"], env={}) == (False, "s3://bucket refuses a push: InvalidAccessKeyId")
+
+
+def test_a_push_check_of_a_registry_starts_an_upload_without_spack(monkeypatch):
+    import seanerstack.prepare
+    registry = Resource(name="registry", kind="spack-buildcache", url="oci://registry.example.org/cache", credentials="token", signed=False)
+    asked = []
+    monkeypatch.setattr(seanerstack.prepare, "check_push_access", lambda resource, env: asked.append((resource.name, env)))
+    monkeypatch.setattr(buildcache.subprocess, "run", lambda args, **kwargs: pytest.fail("Spack is not asked"))
+
+    assert buildcache.check_push(registry, command=["spack"], env={"KEY": "value"}) == (True, "takes a push to oci://registry.example.org/cache")
+    assert asked == [("registry", {"KEY": "value"})]
+
+    def refuse(resource, env):
+        raise RuntimeError("the credentials of 'registry' cannot push")
+
+    monkeypatch.setattr(seanerstack.prepare, "check_push_access", refuse)
+    assert buildcache.check_push(registry, command=["spack"], env={}) == (False, "the credentials of 'registry' cannot push")
+
+
+def test_an_endpoint_url_reaches_spack_only_for_an_s3_cache(monkeypatch, tmp_path: Path):
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(buildcache.subprocess, "run", fake_run)
+    resources = {
+        name: Resource(name=name, kind="spack-buildcache", url=url, endpoint_url="https://s3.example.org", signed=False)
+        for name, url in (("registry", "oci://registry.example.org/cache"), ("local", "file:///cache"), ("bucket", "s3://bucket"))
+    }
+    buildcache.configure_buildcaches(Config(path=tmp_path / "config.toml", resources=resources), command=["spack"])
+
+    added = {args[-2]: args for args in calls if "mirror" in args and "add" in args}
+    assert [name for name, args in added.items() if "--s3-endpoint-url" in args] == ["bucket"]
