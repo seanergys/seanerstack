@@ -40,12 +40,14 @@ Both jobs set up their state in a directory with a random name of a random lengt
 
 ## Installing from the build caches on GitHub
 
-The GitLab pipeline fills the build caches; the workflow `.github/workflows/install.yml` of the GitHub copy of the project only checks that `seanergys-meta` installs from them, and builds nothing. It runs `ci/github/install-from-cache.sh` in the image of a platform of `[toolchain.platforms]`, which installs Seanerstack from the checkout, runs `init` and `toolchain bootstrap --cache-only`, and installs an environment with `seanergys-meta` with `spack install --cache-only`. A binary that the caches lack, the compiler lockfile included, fails the job instead of being built.
+The GitLab pipeline fills the build caches; the workflow `.github/workflows/install.yml` of the GitHub copy of the project only checks that `seanergys-meta` installs from the public build caches on Juphoria, and builds nothing. It runs `ci/github/install-from-cache.sh` in the image of a platform of `[toolchain.platforms]`, which installs Seanerstack from the checkout, runs `init` and `toolchain bootstrap --cache-only`, and installs an environment with `seanergys-meta` with `spack install --cache-only`. A binary that the caches lack, the compiler lockfile included, fails the job instead of being built.
 
-Each platform has two jobs:
+Both take `ci/github.toml`: the public build caches, read over Swift without keys, which the `toolchain:public` jobs fill, their compiler lockfiles included, and the Git resource of the recipes, without credentials. Git rewrites the SEANERGYS GitLab URLs of the recipes to the copies of the repositories in the GitHub organization `seanergys`, and `seanerstack validate --access` tries every one. Each platform has two jobs:
 
-- **private** takes the resources of the shipped `config.toml`: the project build caches in the registry and the SEANERGYS GitLab. It writes the repository secrets `SEANERGYS_GITLAB_USERNAME` and `SEANERGYS_GITLAB_TOKEN`, a GitLab token that reads repositories and the registry, into a secrets file under `seanergys-gitlab` and `seanergys-registry`, as a user does, and first runs `seanerstack validate --access`, so a private recipe that the token cannot clone fails the job.
-- **public** takes `ci/github-public.toml`: only the public build caches on Juphoria, read over Swift without keys, and no Git resource, so it needs no account at all. The `toolchain:public` jobs fill those caches, their compiler lockfiles included.
+- **private** reads the repositories with the secret `SEANERGYS_GITHUB_TOKEN`, a token that reads the repositories of the organization.
+- **public** has no credentials at all, so it reads only the public repositories.
+
+A step that fails does not stop the job: `init`, the access of each repository and the install are recorded in `results/`, and the job fails at the end. Each job keeps its results as an artifact, and the `report` job puts them into one table in the summary of the run, a row for `seanergys-meta` and for each repository, a column for each job. Until every repository is public, the public jobs fail on the repositories that are not.
 
 Pushes to the default branch and pull requests run both jobs on Rocky Linux 10. **Actions → install → Run workflow** takes the platforms to check, names of `[toolchain.platforms]` separated by spaces, or `all`.
 
