@@ -38,6 +38,17 @@ Both jobs set up their state in a directory with a random name of a random lengt
 
 `how-to:work-on-a-package` runs `tests/how-to/work-on-a-package.sh` on Rocky Linux 10, in a state set up with `seanerstack init` and `seanerstack toolchain bootstrap`. The script is the procedure of [Work on a package](../how-to/work-on-a-package.md): the guide shows its sections, so the commands a reader types are the ones this job has run. It clones `priorisea` with the job token, binds the checkout to the package environment, installs it, and checks that the installed package was built from the checkout. The priorisea project and the projects of its submodules therefore have to allow this project's job token, as for `build:rocky10`.
 
+## Installing from the build caches on GitHub
+
+The GitLab pipeline fills the build caches; the workflow `.github/workflows/install.yml` of the GitHub copy of the project only checks that `seanergys-meta` installs from them, and builds nothing. It runs `ci/github/install-from-cache.sh` in the image of a platform of `[toolchain.platforms]`, which installs Seanerstack from the checkout, runs `init` and `toolchain bootstrap --cache-only`, and installs an environment with `seanergys-meta` with `spack install --cache-only`. A binary that the caches lack, the compiler lockfile included, fails the job instead of being built.
+
+Each platform has two jobs:
+
+- **private** takes the resources of the shipped `config.toml`: the project build caches in the registry and the SEANERGYS GitLab. It writes the repository secrets `SEANERGYS_GITLAB_USERNAME` and `SEANERGYS_GITLAB_TOKEN`, a GitLab token that reads repositories and the registry, into a secrets file under `seanergys-gitlab` and `seanergys-registry`, as a user does, and first runs `seanerstack validate --access`, so a private recipe that the token cannot clone fails the job.
+- **public** takes `ci/github-public.toml`: only the public build caches on Juphoria, read over Swift without keys, and no Git resource, so it needs no account at all. The `toolchain:public` jobs fill those caches, their compiler lockfiles included.
+
+Pushes to the default branch and pull requests run both jobs on Rocky Linux 10. **Actions → install → Run workflow** takes the platforms to check, names of `[toolchain.platforms]` separated by spaces, or `all`.
+
 ## Project settings
 
 The merge train needs these settings, under **Settings → Merge requests**:
