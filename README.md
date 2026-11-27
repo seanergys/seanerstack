@@ -7,6 +7,11 @@ Seanerstack combines two closely related roles for SEANERGYS:
 
 Seanerstack does **not** define its own package, environment, compiler, or toolchain format. Spack remains the source of truth for all of those concepts.
 
+Seanerstack is developed in the SEANERGYS GitLab, at
+<https://gitlab.seanergys.fz-juelich.de/software/seanerstack>, which the copy on
+GitHub mirrors. The documentation is in [docs](docs/); start with
+[Getting started](docs/tutorials/getting-started.md).
+
 ## Installation layout
 
 The Python implementation is installed normally, while Spack-facing data is installed under the Python environment prefix:
@@ -57,8 +62,8 @@ uv run seanerstack --help
 The unit tests are in `tests/unit`. The end-to-end tests in `tests/e2e` install
 the wheel of the checkout into a fresh environment and run it against the
 SEANERGYS GitLab, with credentials from a keyloom secrets file. They read the
-seanerbroker repository, and build a small package, push it to a test build cache,
-and install it back from there. Each build-cache test pushes to its own
+seanerbroker and seanerbus-msg repositories, and build a small package, push it
+to a test build cache, and install it back from there. Each build-cache test pushes to its own
 repository, `test-e2e-buildcache-<test>`, under the registry location given by
 `SEANERSTACK_E2E_REGISTRY`, never to the project build cache. They need Git,
 a C compiler, make, and a GitLab token that can read seanerbroker and write to
@@ -71,7 +76,11 @@ export SEANERSTACK_E2E_REGISTRY=oci://registry.seanergys.fz-juelich.de/<namespac
 tests/e2e/run.sh
 ```
 
-CI runs them in the `e2e` job with the job token.
+The GitLab pipeline runs each file of `tests/e2e` in a job of its own, such as
+`e2e:install` and `e2e:buildcache`, with the job token. On GitHub, the `install`
+workflow only checks that `seanergys-meta` installs from the build caches alone,
+with the private resources and with only the public build caches; see
+[CI pipelines](docs/explanation/pipelines.md).
 
 Build or serve the documentation:
 
@@ -168,12 +177,16 @@ A build cache with an `oci://` URL lives in a container registry and takes
 resource must set `signed = false`. A build cache with a `file://` URL is a
 directory on a local or shared filesystem. It takes no credentials, because file
 permissions control access to it, and it is unsigned unless the resource sets
-`signed = true`. Any other URL is S3 and takes the access key pair; an
-`s3://` cache names the endpoint of its S3 service in `endpoint_url`, which no
-other URL uses, and `seanerstack validate` warns about it elsewhere. The project
-cache, `seanerstack-buildcache`, is the seanerstack GitLab container registry;
+`signed = true`. Any other URL is S3 or plain HTTPS, and takes the access key
+pair, or no credentials for a cache that anyone can read; an `s3://` cache names
+the endpoint of its S3 service in `endpoint_url`, which no other URL uses, and
+`seanerstack validate` warns about it elsewhere. The project cache,
+`seanerstack-buildcache`, is the seanerstack GitLab container registry;
 `seanerstack-buildcache-bootstrap` beside it holds the first stage of the
 compiler, with the same credentials, and only the bootstrap instance reads it.
+The public build caches on the Juphoria object storage of FZJ hold the toolchain
+and the stack too, and anyone can read them over HTTPS without credentials; see
+[Use the build cache](docs/how-to/use-the-build-cache.md).
 
 Seanerstack stores only environment-variable references in Spack's mirror
 configuration. It never writes S3 keys or registry tokens into Spack
