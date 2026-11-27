@@ -308,7 +308,10 @@ def test_the_public_caches_take_the_names_of_the_caches_of_the_toolchain():
     public = load_config(Path(__file__).parents[2] / "ci" / "public-buildcache.toml")
     shipped = load_config()
     caches = {shipped.toolchain.cache, shipped.toolchain.bootstrap_cache}
-    assert set(public.resources) == {"seanergys-gitlab", *caches}
+    # The jobs push only to the caches of the toolchain; any other build cache is a registry cache they read.
+    registry = {resource.url for resource in shipped.resources.values() if resource.kind == "spack-buildcache"}
+    others = [resource for name, resource in public.resources.items() if name not in {"seanergys-gitlab", *caches}]
+    assert all(resource.kind == "spack-buildcache" and resource.url in registry for resource in others)
     # The recipes come from where the shipped config.toml clones them.
     assert public.resources["seanergys-gitlab"] == shipped.resources["seanergys-gitlab"]
     assert public.toolchain == shipped.toolchain
