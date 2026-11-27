@@ -7,12 +7,14 @@ from spack.package import *
 
 
 class FluxCore(BuiltinFluxCore):
-    """Flux as Spack has it, which can also build a commit"""
+    """Flux as Spack has it, which can also build a commit and builds from SEANERGYS GitLab"""
 
     # configure takes the version from `git describe`, which needs the tags. Spack
     # clones a commit alone, and the refspec of that clone makes the builtin recipe
     # fail to fetch the history, so configure stops at an invalid version.
     get_full_repo = True
+
+    git = "git@gitlab.seanergys.fz-juelich.de:software/flux-core.git"
 
     def test_version(self):
         """check that flux reports a version that starts with a release"""

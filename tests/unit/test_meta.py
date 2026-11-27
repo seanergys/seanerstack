@@ -14,12 +14,14 @@ def _packages() -> pathlib.Path:
 def test_seanergys_meta_depends_only_on_recipes_of_the_repository():
     recipes = {path.parent.name.replace("_", "-") for path in _packages().glob("*/package.py")}
     meta = seanerstack.recipe.parse_recipe(_packages() / "seanergys_meta" / "package.py")
-    dependencies = [directive.args[0] for directive in meta.directives if directive.name == "depends_on"]
+    dependencies = [
+        directive.args[0].split("@")[0]
+        for directive in meta.directives
+        if directive.name == "depends_on"
+    ]
     assert dependencies
     assert sorted(dependencies) == dependencies
-    # Disabled for now: seanergys-meta depends on flux-sched, which seanerstack
-    # has no recipe for yet, so Spack takes the builtin one.
-    # assert set(dependencies) <= recipes - {"seanergys-meta"}
+    assert set(dependencies) <= recipes - {"seanergys-meta"}
 
 
 def test_the_rocky10_build_job_builds_seanergys_meta():
