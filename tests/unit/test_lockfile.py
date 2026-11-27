@@ -90,6 +90,51 @@ def test_a_config_without_the_cache_of_its_toolchain_has_no_lockfile(tmp_path):
     assert lockfile.find_compiler_lockfile(config, {}, **WHERE, directory=tmp_path) is None
 
 
+def _caches(tmp_path, *names, cache="public", bootstrap=None):
+    from seanerstack.config import Config, Toolchain
+    resources = {
+        name: Resource(name=name, kind="spack-buildcache", url=f"oci://registry.example.org/{name}", signed=False)
+        for name in names
+    }
+    toolchain = Toolchain(compiler="gcc@15", packages=(), cache=cache, target="x86_64_v3", platforms={}, bootstrap_cache=bootstrap)
+    return Config(path=tmp_path / "config.toml", resources=resources, toolchain=toolchain)
+
+
+def test_the_lockfile_is_looked_for_in_the_cache_of_the_toolchain_first_then_in_the_other_caches(monkeypatch, tmp_path):
+    asked = []
+    monkeypatch.setattr(lockfile, "fetch_compiler_lockfile", lambda resource, tag, env, directory: asked.append(resource.name))
+
+    assert lockfile.find_compiler_lockfile(_caches(tmp_path, "project", "public", "local"), {}, **WHERE, directory=tmp_path) is None
+    assert asked == ["public", "project", "local"]
+
+
+def test_the_first_cache_with_a_lockfile_gives_it_and_the_bootstrap_cache_is_not_asked(monkeypatch, tmp_path):
+    asked = []
+
+    def fetch(resource, tag, env, directory):
+        asked.append(resource.name)
+        return tmp_path / f"{resource.name}.lock" if resource.name == "project" else None
+
+    monkeypatch.setattr(lockfile, "fetch_compiler_lockfile", fetch)
+    config = _caches(tmp_path, "boot", "project", "public", "local", bootstrap="boot")
+
+    assert lockfile.find_compiler_lockfile(config, {}, **WHERE, directory=tmp_path) == tmp_path / "project.lock"
+    # The bootstrap cache holds only the first stage of the compiler.
+    assert asked == ["public", "project"]
+
+
+def test_a_cache_without_a_lockfile_takes_the_one_of_the_registry_that_it_is_filled_from(cache, tmp_path):
+    from seanerstack.config import Config, Toolchain
+    tag, _ = _publish(cache, tmp_path)
+    public = Resource(name="public", kind="spack-buildcache", url="s3://bucket", endpoint_url="https://s3.example.org", signed=False)
+    toolchain = Toolchain(compiler="gcc@15", packages=(), cache="public", target="x86_64_v3", platforms={})
+    config = Config(path=tmp_path / "config.toml", resources={"public": public, "cache": cache}, toolchain=toolchain)
+
+    found = lockfile.find_compiler_lockfile(config, {}, **WHERE, directory=tmp_path / "found")
+
+    assert found == tmp_path / "found" / f"{tag}.lock"
+
+
 def test_the_lockfile_is_an_ordinary_image_of_one_layer(cache, tmp_path):
     # A registry that checks media types, such as GitLab's, refuses types of its own.
     import gzip

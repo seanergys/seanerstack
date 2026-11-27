@@ -116,21 +116,36 @@ def fetch_compiler_lockfile(resource: Resource, tag: str, env, directory: Path) 
 def find_compiler_lockfile(
     config: Config, env, *, compiler: str, target: str | None, operating_system: str, directory: Path,
 ) -> Path | None:
-    """The compiler lockfile for these in the build cache of the toolchain, saved in `directory`, or None.
+    """The compiler lockfile for these in the build caches, saved in `directory`, or None.
+
+    The build cache of the toolchain is asked first, then the other build
+    caches of the configuration, in their order. A state that fills one cache
+    from another, such as a public cache from the project cache, thereby
+    installs the compiler that the other holds, until its own cache has a
+    lockfile.
 
     @param config: the Seanerstack configuration, whose [toolchain] names the build cache
-    @param env: the environment with the credentials of the cache, or without for an anonymous read
+    @param env: the environment with the credentials of the caches, or without for an anonymous read
     @param compiler: the compiler spec, such as gcc@15
     @param target: the target of the toolchain, or None, which has no lockfile
     @param operating_system: the operating system as Spack names it
     @param directory: where to save it
-    @return: the saved lockfile, or None when there is none, also when the
-        configuration does not define the build cache that [toolchain] names
+    @return: the saved lockfile of the first cache that has one, or None when
+        none has, also when the configuration defines no build cache
     """
-    if config.toolchain is None or target is None or config.toolchain.cache not in config.resources:
+    from .buildcache import buildcaches
+    if config.toolchain is None or target is None:
         return None
     tag = compiler_lockfile_tag(compiler, target, operating_system)
-    return fetch_compiler_lockfile(config.resource(config.toolchain.cache), tag, env, directory)
+    names = [cache.name for cache in buildcaches(config)]
+    if config.toolchain.cache in names:
+        names.remove(config.toolchain.cache)
+        names.insert(0, config.toolchain.cache)
+    for name in names:
+        found = fetch_compiler_lockfile(config.resource(name), tag, env, directory)
+        if found is not None:
+            return found
+    return None
 
 
 def publish_compiler_lockfile(
