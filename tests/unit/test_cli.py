@@ -35,6 +35,7 @@ def _init_args(tmp_path: Path, **overrides) -> "cli.argparse.Namespace":
         probe_timeout=300.0,
         force=False,
         concretize=False,
+        cache_only=False,
         # What the machine allows, as without --jobs.
         jobs=None,
         external=None,
@@ -691,7 +692,7 @@ def test_bootstrap_builds_with_the_jobs_the_machine_allows_unless_told(monkeypat
             compiler=compiler, installed=True, registered=False, languages=("c",), probe="zlib", probe_ok=True
         ),
     )
-    monkeypatch.setattr(cli, "install_packages", lambda command, packages, env, jobs=None: given.append(("packages", jobs)))
+    monkeypatch.setattr(cli, "install_packages", lambda command, packages, env, jobs=None, **options: given.append(("packages", jobs)))
 
     assert cli._run_bootstrap(_bootstrap_args(tmp_path)) == 0
     assert cli._run_bootstrap(_bootstrap_args(tmp_path, jobs=3)) == 0
