@@ -71,6 +71,7 @@ and release process.
   other seanerbus packages build from.
 - The seanerbus packages and `py-pycapnp` have a test for `spack test run`.
 - `seanerbus-cli`, the command-line client of the SeanerBUS.
+- `seanerbus-naming-service`, the naming server of the SeanerBUS.
 - `telemetry-collector`, the SEANERGYS Telemetry Collector and its plugins, and the
   `telemetry-collector-dev` environment.
 - `seanerstack --version` prints the Seanerstack version and the Spack version
