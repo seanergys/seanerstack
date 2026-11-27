@@ -46,6 +46,11 @@ CPU target. It checks access to every resource and installs no compiler; no
 later command needs its options again. `seanerstack --version` prints the
 Seanerstack version and the Spack version it pins.
 
+To build COUNTDOWN with the Access Daemon backend, install
+`countdown-seanergys+access_daemon` in a configured Seanerstack session. The
+default `countdown-seanergys` spec builds without the backend. For MPI runs that
+use the backend, set `CNTD_USE_ACCESS_DAEMON=1`.
+
 ## Development
 
 ```console

@@ -73,6 +73,8 @@ and release process.
 - `seanerbus-cli`, the command-line client of the SeanerBUS.
 - `seanerbus-naming-service`, the naming server of the SeanerBUS, and the
   `seanerbus-naming-service-dev` environment.
+- `countdown-seanergys`, the COUNTDOWN MPI interposer, with an opt-in
+  `+access_daemon` variant that links against the packaged EasyBUS client.
 - `telemetry-collector`, the SEANERGYS Telemetry Collector and its plugins, and the
   `telemetry-collector-dev` environment.
 - `seanerstack --version` prints the Seanerstack version and the Spack version
