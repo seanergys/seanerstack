@@ -102,7 +102,7 @@ def _caches(tmp_path, *names, cache="public", bootstrap=None):
 
 def test_the_lockfile_is_looked_for_in_the_cache_of_the_toolchain_first_then_in_the_other_caches(monkeypatch, tmp_path):
     asked = []
-    monkeypatch.setattr(lockfile, "fetch_compiler_lockfile", lambda resource, tag, env, directory: asked.append(resource.name))
+    monkeypatch.setattr(lockfile, "fetch_compiler_lockfile", lambda resource, tag, env, directory, **options: asked.append(resource.name))
 
     assert lockfile.find_compiler_lockfile(_caches(tmp_path, "project", "public", "local"), {}, **WHERE, directory=tmp_path) is None
     assert asked == ["public", "project", "local"]
@@ -111,7 +111,7 @@ def test_the_lockfile_is_looked_for_in_the_cache_of_the_toolchain_first_then_in_
 def test_the_first_cache_with_a_lockfile_gives_it_and_the_bootstrap_cache_is_not_asked(monkeypatch, tmp_path):
     asked = []
 
-    def fetch(resource, tag, env, directory):
+    def fetch(resource, tag, env, directory, **options):
         asked.append(resource.name)
         return tmp_path / f"{resource.name}.lock" if resource.name == "project" else None
 
