@@ -855,15 +855,18 @@ def use_external_package(command: list[str], name: str, prefix: str, env) -> Non
     _run([*command, "config", "add", f"packages:{name}:buildable:false"], env=env)
 
 
-def install_packages(command: list[str], packages: list[str], env, jobs: int | None = None) -> None:
+def install_packages(
+    command: list[str], packages: list[str], env, jobs: int | None = None, cache_only: bool = False,
+) -> None:
     """Install the toolchain's packages, such as rust, with the toolchain compiler.
 
     @param command: the isolated Spack command
     @param packages: the packages, such as rust
     @param env: the environment of the command
     @param jobs: the build jobs, or None for Spack's choice
-    @return: nothing; a failed build raises CalledProcessError
+    @param cache_only: take them from the build caches only, and fail instead of building
+    @return: nothing; a failed build, or with `cache_only` a missing binary, raises CalledProcessError
     """
     if packages:
         # Options before the specs: spack install takes everything after the first spec as a spec.
-        _run_streaming([*command, "install", *_jobs(jobs), *packages], env=env)
+        _run_streaming([*command, "install", *(["--cache-only"] if cache_only else []), *_jobs(jobs), *packages], env=env)

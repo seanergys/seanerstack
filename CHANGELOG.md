@@ -9,6 +9,19 @@ and release process.
 
 ### Added
 
+- A build cache outside a registry, such as an S3 bucket or a directory,
+  keeps the compiler lockfile as the file `compiler-lockfiles/<tag>.lock`
+  below it, which the Spack of the state reads and writes. `buildcache
+  prepare` and `toolchain publish` publish it into any build cache of the
+  toolchain, so the public caches on Juphoria hold it too.
+- `seanerstack toolchain bootstrap --cache-only` builds nothing: it stops when
+  no build cache holds a compiler lockfile, and installs the packages of
+  `[toolchain]` with `spack install --cache-only`.
+- The GitHub workflow `install` checks that `seanergys-meta` installs from the
+  public build caches on Juphoria alone, once with read access to the private
+  repositories of the GitHub organization seanergys and once without any
+  credentials, and reports which repositories each job could read. It runs
+  on Rocky Linux 10, and by hand on any platform of `[toolchain.platforms]`.
 - The compiler of the stack is built in two stages. The system compiler builds
   a first GCC, for C and C++ only, in a Spack instance of its own below
   `<state>/bootstrap`; the actual instance knows it only as an external at

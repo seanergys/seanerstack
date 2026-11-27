@@ -35,6 +35,7 @@ def _init_args(tmp_path: Path, **overrides) -> "cli.argparse.Namespace":
         probe_timeout=300.0,
         force=False,
         concretize=False,
+        cache_only=False,
         # What the machine allows, as without --jobs.
         jobs=None,
         external=None,
@@ -657,7 +658,8 @@ def test_publish_pushes_the_first_stage_and_publishes_the_compiler_lockfile(monk
     assert push[:2] == ("push", "boot") and push[2][-2:] == ["-C", str(x.state / "bootstrap" / "config")]
     assert lock[:3] == ("lockfile", "cache", x.environments / "compiler" / "spack.lock")
     # `spack arch --operating-system` of the stand-in answers rocky10.
-    assert lock[3] == {"compiler": "gcc@15", "target": "x86_64_v3", "operating_system": "rocky10"}
+    assert lock[3] == {"compiler": "gcc@15", "target": "x86_64_v3", "operating_system": "rocky10", "command": lock[3]["command"]}
+    assert lock[3]["command"][0].endswith("spack")
     out = capsys.readouterr().out
     assert "first stage: 3 specs of the bootstrap instance in oci://registry.example.org/cache-bootstrap" in out
     assert "compiler lockfile: compiler-tag in oci://registry.example.org/cache" in out
@@ -690,7 +692,7 @@ def test_bootstrap_builds_with_the_jobs_the_machine_allows_unless_told(monkeypat
             compiler=compiler, installed=True, registered=False, languages=("c",), probe="zlib", probe_ok=True
         ),
     )
-    monkeypatch.setattr(cli, "install_packages", lambda command, packages, env, jobs=None: given.append(("packages", jobs)))
+    monkeypatch.setattr(cli, "install_packages", lambda command, packages, env, jobs=None, **options: given.append(("packages", jobs)))
 
     assert cli._run_bootstrap(_bootstrap_args(tmp_path)) == 0
     assert cli._run_bootstrap(_bootstrap_args(tmp_path, jobs=3)) == 0

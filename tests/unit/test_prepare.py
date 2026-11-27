@@ -644,7 +644,7 @@ def test_prepare_publishes_the_lockfile_of_the_compiler_the_probe_accepted(monke
 
     (published,) = spack.published
     assert published[:2] == ("target", tmp_path / "compiler" / "spack.lock")
-    assert published[2] == {"compiler": "gcc@15", "target": "x86_64_v3", "operating_system": "rocky10"}
+    assert published[2] == {"compiler": "gcc@15", "target": "x86_64_v3", "operating_system": "rocky10", "command": ["spack"]}
 
 
 def test_prepare_publishes_no_lockfile_of_a_compiler_the_probe_refused(monkeypatch, tmp_path):
@@ -655,14 +655,15 @@ def test_prepare_publishes_no_lockfile_of_a_compiler_the_probe_refused(monkeypat
     assert spack.published == []
 
 
-def test_a_cache_outside_a_registry_gets_no_lockfile(monkeypatch, tmp_path):
+def test_a_cache_outside_a_registry_gets_its_lockfile_through_the_spack_of_the_state(monkeypatch, tmp_path):
     spack = Spack(monkeypatch)
     local = Resource(name="target", kind="spack-buildcache", url=(tmp_path / "cache").as_uri(), signed=False)
     _prepare.prepare_here(
         replace(config(tmp_path), resources={"target": local}), SecretStore(None), platform="rocky10", command=["spack"],
         env={}, work=tmp_path / "toolchain",
     )
-    assert spack.published == []
+    (published,) = spack.published
+    assert published[0] == "target" and published[2]["command"] == ["spack"]
 
 
 def test_prepare_builds_the_compiler_with_its_jobs(monkeypatch, tmp_path):

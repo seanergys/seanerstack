@@ -250,7 +250,7 @@ def prepare_here(
         installed_compiler=push, probe_timeout=probe_timeout,
         lockfile=None if concretize else find_compiler_lockfile(
             config, env, compiler=toolchain.compiler, target=toolchain.target,
-            operating_system=wanted.operating_system, directory=work.parent / "compiler-lockfiles",
+            operating_system=wanted.operating_system, directory=work.parent / "compiler-lockfiles", command=command,
         ),
         bootstrap_instance=bootstrap_instance, installed_first_stage=push_first_stage, jobs=jobs or default_jobs(),
     )
@@ -262,12 +262,11 @@ def prepare_here(
         )
     # Only a compiler the probe accepted, whose binaries are in the cache by now.
     # A compiler of the lockfile has its tag already, and nothing is sent.
-    if target.oci:
-        tag, stored = publish_compiler_lockfile(
-            target, work.parent / "compiler" / "spack.lock", env,
-            compiler=toolchain.compiler, target=toolchain.target, operating_system=wanted.operating_system,
-        )
-        print(f"compiler lockfile: {tag} in {target.url}" + ("" if stored else ", there already and left as it is"))
+    tag, stored = publish_compiler_lockfile(
+        target, work.parent / "compiler" / "spack.lock", env,
+        compiler=toolchain.compiler, target=toolchain.target, operating_system=wanted.operating_system, command=command,
+    )
+    print(f"compiler lockfile: {tag} in {target.url}" + ("" if stored else ", there already and left as it is"))
 
     work.mkdir(parents=True, exist_ok=True)
     (work / "spack.yaml").write_text(
