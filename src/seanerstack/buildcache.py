@@ -66,7 +66,8 @@ def _mirror_args(resource: Resource, command: list[str]) -> list[str]:
     if resource.autopush:
         args.append("--autopush")
     args.append("--signed" if resource.signed else "--unsigned")
-    if resource.endpoint_url:
+    # The endpoint is that of an S3 service; Spack has no use for it elsewhere.
+    if resource.endpoint_url and resource.s3:
         args.extend(["--s3-endpoint-url", resource.endpoint_url])
     if resource.credentials:
         user_variable, secret_variable = resource.credential_variables

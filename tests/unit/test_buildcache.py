@@ -401,3 +401,21 @@ def test_a_push_check_of_a_registry_starts_an_upload_without_spack(monkeypatch):
 
     monkeypatch.setattr(seanerstack.prepare, "check_push_access", refuse)
     assert buildcache.check_push(registry, command=["spack"], env={}) == (False, "the credentials of 'registry' cannot push")
+
+
+def test_an_endpoint_url_reaches_spack_only_for_an_s3_cache(monkeypatch, tmp_path: Path):
+    calls = []
+
+    def fake_run(args, **kwargs):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(buildcache.subprocess, "run", fake_run)
+    resources = {
+        name: Resource(name=name, kind="spack-buildcache", url=url, endpoint_url="https://s3.example.org", signed=False)
+        for name, url in (("registry", "oci://registry.example.org/cache"), ("local", "file:///cache"), ("bucket", "s3://bucket"))
+    }
+    buildcache.configure_buildcaches(Config(path=tmp_path / "config.toml", resources=resources), command=["spack"])
+
+    added = {args[-2]: args for args in calls if "mirror" in args and "add" in args}
+    assert [name for name, args in added.items() if "--s3-endpoint-url" in args] == ["bucket"]
