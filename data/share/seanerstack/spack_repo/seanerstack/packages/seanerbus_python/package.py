@@ -23,7 +23,8 @@ class SeanerbusPython(Package):
     depends_on("seanerbus-cpp+python", type=("build", "run"))
     # The package loads the message schemas at run time, which upstream takes from
     # seanerbus-msg as a submodule, so it carries a copy.
-    depends_on("seanerbus-msg", type="build")
+    # The schemas of main, at which upstream keeps its submodule.
+    depends_on("seanerbus-msg@main", type="build")
 
     def install(self, spec, prefix):
         # Plain Python and its schemas. pyproject.toml only names a build with uv,

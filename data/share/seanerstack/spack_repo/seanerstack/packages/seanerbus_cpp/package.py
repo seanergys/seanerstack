@@ -30,7 +30,9 @@ class SeanerbusCpp(CMakePackage):
     depends_on("capnproto")
     # Upstream takes fmt and the message schemas as submodules.
     depends_on("fmt@12:")
-    depends_on("seanerbus-msg", type="build")
+    # The schemas of main, at which upstream keeps its submodule; seanerbus-rs
+    # builds from an older commit of them.
+    depends_on("seanerbus-msg@main", type="build")
 
     with when("+python"):
         extends("python")

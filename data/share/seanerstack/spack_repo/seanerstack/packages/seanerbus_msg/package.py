@@ -13,7 +13,14 @@ class SeanerbusMsg(Package):
     git = "https://gitlab.seanergys.fz-juelich.de/software/seanerbus-msg.git"
     seanerstack_resource = "seanergys-gitlab"
 
+    # The packages that build from the schemas take them as a build dependency,
+    # so Spack may install a commit of them for each package that needs another:
+    # see max_dupes in the concretizer settings that toolchain bootstrap writes.
+    tags = ["build-tools"]
+
     version("main", branch="main")
+    # The commit of the submodule msg/schemas of seanerbus-rs.
+    version("e74755c", commit="e74755ce1c4d564f3f7bdb67556ba9c32109f097")
 
     # Whoever uses the schemas compiles them with capnp.
     depends_on("capnproto", type=("build", "run"))
