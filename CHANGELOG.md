@@ -75,6 +75,9 @@ and release process.
   `seanerbus-naming-service-dev` environment.
 - `telemetry-collector`, the SEANERGYS Telemetry Collector and its plugins, and the
   `telemetry-collector-dev` environment.
+- `ear`, the Energy Aware Runtime, built with MySQL and GPU support, in
+  `seanergys-meta`. `ear-sources` stays the source tree that `access-daemon`
+  compiles from.
 - `seanerstack --version` prints the Seanerstack version and the Spack version
   it pins.
 - Seanerstack pins Spack to v1.2.2, in `src/seanerstack/pins.py`. It clones that
