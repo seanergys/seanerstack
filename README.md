@@ -168,7 +168,9 @@ A build cache with an `oci://` URL lives in a container registry and takes
 resource must set `signed = false`. A build cache with a `file://` URL is a
 directory on a local or shared filesystem. It takes no credentials, because file
 permissions control access to it, and it is unsigned unless the resource sets
-`signed = true`. Any other URL is S3 and takes the access key pair. The project
+`signed = true`. Any other URL is S3 and takes the access key pair; an
+`s3://` cache names the endpoint of its S3 service in `endpoint_url`, which no
+other URL uses, and `seanerstack validate` warns about it elsewhere. The project
 cache, `seanerstack-buildcache`, is the seanerstack GitLab container registry;
 `seanerstack-buildcache-bootstrap` beside it holds the first stage of the
 compiler, with the same credentials, and only the bootstrap instance reads it.
