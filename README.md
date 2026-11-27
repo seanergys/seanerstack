@@ -78,8 +78,8 @@ tests/e2e/run.sh
 
 The GitLab pipeline runs each file of `tests/e2e` in a job of its own, such as
 `e2e:install` and `e2e:buildcache`, with the job token. On GitHub, the `install`
-workflow only checks that `seanergys-meta` installs from the build caches alone,
-with the private resources and with only the public build caches; see
+workflow only checks that `seanergys-meta` installs from the public build caches
+alone, with and without read access to the private repositories; see
 [CI pipelines](docs/explanation/pipelines.md).
 
 Build or serve the documentation:
