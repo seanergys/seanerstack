@@ -438,14 +438,15 @@ def _run_publish(args: argparse.Namespace) -> int:
     target = config.resources.get(toolchain.cache)
     if lockfile is None:
         print(f"compiler lockfile: none, the compiler environment holds no {toolchain.compiler} of two stages")
-    elif target is None or not target.oci:
-        print(f"compiler lockfile: none, the build cache {toolchain.cache} is not in a registry")
+    elif target is None:
+        print(f"compiler lockfile: none, config.toml defines no build cache {toolchain.cache}")
     else:
         system = subprocess.run(
             [*command, "arch", "--operating-system"], check=True, capture_output=True, text=True, env=env
         ).stdout.strip()
         tag, stored = publish_compiler_lockfile(
             target, lockfile, env, compiler=toolchain.compiler, target=toolchain.target, operating_system=system,
+            command=command,
         )
         print(f"compiler lockfile: {tag} in {target.url}" + ("" if stored else ", there already and left as it is"))
     return 0
@@ -502,7 +503,7 @@ def _run_bootstrap(args: argparse.Namespace) -> int:
         # The compiler that the build cache holds, as the machine that filled it concretized it.
         lockfile = find_compiler_lockfile(
             config, env, compiler=compiler, target=target, operating_system=system,
-            directory=x.environments / "compiler-lockfiles",
+            directory=x.environments / "compiler-lockfiles", command=command,
         )
     instance = _bootstrap_instance(x, real_spack, env, config, target)
     # Spack builds with 16 jobs unless told otherwise, whatever the machine has.
